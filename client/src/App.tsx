@@ -51,16 +51,18 @@ function App() {
         <TooltipProvider>
           <div className="min-h-screen bg-background">
             <GradientOrbs />
-            <Switch>
-              <Route path="/">
-                {user ? (
-                  <Dashboard user={user} onLogout={handleLogout} />
-                ) : (
-                  <AuthPage onAuthSuccess={setUser} />
-                )}
-              </Route>
-              <Route component={NotFound} />
-            </Switch>
+            <div className="relative z-10">
+              <Switch>
+                <Route path="/">
+                  {user ? (
+                    <Dashboard user={user} onLogout={handleLogout} />
+                  ) : (
+                    <AuthPage onAuthSuccess={setUser} />
+                  )}
+                </Route>
+                <Route component={NotFound} />
+              </Switch>
+            </div>
           </div>
           <Toaster />
         </TooltipProvider>
