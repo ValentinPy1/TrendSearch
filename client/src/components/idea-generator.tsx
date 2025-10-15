@@ -108,7 +108,7 @@ export function IdeaGenerator({
         <div className="relative">
           <Input
             placeholder="e.g., Voice-assisted skill-connecting marketers who can't keep track of expenses with personalized solutions"
-            className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 pr-24 rounded-full"
+            className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-24 rounded-full"
             data-testid="input-idea"
             {...form.register("idea")}
           />
