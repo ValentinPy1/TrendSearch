@@ -95,7 +95,7 @@ export function IdeaGenerator({
 
   return (
     <div className="space-y-6">
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 pt-12">
         <div className="text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
             Generate Your Next Big Idea
