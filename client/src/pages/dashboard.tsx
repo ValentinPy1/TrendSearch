@@ -113,14 +113,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         )}
 
         {!isLoading && !error && selectedIdea?.report && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-3xl font-bold text-white mb-2">
+          <div className="space-y-8">
+            <div className="text-center">
+              <h2 className="text-4xl md:text-5xl font-bold text-white leading-tight">
                 {selectedIdea.generatedIdea}
               </h2>
-              <p className="text-white/60">
-                Market Analysis & Insights
-              </p>
             </div>
 
             <MetricsCards report={selectedIdea.report} />
