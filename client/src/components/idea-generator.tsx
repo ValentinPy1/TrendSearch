@@ -94,12 +94,12 @@ export function IdeaGenerator({
 
   return (
     <div className="space-y-6">
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-white mb-2">
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
             Generate Your Next Big Idea
           </h2>
-          <p className="text-sm text-white/60">
+          <p className="text-base text-white/60">
             Enter an existing idea or leave blank for AI-powered suggestions
           </p>
         </div>
