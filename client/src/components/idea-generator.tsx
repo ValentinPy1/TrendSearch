@@ -1,6 +1,5 @@
 import { useForm } from "react-hook-form";
 import { useMutation } from "@tanstack/react-query";
-import { GlassmorphicCard } from "./glassmorphic-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -94,53 +93,52 @@ export function IdeaGenerator({
   };
 
   return (
-    <GlassmorphicCard className="p-8">
-      <div className="space-y-6">
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <h2 className="text-xl font-semibold text-white mb-2">
-              Generate Your Next Big Idea
-            </h2>
-            <p className="text-sm text-white/60">
-              Enter an existing idea or leave blank for AI-powered suggestions
-            </p>
-          </div>
+    <div className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-white mb-2">
+            Generate Your Next Big Idea
+          </h2>
+          <p className="text-sm text-white/60">
+            Enter an existing idea or leave blank for AI-powered suggestions
+          </p>
+        </div>
 
-          <div className="relative">
-            <Input
-              placeholder="e.g., Voice-assisted skill-connecting marketers who can't keep track of expenses with personalized solutions"
-              className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 pr-24 rounded-full"
-              data-testid="input-idea"
-              {...form.register("idea")}
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={onShowHistory}
-                className="h-10 w-10 text-white hover:bg-transparent hover:text-primary"
-                data-testid="button-history"
-              >
-                <History className="h-5 w-5 stroke-[2.5]" />
-              </Button>
-              <Button
-                type="submit"
-                disabled={generateIdeaMutation.isPending}
-                variant="ghost"
-                size="icon"
-                className="h-10 w-10 text-white hover:bg-transparent hover:text-primary"
-                data-testid="button-generate"
-              >
-                {generateIdeaMutation.isPending ? (
-                  <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
-                ) : (
-                  <Sparkles className="h-5 w-5 stroke-[2.5]" />
-                )}
-              </Button>
-            </div>
+        <div className="relative">
+          <Input
+            placeholder="e.g., Voice-assisted skill-connecting marketers who can't keep track of expenses with personalized solutions"
+            className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 pr-24 rounded-full"
+            data-testid="input-idea"
+            {...form.register("idea")}
+          />
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onShowHistory}
+              className="h-10 w-10 text-secondary hover:bg-transparent"
+              data-testid="button-history"
+            >
+              <History className="h-5 w-5 stroke-[2.5]" />
+            </Button>
+            <Button
+              type="submit"
+              disabled={generateIdeaMutation.isPending}
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 text-primary hover:bg-transparent"
+              data-testid="button-generate"
+            >
+              {generateIdeaMutation.isPending ? (
+                <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
+              ) : (
+                <Sparkles className="h-5 w-5 stroke-[2.5]" />
+              )}
+            </Button>
           </div>
-        </form>
+        </div>
+      </form>
 
         {currentIdea && !currentIdea.report && (
           <div className="pt-4 border-t border-white/10">
@@ -167,7 +165,6 @@ export function IdeaGenerator({
             </Button>
           </div>
         )}
-      </div>
-    </GlassmorphicCard>
+    </div>
   );
 }
