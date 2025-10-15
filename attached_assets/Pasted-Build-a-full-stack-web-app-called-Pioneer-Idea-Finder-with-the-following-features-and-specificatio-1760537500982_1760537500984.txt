@@ -1,0 +1,101 @@
+Build a full-stack web app called “Pioneer Idea Finder” with the following features and specifications. The app should run on Replit, using React (Vite or Next.js) for the frontend, Node.js (Express) or FastAPI for the backend, and Supabase for authentication and database storage. The app should be deployable instantly on Replit with environment variables for API keys.
+
+Features & Workflow:
+
+User Authentication:
+
+Users can sign up and log in using email/password (Supabase Auth).
+
+Only logged-in users can generate ideas or reports.
+
+Idea Generation:
+
+A single text input field for users to enter an existing idea.
+
+Inline “Generate Idea” button that triggers the Stupidity Mixer + LLM Formulator pipeline.
+
+Stupidity Mixer randomly selects a persona, problem, delivery type, and app inspiration, generating 5 candidate ideas.
+
+The LLM Formulator selects the best idea and reformulates it into a single clear sentence.
+
+Inline “History” button to view previously generated ideas for the logged-in user (stored in Supabase).
+
+Idea Validation & Reporting:
+
+Generate Report button triggers backend API that:
+
+Calls Google Ads KeywordPlanIdeaService to generate up to 10 related keywords.
+
+Calls KeywordPlanHistoricalMetrics and GenerateTrendingInsights to retrieve metrics:
+
+Monthly search volume
+
+3-month growth
+
+Year-over-year growth
+
+Competition (low, medium, high)
+
+Average top-of-page bid
+
+CPC
+
+Aggregates these metrics and stores them in the database along with the idea.
+
+Frontend displays:
+
+Interactive line chart showing 12 months of historical search volume for selected keywords.
+
+Six metric cards alongside the chart with Volume, 3M Growth, YoY Growth, Competition, Avg Top-of-Page Bid, and CPC.
+
+Dropdown above chart to select individual keywords from the retrieved list.
+
+PDF Export button to download the full report with idea, metrics, trend chart, and keyword table.
+
+UI Design & Styling:
+
+Dark theme: #0a0a0f background with floating gradient orbs in purple, blue, and indigo.
+
+Font: Inter (matching pioneerslab.ai).
+
+Title: “Idea Finder” prominently displayed, 6xl size, white text.
+
+Cards: Glassmorphic with backdrop blur for metrics.
+
+Line chart: Modern, interactive, matches gradient style.
+
+Backend & Database:
+
+Supabase stores:
+
+Users
+
+Generated ideas
+
+Keyword reports and metrics
+
+Backend endpoints (Edge Functions or Express API):
+
+/api/generate-idea → triggers Stupidity Mixer + LLM Formulator
+
+/api/generate-report → retrieves Google Ads metrics and saves results
+
+/api/history → retrieves previous ideas and reports for logged-in user
+
+All API keys (LLM, Google Ads) stored securely in environment variables.
+
+Additional Notes:
+
+Include mock API responses for LLM and Google Ads initially, so the app can run without live keys.
+
+The PDF export should format the report nicely with a gradient header and proper tables.
+
+Frontend should handle loading states and errors gracefully.
+
+The app should be fully responsive and mobile-friendly.
+
+Deliverable:
+
+Full Replit project scaffold including frontend, backend, Supabase integration, authentication, PDF export, and mock API handling.
+
+Include clear instructions on how to replace mock APIs with real LLM and Google Ads API calls.
