@@ -106,41 +106,39 @@ export function IdeaGenerator({
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="relative">
             <Input
               placeholder="e.g., Voice-assisted skill-connecting marketers who can't keep track of expenses with personalized solutions"
-              className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-12"
+              className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 pr-24 rounded-full"
               data-testid="input-idea"
               {...form.register("idea")}
             />
-            <Button
-              type="submit"
-              disabled={generateIdeaMutation.isPending}
-              className="gap-2"
-              data-testid="button-generate"
-            >
-              {generateIdeaMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  Generate
-                </>
-              )}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={onShowHistory}
-              className="gap-2"
-              data-testid="button-history"
-            >
-              <History className="h-4 w-4" />
-              History
-            </Button>
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onShowHistory}
+                className="h-10 w-10 text-white hover:bg-transparent hover:text-primary"
+                data-testid="button-history"
+              >
+                <History className="h-5 w-5 stroke-[2.5]" />
+              </Button>
+              <Button
+                type="submit"
+                disabled={generateIdeaMutation.isPending}
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 text-white hover:bg-transparent hover:text-primary"
+                data-testid="button-generate"
+              >
+                {generateIdeaMutation.isPending ? (
+                  <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
+                ) : (
+                  <Sparkles className="h-5 w-5 stroke-[2.5]" />
+                )}
+              </Button>
+            </div>
           </div>
         </form>
 
