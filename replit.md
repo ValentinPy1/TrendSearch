@@ -92,14 +92,15 @@ Generates report with:
 ## Current Implementation Status
 
 - ✅ Authentication (email/password with bcrypt)
-- ✅ Idea generation with Stupidity Mixer
+- ✅ Database persistence (Supabase PostgreSQL via Drizzle ORM)
+- ✅ Session management (express-session with userId tracking)
+- ✅ Idea generation with Stupidity Mixer algorithm
 - ✅ Mock Google Ads data generation
 - ✅ Interactive dashboard with metrics
-- ✅ Trend chart visualization
+- ✅ Trend chart visualization  
 - ✅ PDF export functionality
 - ✅ Dark theme with gradient orbs
 - ✅ Glassmorphic UI design
-- ⏳ Database persistence (currently in-memory, needs migration to Supabase)
 - ⏳ Real LLM integration (currently mocked)
 - ⏳ Real Google Ads API integration (currently mocked)
 
@@ -127,10 +128,24 @@ Required:
 7. Click "Export PDF" to download full report
 8. Click "History" to view all previous ideas and reports
 
+## Development Notes
+
+### Database Connection
+- Uses Neon serverless PostgreSQL with WebSocket connection
+- In development, `NODE_TLS_REJECT_UNAUTHORIZED=0` is set in `server/index.ts` to accept self-signed certificates
+- This allows the WebSocket connection to work with Replit's SSL proxy
+- Production uses strict TLS certificate validation
+
+### Security
+- User passwords are hashed with bcrypt (10 salt rounds)
+- Session-based authentication with httpOnly cookies
+- UserId is derived from server-side session (never from client payload)
+- All protected routes use `requireAuth` middleware
+
 ## Next Steps
 
-1. Migrate from in-memory storage to Supabase PostgreSQL
-2. Integrate real LLM API (OpenAI/Anthropic) for idea formulation
-3. Connect Google Ads API for real market data
-4. Add idea refinement and comparison features
-5. Implement advanced filtering in history view
+1. Integrate real LLM API (OpenAI/Anthropic) for idea formulation
+2. Connect Google Ads API for real market data
+3. Add idea refinement and comparison features
+4. Implement advanced filtering in history view
+5. Add batch idea generation and A/B comparison

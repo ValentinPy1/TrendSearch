@@ -3,6 +3,7 @@ import { Pool, neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
 import * as schema from "@shared/schema";
 
+// Configure WebSocket for Neon
 neonConfig.webSocketConstructor = ws;
 
 if (!process.env.DATABASE_URL) {

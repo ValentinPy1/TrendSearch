@@ -31,7 +31,8 @@ export function IdeaGenerator({
 
   const generateIdeaMutation = useMutation({
     mutationFn: async (data: { originalIdea: string | null }) => {
-      return apiRequest("POST", "/api/generate-idea", data);
+      const res = await apiRequest("POST", "/api/generate-idea", data);
+      return res.json();
     },
     onSuccess: (result) => {
       toast({
@@ -53,7 +54,8 @@ export function IdeaGenerator({
 
   const generateReportMutation = useMutation({
     mutationFn: async (ideaId: string) => {
-      return apiRequest("POST", "/api/generate-report", { ideaId });
+      const res = await apiRequest("POST", "/api/generate-report", { ideaId });
+      return res.json();
     },
     onSuccess: (result) => {
       toast({

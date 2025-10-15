@@ -160,6 +160,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.post("/api/auth/signup", async (req, res) => {
     try {
+      console.log("Signup attempt:", { email: req.body?.email });
       const data = insertUserSchema.parse(req.body);
       
       const existingUser = await storage.getUserByEmail(data.email);
@@ -176,6 +177,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.userId = user.id;
       res.json({ user: { id: user.id, email: user.email } });
     } catch (error) {
+      console.error("Signup error:", error);
+      if (error instanceof Error && 'issues' in error) {
+        // Zod validation error
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: (error as any).issues 
+        });
+      }
       res.status(400).json({ message: "Invalid input" });
     }
   });
