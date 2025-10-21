@@ -125,20 +125,14 @@ export function IdeaGenerator({
   return (
     <div className="space-y-6">
       <div className="space-y-8 pt-12">
-        <div className="text-center max-w-2xl mx-auto">
-          <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent mb-4">
+        <div className="text-center max-w-3xl mx-auto">
+          <h2 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent mb-6">
             Idea Watcher
           </h2>
-          <p className="text-sm text-white/70 mb-2 leading-relaxed">
-            Get ultra-concise microSaaS ideas powered by AI. Click the{" "}
-            <span className="text-primary">sparkle icon</span> to generate a new
-            AI idea (5-8 words), or enter your own idea and press{" "}
-            <span className="text-secondary">Enter</span> to validate it with
-            real market data from 10 semantically-related keywords.
-          </p>
-          <p className="text-xs text-white/50">
-            Each report includes search volume, competition, trends, and growth
-            metrics
+          <p className="text-base text-white/80 leading-relaxed">
+            Validate startup ideas with AI-powered generation and real market data. Click the{" "}
+            <span className="text-primary font-semibold">sparkle</span> for AI ideas or enter your own and press{" "}
+            <span className="text-secondary font-semibold">Enter</span> to analyze 10 related keywords with search volume, competition, trends, and growth metrics.
           </p>
         </div>
 
