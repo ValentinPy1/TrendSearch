@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
+import { Input } from "@/components/ui/input";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { Keyword } from "@shared/schema";
 
@@ -10,9 +11,11 @@ interface KeywordsTableProps {
   keywords: Keyword[];
   selectedKeyword: string | null;
   onKeywordSelect: (keyword: string) => void;
+  keywordCount: number;
+  onKeywordCountChange: (count: number) => void;
 }
 
-export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: KeywordsTableProps) {
+export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keywordCount, onKeywordCountChange }: KeywordsTableProps) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
@@ -33,13 +36,11 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
   };
 
   const sortedKeywords = useMemo(() => {
-    const topKeywords = keywords.slice(0, 10);
-    
     if (!sortField || !sortDirection) {
-      return topKeywords;
+      return keywords;
     }
 
-    return [...topKeywords].sort((a, b) => {
+    return [...keywords].sort((a, b) => {
       let aVal: any;
       let bVal: any;
 
@@ -99,13 +100,35 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
   return (
     <GlassmorphicCard className="p-8">
       <div className="space-y-6">
-        <div>
-          <h3 className="text-xl font-semibold text-white mb-2">
-            Top 10 Related Keywords
-          </h3>
-          <p className="text-sm text-white/60">
-            Click a keyword to view its trend analysis
-          </p>
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-2">
+              Top {keywordCount} Related Keywords
+            </h3>
+            <p className="text-sm text-white/60">
+              Click a keyword to view its trend analysis
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <label htmlFor="keyword-count" className="text-sm text-white/80 font-medium">
+              Keywords:
+            </label>
+            <Input
+              id="keyword-count"
+              type="number"
+              min="1"
+              max="100"
+              value={keywordCount}
+              onChange={(e) => {
+                const value = parseInt(e.target.value);
+                if (!isNaN(value) && value >= 1 && value <= 100) {
+                  onKeywordCountChange(value);
+                }
+              }}
+              className="w-20 bg-white/5 border-white/10 text-white text-center"
+              data-testid="input-keyword-count"
+            />
+          </div>
         </div>
 
         <div className="overflow-x-auto">

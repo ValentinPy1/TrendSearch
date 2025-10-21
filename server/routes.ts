@@ -71,9 +71,9 @@ function llmFormulator(ideas: string[]): string {
   return selectedIdea.charAt(0).toUpperCase() + selectedIdea.slice(1);
 }
 
-async function getKeywordsFromVectorDB(idea: string) {
+async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
   // Use vector similarity search to find most relevant keywords
-  const similarKeywords = await keywordVectorService.findSimilarKeywords(idea, 10);
+  const similarKeywords = await keywordVectorService.findSimilarKeywords(idea, topN);
   
   // Map CSV columns (2024_10 through 2025_09) to correct month labels
   const monthMapping = [
@@ -284,7 +284,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Generate report for an idea
   app.post("/api/generate-report", requireAuth, async (req, res) => {
     try {
-      const { ideaId } = req.body;
+      const { ideaId, keywordCount = 10 } = req.body;
+
+      // Validate keywordCount
+      const validatedCount = Math.max(1, Math.min(100, parseInt(keywordCount) || 10));
 
       const idea = await storage.getIdea(ideaId);
       if (!idea) {
@@ -306,7 +309,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get real keyword data from vector database
-      const { keywords: keywordData, aggregates } = await getKeywordsFromVectorDB(idea.generatedIdea);
+      const { keywords: keywordData, aggregates } = await getKeywordsFromVectorDB(idea.generatedIdea, validatedCount);
 
       // Create report
       const report = await storage.createReport({

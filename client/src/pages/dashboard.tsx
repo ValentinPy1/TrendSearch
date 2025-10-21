@@ -20,6 +20,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [selectedIdea, setSelectedIdea] = useState<IdeaWithReport | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
+  const [keywordCount, setKeywordCount] = useState(10);
 
   const { data: ideas, isLoading, error, refetch } = useQuery<IdeaWithReport[]>({
     queryKey: ['/api/ideas'],
@@ -101,6 +102,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           onShowHistory={() => setShowHistory(!showHistory)}
           onReportGenerated={handleReportGenerated}
           currentIdea={selectedIdea}
+          keywordCount={keywordCount}
+          onKeywordCountChange={setKeywordCount}
         />
 
         {isLoading && (
@@ -147,6 +150,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               keywords={selectedIdea.report.keywords}
               selectedKeyword={selectedKeyword}
               onKeywordSelect={setSelectedKeyword}
+              keywordCount={keywordCount}
+              onKeywordCountChange={setKeywordCount}
             />
 
             {selectedKeyword && selectedIdea.report.keywords.find(k => k.keyword === selectedKeyword) && (
