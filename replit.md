@@ -66,11 +66,12 @@ Pioneer Idea Finder helps entrepreneurs validate their startup ideas using:
 **AI-Powered Generation with GPT-4o-mini:**
 - Randomly selects one `user_type` from paramV4.json (48 options: students, freelancers, creators, etc.)
 - Randomly selects one `problem_nature` from paramV4.json (47 options: repetitive_tasks, information_overload, etc.)
-- Sends structured prompt to GPT-4o-mini with:
+- Sends ultra-concise prompt to GPT-4o-mini with:
   - Selected user type and problem descriptions
   - Complete microSaaS principles guide (focus, niche, immediate value, etc.)
-  - Instruction to generate focused one-sentence idea
-- GPT-4o-mini generates specific, actionable microSaaS idea following best practices
+  - Instruction to generate EXTREMELY CONCISE idea (5-8 words maximum)
+  - Format examples: "AI expense tracker for freelancers", "Automated scheduling for trainers"
+- GPT-4o-mini generates ultra-concise microSaaS idea (typically 4-8 words)
 - User-provided ideas are preserved exactly; blank input triggers AI generation
 
 ### 2. Market Validation
@@ -199,23 +200,26 @@ The app uses GPT-4o-mini via Replit AI Integrations to generate microSaaS ideas:
 **How It Works:**
 1. User leaves input blank and clicks "Generate Idea"
 2. System randomly selects one `user_type` and one `problem_nature` from paramV4.json
-3. Constructs prompt with:
+3. Constructs ultra-concise prompt with:
    - User type description (e.g., "freelancers: designers, developers, writers...")
    - Problem description (e.g., "Repetitive tasks")
    - Complete microSaaS principles (focus, niche, immediate value, etc.)
+   - Explicit instruction to generate 5-8 word ideas with examples
 4. Calls GPT-4o-mini via Replit AI Integrations (no API key needed, billed to credits)
-5. Receives focused one-sentence microSaaS idea
+5. Receives ultra-concise microSaaS idea (typically 4-8 words)
 6. Saves to database and returns to frontend
 
 **Model Choice:**
 - Initially attempted `gpt-5-nano` but it's a reasoning model that returns empty content
 - Switched to `gpt-4o-mini` which is a standard completion model
-- Uses standard OpenAI parameters: `max_tokens: 150`, `temperature: 0.9`
+- Uses standard OpenAI parameters: `max_tokens: 50`, `temperature: 0.9`
+- Prompt heavily optimized for extreme conciseness
 
 **Example Generated Ideas:**
-- "A no-code website builder for busy photographers who need professional portfolios without learning to code"
-- "An automated expense tracker for freelancers that categorizes receipts using AI and generates tax-ready reports"
-- "A simple scheduling tool for fitness trainers that handles client bookings and sends automated reminders"
+- "Storytelling coach for international students" (5 words)
+- "AI expense tracker for freelancers" (5 words)
+- "Automated scheduling for trainers" (4 words)
+- "Content calendar for creators" (4 words)
 
 ## Next Steps
 
