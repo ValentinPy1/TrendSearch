@@ -75,15 +75,28 @@ async function getKeywordsFromVectorDB(idea: string) {
   // Use vector similarity search to find most relevant keywords
   const similarKeywords = await keywordVectorService.findSimilarKeywords(idea, 10);
   
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Map CSV columns (2024_10 through 2025_09) to correct month labels
+  const monthMapping = [
+    { key: '2024_10', label: 'Oct' },
+    { key: '2024_11', label: 'Nov' },
+    { key: '2024_12', label: 'Dec' },
+    { key: '2025_01', label: 'Jan' },
+    { key: '2025_02', label: 'Feb' },
+    { key: '2025_03', label: 'Mar' },
+    { key: '2025_04', label: 'Apr' },
+    { key: '2025_05', label: 'May' },
+    { key: '2025_06', label: 'Jun' },
+    { key: '2025_07', label: 'Jul' },
+    { key: '2025_08', label: 'Aug' },
+    { key: '2025_09', label: 'Sep' },
+  ];
   
   const keywords = similarKeywords.map(kw => {
-    // Convert monthly data from CSV format to our format
-    const monthlyData = months.map((month, idx) => {
-      const monthKey = ['2024_10', '2024_11', '2024_12', '2025_01', '2025_02', '2025_03', '2025_04', '2025_05', '2025_06', '2025_07', '2025_08', '2025_09'][idx];
+    // Convert monthly data from CSV format to our format with correct month labels
+    const monthlyData = monthMapping.map(({ key, label }) => {
       return {
-        month,
-        volume: Math.floor(kw[monthKey as keyof typeof kw] as number || kw.search_volume || 0)
+        month: label,
+        volume: Math.floor(kw[key as keyof typeof kw] as number || kw.search_volume || 0)
       };
     });
 
