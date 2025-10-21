@@ -1,5 +1,5 @@
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { TrendingUp, TrendingDown, Search, Target, DollarSign, MousePointerClick, Info } from "lucide-react";
+import { TrendingUp, TrendingDown, Search, Target, DollarSign, MousePointerClick } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Keyword } from "@shared/schema";
 
@@ -100,34 +100,31 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
         {metrics.map((metric) => {
           const Icon = metric.icon;
           return (
-            <GlassmorphicCard key={metric.label} className="p-6">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-white/60">{metric.label}</span>
-                  <div className="flex items-center gap-2">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-4 w-4 text-white/40 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{metric.info}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Icon className="h-5 w-5 text-white/60" />
+            <Tooltip key={metric.label}>
+              <TooltipTrigger asChild>
+                <GlassmorphicCard className="p-6 cursor-help">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-white/60">{metric.label}</span>
+                      <Icon className="h-5 w-5 text-white/60" />
+                    </div>
+                    <div>
+                      <div 
+                        className="text-3xl font-bold mb-1" 
+                        style={metric.style}
+                        data-testid={`keyword-metric-${metric.label.toLowerCase().replace(/\s+/g, '-')}`}
+                      >
+                        {metric.value}
+                      </div>
+                      <div className="text-xs text-white/40">{metric.subtitle}</div>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <div 
-                    className="text-3xl font-bold mb-1" 
-                    style={metric.style}
-                    data-testid={`keyword-metric-${metric.label.toLowerCase().replace(/\s+/g, '-')}`}
-                  >
-                    {metric.value}
-                  </div>
-                  <div className="text-xs text-white/40">{metric.subtitle}</div>
-                </div>
-              </div>
-            </GlassmorphicCard>
+                </GlassmorphicCard>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{metric.info}</p>
+              </TooltipContent>
+            </Tooltip>
           );
         })}
       </div>
