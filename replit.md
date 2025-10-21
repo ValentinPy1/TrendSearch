@@ -95,14 +95,15 @@ Generates report with:
 - ✅ Database persistence (Supabase PostgreSQL via Drizzle ORM)
 - ✅ Session management (express-session with userId tracking)
 - ✅ Idea generation with Stupidity Mixer algorithm
-- ✅ Mock Google Ads data generation
+- ✅ Vector database with prebuilt embeddings (instant keyword matching)
+- ✅ Semantic keyword search using sentence-transformers
 - ✅ Interactive dashboard with metrics
 - ✅ Trend chart visualization  
 - ✅ PDF export functionality
 - ✅ Dark theme with gradient orbs
 - ✅ Glassmorphic UI design
 - ⏳ Real LLM integration (currently mocked)
-- ⏳ Real Google Ads API integration (currently mocked)
+- ⏳ Real Google Ads API integration (using real keyword data from CSV)
 
 ## Environment Variables
 
@@ -129,6 +130,35 @@ Required:
 8. Click "History" to view all previous ideas and reports
 
 ## Development Notes
+
+### Vector Database (Prebuilt Embeddings)
+The app uses a prebuilt vector database for instant keyword matching:
+
+**Files:**
+- `data/keywords_data.csv` - 6,443 real Google Ads keywords with metrics
+- `data/embeddings.json` - Prebuilt vector embeddings (54 MB, generated once)
+- `scripts/prebuild-embeddings.ts` - Script to regenerate embeddings
+- `server/keyword-vector-service.ts` - Loads prebuilt embeddings for semantic search
+
+**How It Works:**
+1. **Build Time:** Run `npx tsx scripts/prebuild-embeddings.ts` to generate embeddings
+   - Loads 6,443 keywords from CSV
+   - Generates 384-dimensional embeddings using sentence-transformers/all-MiniLM-L6-v2
+   - Saves to `data/embeddings.json` (takes 30-60 seconds)
+2. **Runtime:** KeywordVectorService loads prebuilt embeddings (~2 seconds)
+   - No cold-start delay for first report generation
+   - Only initializes model for query encoding
+   - Finds top 10 semantically similar keywords using cosine similarity
+
+**Performance:**
+- Cold-start: ~2 seconds (down from 30-60s with runtime generation)
+- Subsequent reports: Instant (embeddings cached in memory)
+
+**Updating Keywords:**
+If `keywords_data.csv` is updated, regenerate embeddings:
+```bash
+npx tsx scripts/prebuild-embeddings.ts
+```
 
 ### Database Connection
 - Uses Neon serverless PostgreSQL with WebSocket connection
