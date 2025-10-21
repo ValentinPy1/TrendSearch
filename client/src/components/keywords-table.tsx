@@ -94,32 +94,30 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
     return <ArrowDown className="h-4 w-4 ml-1 text-primary" />;
   };
 
-  const getBlueGradient = (value: number) => {
-    // Map 30-70 range to 0-1 opacity (0% at 30, 100% at 70)
-    const opacity = Math.min(1, Math.max(0, (value - 30) / 40));
+  const getBlueGradientText = (value: number) => {
+    // Map 30-70 range to white-to-blue gradient
+    const normalizedValue = Math.min(1, Math.max(0, (value - 30) / 40));
+    const lightness = 100 - (normalizedValue * 40); // 100% (white) to 60% (blue)
     return {
-      backgroundColor: `hsla(210, 80%, 50%, ${opacity})`,
-      color: 'rgb(255, 255, 255)',
+      color: `hsl(210, 80%, ${lightness}%)`,
     };
   };
 
-  const getRedGradient = (value: number) => {
-    const intensity = Math.min(100, Math.max(0, value));
-    const opacity = 0.1 + (intensity / 100) * 0.5;
-    const lightness = 65 - (intensity / 100) * 30;
+  const getRedGradientText = (value: number) => {
+    // 0-100 range to white-to-red gradient
+    const normalizedValue = Math.min(1, Math.max(0, value / 100));
+    const lightness = 100 - (normalizedValue * 40); // 100% (white) to 60% (red)
     return {
-      backgroundColor: `hsla(0, 80%, ${lightness}%, ${opacity})`,
-      color: 'rgb(255, 255, 255)',
+      color: `hsl(0, 80%, ${lightness}%)`,
     };
   };
 
-  const getPurpleGradient = (value: number, max: number) => {
-    const intensity = Math.min(100, (value / max) * 100);
-    const opacity = 0.1 + (intensity / 100) * 0.5;
-    const lightness = 65 - (intensity / 100) * 30;
+  const getPurpleGradientText = (value: number, max: number) => {
+    // Scaled to max value, white-to-purple gradient
+    const normalizedValue = Math.min(1, (value / max));
+    const lightness = 100 - (normalizedValue * 40); // 100% (white) to 60% (purple)
     return {
-      backgroundColor: `hsla(250, 80%, ${lightness}%, ${opacity})`,
-      color: 'rgb(255, 255, 255)',
+      color: `hsl(250, 80%, ${lightness}%)`,
     };
   };
 
@@ -249,8 +247,8 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     </td>
                     <td className="py-4 px-4 text-sm text-center">
                       <span 
-                        className="inline-block px-2 py-1 rounded text-xs font-medium"
-                        style={getBlueGradient(matchPercentage)}
+                        className="font-medium"
+                        style={getBlueGradientText(matchPercentage)}
                       >
                         {matchPercentage.toFixed(0)}%
                       </span>
@@ -260,24 +258,24 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     </td>
                     <td className="py-4 px-4 text-sm text-center">
                       <span 
-                        className="inline-block px-3 py-1 rounded-full text-xs font-medium"
-                        style={getRedGradient(competition)}
+                        className="font-medium"
+                        style={getRedGradientText(competition)}
                       >
                         {competition}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
                       <span 
-                        className="inline-block px-2 py-1 rounded text-xs font-medium"
-                        style={getPurpleGradient(cpc, maxCpc)}
+                        className="font-medium"
+                        style={getPurpleGradientText(cpc, maxCpc)}
                       >
                         ${cpc.toFixed(2)}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
                       <span 
-                        className="inline-block px-2 py-1 rounded text-xs font-medium"
-                        style={getPurpleGradient(topPageBid, maxTopPageBid)}
+                        className="font-medium"
+                        style={getPurpleGradientText(topPageBid, maxTopPageBid)}
                       >
                         ${topPageBid.toFixed(2)}
                       </span>
