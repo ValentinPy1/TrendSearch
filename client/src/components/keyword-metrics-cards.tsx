@@ -62,12 +62,6 @@ export function KeywordMetricsCards({ keyword }: KeywordMetricsCardsProps) {
 
   return (
     <div>
-      <div className="mb-4">
-        <h3 className="text-xl font-semibold text-white">
-          {keyword.keyword}
-        </h3>
-        <p className="text-sm text-white/60">Keyword metrics and performance</p>
-      </div>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {metrics.map((metric) => {
           const Icon = metric.icon;

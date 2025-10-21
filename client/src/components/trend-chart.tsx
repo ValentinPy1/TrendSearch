@@ -78,10 +78,10 @@ export function TrendChart({ keywords, reportId, selectedKeyword }: TrendChartPr
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h3 className="text-xl font-semibold text-white mb-2">
-              Keyword Trend Analysis
+              {keyword.keyword}
             </h3>
             <p className="text-sm text-white/60">
-              12-month search volume history for {keyword.keyword}
+              12-month search volume history
             </p>
           </div>
           
@@ -135,34 +135,6 @@ export function TrendChart({ keywords, reportId, selectedKeyword }: TrendChartPr
               />
             </LineChart>
           </ResponsiveContainer>
-        </div>
-
-        <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-          <h4 className="text-sm font-semibold text-white mb-3">Keyword Details</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <p className="text-xs text-white/60 mb-1">Keyword</p>
-              <p className="text-sm text-white font-medium">{keyword.keyword}</p>
-            </div>
-            <div>
-              <p className="text-xs text-white/60 mb-1">Volume</p>
-              <p className="text-sm text-white font-medium">
-                {keyword.volume?.toLocaleString() || "N/A"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-white/60 mb-1">Competition</p>
-              <p className="text-sm text-white font-medium capitalize">
-                {keyword.competition || "N/A"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-white/60 mb-1">CPC</p>
-              <p className="text-sm text-white font-medium">
-                ${keyword.cpc || "0.00"}
-              </p>
-            </div>
-          </div>
         </div>
       </div>
     </GlassmorphicCard>
