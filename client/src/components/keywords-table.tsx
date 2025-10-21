@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,12 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [inputValue, setInputValue] = useState(keywordCount.toString());
   const keywordsPerPage = 10;
+
+  useEffect(() => {
+    setInputValue(keywordCount.toString());
+  }, [keywordCount]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -106,7 +111,11 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
   };
 
   const handleRefresh = () => {
-    onKeywordCountChange(keywordCount);
+    const value = parseInt(inputValue);
+    if (!isNaN(value) && value >= 1 && value <= 100) {
+      onKeywordCountChange(value);
+      setCurrentPage(1);
+    }
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -137,12 +146,11 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
               type="number"
               min="1"
               max="100"
-              value={keywordCount}
-              onChange={(e) => {
-                const value = parseInt(e.target.value);
-                if (!isNaN(value) && value >= 1 && value <= 100) {
-                  onKeywordCountChange(value);
-                  setCurrentPage(1);
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleRefresh();
                 }
               }}
               className="w-20 bg-white/5 border-white/10 text-white text-center"
