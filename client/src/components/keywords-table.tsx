@@ -95,12 +95,10 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
   };
 
   const getBlueGradient = (value: number) => {
-    // Map 30-70 range to 0-100 intensity
-    const normalizedValue = Math.min(100, Math.max(0, ((value - 30) / 40) * 100));
-    const opacity = 0.1 + (normalizedValue / 100) * 0.5;
-    const lightness = 65 - (normalizedValue / 100) * 30;
+    // Map 30-70 range to 0-1 opacity (0% at 30, 100% at 70)
+    const opacity = Math.min(1, Math.max(0, (value - 30) / 40));
     return {
-      backgroundColor: `hsla(210, 80%, ${lightness}%, ${opacity})`,
+      backgroundColor: `hsla(210, 80%, 50%, ${opacity})`,
       color: 'rgb(255, 255, 255)',
     };
   };
