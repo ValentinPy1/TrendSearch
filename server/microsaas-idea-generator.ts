@@ -84,7 +84,7 @@ Your idea (5-8 words only):`;
       console.log('[MicroSaaS Generator] Calling OpenAI API...');
       
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-5-nano-2025-08-07',
+        model: 'gpt-5-nano',
         messages: [
           {
             role: 'system',
