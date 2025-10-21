@@ -71,7 +71,7 @@ MicroSaaS principles:
 ${this.microSaaSPrinciples}
 
 STRICT Requirements:
-- EXACTLY 5 to 8 words (count carefully - never 4 or 9+)
+- EXACTLY 5 to 8 words
 - One specific tool/solution
 - Clear target audience included
 - No articles unless necessary for clarity
@@ -81,7 +81,6 @@ Valid examples (word count shown):
 - Automated scheduling tool for fitness trainers
 - Content calendar and planner for creators
 - Storytelling coach for international students
-
 
 Your idea (exactly 5-8 words):`;
 
