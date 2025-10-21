@@ -14,11 +14,11 @@ interface IdeaGeneratorProps {
   currentIdea?: IdeaWithReport | null;
 }
 
-export function IdeaGenerator({ 
-  onIdeaGenerated, 
+export function IdeaGenerator({
+  onIdeaGenerated,
   onShowHistory,
   onReportGenerated,
-  currentIdea
+  currentIdea,
 }: IdeaGeneratorProps) {
   const { toast } = useToast();
 
@@ -40,16 +40,17 @@ export function IdeaGenerator({
       });
       // Set the generated idea in the input field
       form.setValue("idea", result.idea.generatedIdea);
-      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
       onIdeaGenerated(result.idea);
-      
+
       // Automatically generate report
       generateReportMutation.mutate(result.idea.id);
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to generate idea",
+        description:
+          error instanceof Error ? error.message : "Failed to generate idea",
         variant: "destructive",
       });
     },
@@ -57,7 +58,10 @@ export function IdeaGenerator({
 
   const generateReportMutation = useMutation({
     mutationFn: async (ideaId: string) => {
-      const res = await apiRequest("POST", "/api/generate-report", { ideaId, keywordCount: 10 });
+      const res = await apiRequest("POST", "/api/generate-report", {
+        ideaId,
+        keywordCount: 10,
+      });
       return res.json();
     },
     onSuccess: (result) => {
@@ -65,21 +69,22 @@ export function IdeaGenerator({
         title: "Report Generated!",
         description: "Your market analysis is ready.",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
       if (currentIdea) {
         onReportGenerated({
           ...currentIdea,
           report: {
             ...result.report,
-            keywords: result.keywords
-          }
+            keywords: result.keywords,
+          },
         });
       }
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to generate report",
+        description:
+          error instanceof Error ? error.message : "Failed to generate report",
         variant: "destructive",
       });
     },
@@ -94,7 +99,7 @@ export function IdeaGenerator({
 
   const handleGenerateReport = () => {
     const ideaText = form.getValues("idea");
-    
+
     if (!ideaText || ideaText.trim().length === 0) {
       toast({
         title: "Error",
@@ -122,14 +127,18 @@ export function IdeaGenerator({
       <div className="space-y-8 pt-12">
         <div className="text-center max-w-2xl mx-auto">
           <h2 className="text-xl md:text-2xl font-bold text-white mb-4">
-            Generate Your Next Big Idea
+            Idea Watcher
           </h2>
           <p className="text-sm text-white/70 mb-2 leading-relaxed">
-            Get ultra-concise microSaaS ideas powered by AI. Click the <span className="text-primary">sparkle icon</span> to generate a new AI idea (5-8 words), 
-            or enter your own idea and press <span className="text-secondary">Enter</span> to validate it with real market data from 10 semantically-related keywords.
+            Get ultra-concise microSaaS ideas powered by AI. Click the{" "}
+            <span className="text-primary">sparkle icon</span> to generate a new
+            AI idea (5-8 words), or enter your own idea and press{" "}
+            <span className="text-secondary">Enter</span> to validate it with
+            real market data from 10 semantically-related keywords.
           </p>
           <p className="text-xs text-white/50">
-            Each report includes search volume, competition, trends, and growth metrics
+            Each report includes search volume, competition, trends, and growth
+            metrics
           </p>
         </div>
 
@@ -155,13 +164,17 @@ export function IdeaGenerator({
             <Button
               type="button"
               onClick={handleGenerateIdea}
-              disabled={generateIdeaMutation.isPending || generateReportMutation.isPending}
+              disabled={
+                generateIdeaMutation.isPending ||
+                generateReportMutation.isPending
+              }
               variant="ghost"
               size="icon"
               className="h-10 w-10 text-primary hover:bg-transparent"
               data-testid="button-generate"
             >
-              {(generateIdeaMutation.isPending || generateReportMutation.isPending) ? (
+              {generateIdeaMutation.isPending ||
+              generateReportMutation.isPending ? (
                 <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
               ) : (
                 <Sparkles className="h-5 w-5 stroke-[2.5]" />
