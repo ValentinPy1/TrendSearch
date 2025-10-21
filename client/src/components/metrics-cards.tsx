@@ -16,20 +16,6 @@ export function MetricsCards({ report }: MetricsCardsProps) {
       color: "text-chart-2",
     },
     {
-      label: "3M Growth",
-      value: report.growth3m ? `${report.growth3m}%` : "0%",
-      subtitle: "3-month trend",
-      icon: parseFloat(report.growth3m || "0") >= 0 ? TrendingUp : TrendingDown,
-      color: parseFloat(report.growth3m || "0") >= 0 ? "text-chart-4" : "text-destructive",
-    },
-    {
-      label: "YoY Growth",
-      value: report.growthYoy ? `${report.growthYoy}%` : "0%",
-      subtitle: "year over year",
-      icon: parseFloat(report.growthYoy || "0") >= 0 ? TrendingUp : TrendingDown,
-      color: parseFloat(report.growthYoy || "0") >= 0 ? "text-chart-4" : "text-destructive",
-    },
-    {
       label: "Competition",
       value: report.competition || "Unknown",
       subtitle: "market saturation",
@@ -54,6 +40,20 @@ export function MetricsCards({ report }: MetricsCardsProps) {
       subtitle: "cost per click",
       icon: MousePointerClick,
       color: "text-chart-3",
+    },
+    {
+      label: "3M Growth",
+      value: report.growth3m ? `${report.growth3m}%` : "0%",
+      subtitle: "3-month trend",
+      icon: parseFloat(report.growth3m || "0") >= 0 ? TrendingUp : TrendingDown,
+      color: parseFloat(report.growth3m || "0") >= 0 ? "text-chart-4" : "text-destructive",
+    },
+    {
+      label: "YoY Growth",
+      value: report.growthYoy ? `${report.growthYoy}%` : "0%",
+      subtitle: "year over year",
+      icon: parseFloat(report.growthYoy || "0") >= 0 ? TrendingUp : TrendingDown,
+      color: parseFloat(report.growthYoy || "0") >= 0 ? "text-chart-4" : "text-destructive",
     },
   ];
 
