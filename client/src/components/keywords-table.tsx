@@ -1,11 +1,23 @@
 import { useState, useMemo } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { Keyword } from "@shared/schema";
 
-type SortField = 'keyword' | 'similarityScore' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy';
-type SortDirection = 'asc' | 'desc' | null;
+type SortField =
+  | "keyword"
+  | "similarityScore"
+  | "volume"
+  | "competition"
+  | "cpc"
+  | "topPageBid"
+  | "growth3m"
+  | "growthYoy";
+type SortDirection = "asc" | "desc" | null;
 
 interface KeywordsTableProps {
   keywords: Keyword[];
@@ -13,34 +25,38 @@ interface KeywordsTableProps {
   onKeywordSelect: (keyword: string) => void;
 }
 
-export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: KeywordsTableProps) {
+export function KeywordsTable({
+  keywords,
+  selectedKeyword,
+  onKeywordSelect,
+}: KeywordsTableProps) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
   const columnInfo = {
     keyword: "Search terms related to your idea",
-    similarityScore: "How closely this keyword matches your idea (30-70% range)",
+    similarityScore: "How closely this keyword matches your idea",
     volume: "Average monthly searches for this keyword",
     competition: "Level of advertiser competition (0-100 scale)",
     cpc: "Average cost per click in advertising",
     topPageBid: "Estimated bid to appear at top of search results",
     growth3m: "Search volume change over last 3 months",
-    growthYoy: "Search volume change compared to last year"
+    growthYoy: "Search volume change compared to last year",
   };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      if (sortDirection === 'asc') {
-        setSortDirection('desc');
-      } else if (sortDirection === 'desc') {
+      if (sortDirection === "asc") {
+        setSortDirection("desc");
+      } else if (sortDirection === "desc") {
         setSortDirection(null);
         setSortField(null);
       } else {
-        setSortDirection('asc');
+        setSortDirection("asc");
       }
     } else {
       setSortField(field);
-      setSortDirection('asc');
+      setSortDirection("asc");
     }
   };
 
@@ -54,41 +70,41 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
       let bVal: any;
 
       switch (sortField) {
-        case 'keyword':
-          aVal = a.keyword?.toLowerCase() || '';
-          bVal = b.keyword?.toLowerCase() || '';
+        case "keyword":
+          aVal = a.keyword?.toLowerCase() || "";
+          bVal = b.keyword?.toLowerCase() || "";
           break;
-        case 'similarityScore':
+        case "similarityScore":
           aVal = parseFloat(a.similarityScore || "0");
           bVal = parseFloat(b.similarityScore || "0");
           break;
-        case 'volume':
+        case "volume":
           aVal = a.volume || 0;
           bVal = b.volume || 0;
           break;
-        case 'competition':
+        case "competition":
           aVal = a.competition || 0;
           bVal = b.competition || 0;
           break;
-        case 'cpc':
+        case "cpc":
           aVal = parseFloat(a.cpc || "0");
           bVal = parseFloat(b.cpc || "0");
           break;
-        case 'topPageBid':
+        case "topPageBid":
           aVal = parseFloat(a.topPageBid || "0");
           bVal = parseFloat(b.topPageBid || "0");
           break;
-        case 'growth3m':
+        case "growth3m":
           aVal = parseFloat(a.growth3m || "0");
           bVal = parseFloat(b.growth3m || "0");
           break;
-        case 'growthYoy':
+        case "growthYoy":
           aVal = parseFloat(a.growthYoy || "0");
           bVal = parseFloat(b.growthYoy || "0");
           break;
       }
 
-      if (sortDirection === 'asc') {
+      if (sortDirection === "asc") {
         return aVal > bVal ? 1 : -1;
       } else {
         return aVal < bVal ? 1 : -1;
@@ -100,7 +116,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
     if (sortField !== field) {
       return <ArrowUpDown className="h-4 w-4 ml-1 text-white/40" />;
     }
-    if (sortDirection === 'asc') {
+    if (sortDirection === "asc") {
       return <ArrowUp className="h-4 w-4 ml-1 text-primary" />;
     }
     return <ArrowDown className="h-4 w-4 ml-1 text-primary" />;
@@ -109,7 +125,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
   const getBlueGradientText = (value: number) => {
     // Map 30-70 range to white-to-blue gradient
     const normalizedValue = Math.min(1, Math.max(0, (value - 30) / 40));
-    const lightness = 100 - (normalizedValue * 40); // 100% (white) to 60% (blue)
+    const lightness = 100 - normalizedValue * 40; // 100% (white) to 60% (blue)
     return {
       color: `hsl(210, 80%, ${lightness}%)`,
     };
@@ -118,7 +134,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
   const getRedGradientText = (value: number) => {
     // 0-100 range to white-to-red gradient
     const normalizedValue = Math.min(1, Math.max(0, value / 100));
-    const lightness = 100 - (normalizedValue * 40); // 100% (white) to 60% (red)
+    const lightness = 100 - normalizedValue * 40; // 100% (white) to 60% (red)
     return {
       color: `hsl(0, 80%, ${lightness}%)`,
     };
@@ -126,8 +142,8 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
 
   const getPurpleGradientText = (value: number, max: number) => {
     // Scaled to max value, white-to-purple gradient
-    const normalizedValue = Math.min(1, (value / max));
-    const lightness = 100 - (normalizedValue * 40); // 100% (white) to 60% (purple)
+    const normalizedValue = Math.min(1, value / max);
+    const lightness = 100 - normalizedValue * 40; // 100% (white) to 60% (purple)
     return {
       color: `hsl(250, 80%, ${lightness}%)`,
     };
@@ -138,14 +154,14 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
     if (value >= 0) {
       // Positive: white to green (0% to +200%)
       const normalizedValue = Math.min(1, value / 200);
-      const lightness = 100 - (normalizedValue * 50); // 100% (white) to 50% (green)
+      const lightness = 100 - normalizedValue * 50; // 100% (white) to 50% (green)
       return {
         color: `hsl(142, 70%, ${lightness}%)`,
       };
     } else {
       // Negative: white to red (0% to -100%)
       const normalizedValue = Math.min(1, Math.abs(value) / 100);
-      const lightness = 100 - (normalizedValue * 50); // 100% (white) to 50% (red)
+      const lightness = 100 - normalizedValue * 50; // 100% (white) to 50% (red)
       return {
         color: `hsl(0, 80%, ${lightness}%)`,
       };
@@ -168,9 +184,9 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/10">
-                <th 
+                <th
                   className="text-left py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort('keyword')}
+                  onClick={() => handleSort("keyword")}
                   data-testid="header-keyword"
                 >
                   <Tooltip>
@@ -185,9 +201,9 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     </TooltipContent>
                   </Tooltip>
                 </th>
-                <th 
+                <th
                   className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort('similarityScore')}
+                  onClick={() => handleSort("similarityScore")}
                   data-testid="header-similarity"
                 >
                   <Tooltip>
@@ -202,9 +218,9 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     </TooltipContent>
                   </Tooltip>
                 </th>
-                <th 
+                <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort('volume')}
+                  onClick={() => handleSort("volume")}
                   data-testid="header-volume"
                 >
                   <Tooltip>
@@ -219,9 +235,9 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     </TooltipContent>
                   </Tooltip>
                 </th>
-                <th 
+                <th
                   className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort('competition')}
+                  onClick={() => handleSort("competition")}
                   data-testid="header-competition"
                 >
                   <Tooltip>
@@ -236,9 +252,9 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     </TooltipContent>
                   </Tooltip>
                 </th>
-                <th 
+                <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort('cpc')}
+                  onClick={() => handleSort("cpc")}
                   data-testid="header-cpc"
                 >
                   <Tooltip>
@@ -253,9 +269,9 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     </TooltipContent>
                   </Tooltip>
                 </th>
-                <th 
+                <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort('topPageBid')}
+                  onClick={() => handleSort("topPageBid")}
                   data-testid="header-top-page-bid"
                 >
                   <Tooltip>
@@ -270,9 +286,9 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     </TooltipContent>
                   </Tooltip>
                 </th>
-                <th 
+                <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort('growth3m')}
+                  onClick={() => handleSort("growth3m")}
                   data-testid="header-growth-3m"
                 >
                   <Tooltip>
@@ -287,9 +303,9 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     </TooltipContent>
                   </Tooltip>
                 </th>
-                <th 
+                <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort('growthYoy')}
+                  onClick={() => handleSort("growthYoy")}
                   data-testid="header-growth-yoy"
                 >
                   <Tooltip>
@@ -310,14 +326,19 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
               {sortedKeywords.map((keyword, index) => {
                 const growth3m = parseFloat(keyword.growth3m || "0");
                 const growthYoy = parseFloat(keyword.growthYoy || "0");
-                const matchPercentage = parseFloat(keyword.similarityScore || "0") * 100;
+                const matchPercentage =
+                  parseFloat(keyword.similarityScore || "0") * 100;
                 const competition = keyword.competition || 0;
                 const cpc = parseFloat(keyword.cpc || "0");
                 const topPageBid = parseFloat(keyword.topPageBid || "0");
-                
-                const maxCpc = Math.max(...sortedKeywords.map(k => parseFloat(k.cpc || "0")));
-                const maxTopPageBid = Math.max(...sortedKeywords.map(k => parseFloat(k.topPageBid || "0")));
-                
+
+                const maxCpc = Math.max(
+                  ...sortedKeywords.map((k) => parseFloat(k.cpc || "0")),
+                );
+                const maxTopPageBid = Math.max(
+                  ...sortedKeywords.map((k) => parseFloat(k.topPageBid || "0")),
+                );
+
                 return (
                   <tr
                     key={keyword.id}
@@ -325,7 +346,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     className={`
                       border-b border-white/5 cursor-pointer transition-all
                       hover-elevate active-elevate-2
-                      ${selectedKeyword === keyword.keyword ? 'bg-white/10' : ''}
+                      ${selectedKeyword === keyword.keyword ? "bg-white/10" : ""}
                     `}
                     data-testid={`row-keyword-${index}`}
                   >
@@ -333,7 +354,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                       {keyword.keyword}
                     </td>
                     <td className="py-4 px-4 text-sm text-center">
-                      <span 
+                      <span
                         className="font-medium"
                         style={getBlueGradientText(matchPercentage)}
                       >
@@ -344,7 +365,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                       {keyword.volume?.toLocaleString() || "N/A"}
                     </td>
                     <td className="py-4 px-4 text-sm text-center">
-                      <span 
+                      <span
                         className="font-medium"
                         style={getRedGradientText(competition)}
                       >
@@ -352,7 +373,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
-                      <span 
+                      <span
                         className="font-medium"
                         style={getPurpleGradientText(cpc, maxCpc)}
                       >
@@ -360,7 +381,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
-                      <span 
+                      <span
                         className="font-medium"
                         style={getPurpleGradientText(topPageBid, maxTopPageBid)}
                       >
@@ -368,19 +389,21 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
-                      <span 
+                      <span
                         className="font-medium"
                         style={getTrendGradientText(growth3m)}
                       >
-                        {growth3m >= 0 ? '+' : ''}{growth3m.toFixed(1)}%
+                        {growth3m >= 0 ? "+" : ""}
+                        {growth3m.toFixed(1)}%
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
-                      <span 
+                      <span
                         className="font-medium"
                         style={getTrendGradientText(growthYoy)}
                       >
-                        {growthYoy >= 0 ? '+' : ''}{growthYoy.toFixed(1)}%
+                        {growthYoy >= 0 ? "+" : ""}
+                        {growthYoy.toFixed(1)}%
                       </span>
                     </td>
                   </tr>
