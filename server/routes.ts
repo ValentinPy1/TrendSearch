@@ -193,7 +193,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (originalIdea && originalIdea.trim().length > 0) {
         generatedIdea = originalIdea.trim();
       } else {
-        // Otherwise, use GPT-5-nano to generate microSaaS idea
+        // Otherwise, use GPT-4o-mini to generate microSaaS idea
         generatedIdea = await microSaaSIdeaGenerator.generateIdea();
       }
 
