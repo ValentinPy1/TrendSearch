@@ -85,21 +85,47 @@ export function IdeaGenerator({
     },
   });
 
-  const onSubmit = (data: { idea: string }) => {
+  const handleGenerateIdea = () => {
+    // Always generate new AI idea (pass null to force AI generation)
     generateIdeaMutation.mutate({
-      originalIdea: data.idea || null,
+      originalIdea: null,
     });
+  };
+
+  const handleGenerateReport = () => {
+    const ideaText = form.getValues("idea");
+    
+    if (!ideaText || ideaText.trim().length === 0) {
+      toast({
+        title: "Error",
+        description: "Please enter an idea to generate a report",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Create idea with the current input, then generate report
+    generateIdeaMutation.mutate({
+      originalIdea: ideaText.trim(),
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleGenerateReport();
+    }
   };
 
   return (
     <div className="space-y-6">
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 pt-12">
+      <div className="space-y-8 pt-12">
         <div className="text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
             Generate Your Next Big Idea
           </h2>
           <p className="text-base text-white/60">
-            Enter an existing idea or leave blank for AI-powered suggestions
+            Press Enter to generate report • Click sparkle to generate AI idea
           </p>
         </div>
 
@@ -108,6 +134,7 @@ export function IdeaGenerator({
             placeholder="e.g., Voice-assisted skill-connecting marketers who can't keep track of expenses with personalized solutions"
             className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-24 rounded-full"
             data-testid="input-idea"
+            onKeyDown={handleKeyDown}
             {...form.register("idea")}
           />
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
@@ -122,7 +149,8 @@ export function IdeaGenerator({
               <History className="h-5 w-5 stroke-[2.5]" />
             </Button>
             <Button
-              type="submit"
+              type="button"
+              onClick={handleGenerateIdea}
               disabled={generateIdeaMutation.isPending || generateReportMutation.isPending}
               variant="ghost"
               size="icon"
@@ -137,7 +165,7 @@ export function IdeaGenerator({
             </Button>
           </div>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
