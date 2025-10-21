@@ -41,7 +41,7 @@ Pioneer Idea Finder helps entrepreneurs validate their startup ideas using:
 - **users:** id, email, password, createdAt
 - **ideas:** id, userId, originalIdea, generatedIdea, createdAt
 - **reports:** id, ideaId, userId, avgVolume, growth3m, growthYoy, competition, avgTopPageBid, avgCpc, createdAt
-- **keywords:** id, reportId, keyword, volume, competition, cpc, topPageBid, monthlyData
+- **keywords:** id, reportId, keyword, volume, competition, cpc, topPageBid, growth3m, growthYoy, similarityScore, growthSlope, growthR2, growthConsistency, growthStability, sustainedGrowthScore, monthlyData
 
 ## Design System
 
@@ -76,9 +76,21 @@ Generates report with:
 - Volume (monthly searches)
 - 3-Month Growth (%)
 - Year-over-Year Growth (%)
-- Competition (low/medium/high)
+- Competition (0-100 scale)
 - Average Top-of-Page Bid ($)
 - CPC - Cost Per Click ($)
+- Growth Score (sustained growth quality metric)
+
+**Keywords Table** displays 9 columns:
+1. Keyword - the search term
+2. Match - similarity score to the idea (percentage)
+3. Volume - monthly search volume
+4. Competition - competition level (0-100)
+5. CPC - cost per click
+6. Top Page Bid - average top-of-page bid
+7. 3Mo Trend - 3-month growth percentage
+8. YoY Trend - year-over-year growth percentage
+9. **Growth Score** - sustained growth quality (composite metric from slope, R², consistency, stability)
 
 ### 3. Trend Analysis
 - Interactive line chart showing 12 months of search volume
@@ -98,6 +110,9 @@ Generates report with:
 - ✅ Vector database with prebuilt embeddings (instant keyword matching)
 - ✅ Semantic keyword search using sentence-transformers
 - ✅ Interactive dashboard with metrics
+- ✅ Keywords table with 9 columns including Growth Score
+- ✅ Sortable table columns (click headers to sort)
+- ✅ Customizable keyword count (1-100, default 10)
 - ✅ Trend chart visualization  
 - ✅ PDF export functionality
 - ✅ Dark theme with gradient orbs

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { Keyword } from "@shared/schema";
 
-type SortField = 'keyword' | 'similarityScore' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy';
+type SortField = 'keyword' | 'similarityScore' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy' | 'sustainedGrowthScore';
 type SortDirection = 'asc' | 'desc' | null;
 
 interface KeywordsTableProps {
@@ -76,6 +76,10 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
         case 'growthYoy':
           aVal = parseFloat(a.growthYoy || "0");
           bVal = parseFloat(b.growthYoy || "0");
+          break;
+        case 'sustainedGrowthScore':
+          aVal = parseFloat(a.sustainedGrowthScore || "0");
+          bVal = parseFloat(b.sustainedGrowthScore || "0");
           break;
       }
 
@@ -215,12 +219,23 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
                     <SortIcon field="growthYoy" />
                   </div>
                 </th>
+                <th 
+                  className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort('sustainedGrowthScore')}
+                  data-testid="header-growth-score"
+                >
+                  <div className="flex items-center justify-center">
+                    Growth Score
+                    <SortIcon field="sustainedGrowthScore" />
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
               {sortedKeywords.map((keyword, index) => {
                 const growth3m = parseFloat(keyword.growth3m || "0");
                 const growthYoy = parseFloat(keyword.growthYoy || "0");
+                const growthScore = parseFloat(keyword.sustainedGrowthScore || "0");
                 
                 return (
                   <tr
@@ -273,6 +288,16 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
                     <td className="py-4 px-4 text-sm text-right">
                       <span className={growthYoy >= 0 ? 'text-green-400' : 'text-red-400'}>
                         {growthYoy >= 0 ? '+' : ''}{growthYoy.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-sm text-center">
+                      <span className={`
+                        inline-block px-2 py-1 rounded text-xs font-medium
+                        ${growthScore >= 0.01 ? 'bg-green-500/20 text-green-300' : ''}
+                        ${growthScore < 0.01 && growthScore >= 0 ? 'bg-blue-500/20 text-blue-300' : ''}
+                        ${growthScore < 0 ? 'bg-red-500/20 text-red-300' : ''}
+                      `}>
+                        {growthScore.toFixed(4)}
                       </span>
                     </td>
                   </tr>

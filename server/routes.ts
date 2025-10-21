@@ -109,6 +109,11 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
       growth3m: (kw['3month_trend_%'] || 0).toFixed(2),
       growthYoy: (kw['yoy_trend_%'] || 0).toFixed(2),
       similarityScore: kw.similarityScore.toFixed(4),
+      growthSlope: (kw.growth_slope || 0).toFixed(2),
+      growthR2: (kw.growth_r2 || 0).toFixed(4),
+      growthConsistency: (kw.growth_consistency || 0).toFixed(4),
+      growthStability: (kw.growth_stability || 0).toFixed(4),
+      sustainedGrowthScore: (kw.sustained_growth_score || 0).toFixed(4),
       monthlyData
     };
   });
@@ -334,6 +339,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         growth3m: kw.growth3m,
         growthYoy: kw.growthYoy,
         similarityScore: kw.similarityScore,
+        growthSlope: kw.growthSlope,
+        growthR2: kw.growthR2,
+        growthConsistency: kw.growthConsistency,
+        growthStability: kw.growthStability,
+        sustainedGrowthScore: kw.sustainedGrowthScore,
         monthlyData: kw.monthlyData,
       }));
       

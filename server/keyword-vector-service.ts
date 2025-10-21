@@ -23,6 +23,11 @@ interface KeywordData {
   '2024_10'?: number;
   'yoy_trend_%'?: number;
   '3month_trend_%'?: number;
+  growth_slope?: number;
+  growth_r2?: number;
+  growth_consistency?: number;
+  growth_stability?: number;
+  sustained_growth_score?: number;
 }
 
 interface KeywordWithScore extends KeywordData {

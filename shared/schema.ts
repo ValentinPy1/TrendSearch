@@ -43,6 +43,12 @@ export const keywords = pgTable("keywords", {
   growth3m: decimal("growth_3m", { precision: 10, scale: 2 }),
   growthYoy: decimal("growth_yoy", { precision: 10, scale: 2 }),
   similarityScore: decimal("similarity_score", { precision: 5, scale: 4 }),
+  // Additional growth metrics from dataset
+  growthSlope: decimal("growth_slope", { precision: 10, scale: 2 }),
+  growthR2: decimal("growth_r2", { precision: 10, scale: 4 }),
+  growthConsistency: decimal("growth_consistency", { precision: 10, scale: 4 }),
+  growthStability: decimal("growth_stability", { precision: 10, scale: 4 }),
+  sustainedGrowthScore: decimal("sustained_growth_score", { precision: 10, scale: 4 }),
   // Monthly search volume data (12 months)
   monthlyData: jsonb("monthly_data").$type<{ month: string; volume: number }[]>(),
 });
