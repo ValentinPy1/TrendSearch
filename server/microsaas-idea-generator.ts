@@ -62,7 +62,7 @@ class MicroSaaSIdeaGenerator {
     console.log('[MicroSaaS Generator] Selected user type:', selectedUserTypeKey);
     console.log('[MicroSaaS Generator] Selected problem:', selectedProblemKey);
 
-    const prompt = `Generate an EXTREMELY CONCISE microSaaS idea (5-8 words maximum).
+    const prompt = `Generate a microSaaS idea using EXACTLY 5 to 8 words. Never use fewer than 5 words or more than 8 words.
 
 User type: ${userTypeDescription}
 Problem: ${problemDescription}
@@ -70,15 +70,20 @@ Problem: ${problemDescription}
 MicroSaaS principles:
 ${this.microSaaSPrinciples}
 
-Requirements:
-- MAXIMUM 5-8 words total
+STRICT Requirements:
+- EXACTLY 5 to 8 words (count carefully - never 4 or 9+)
 - One specific tool/solution
-- Clear target audience
-- No fluff or explanations
+- Clear target audience included
+- No articles unless necessary for clarity
 
-Example format: "AI expense tracker for freelancers" or "Automated scheduling for trainers"
+Valid examples (word count shown):
+- AI expense tracker for freelancers
+- Automated scheduling tool for fitness trainers
+- Content calendar and planner for creators
+- Storytelling coach for international students
 
-Your idea (5-8 words only):`;
+
+Your idea (exactly 5-8 words):`;
 
     try {
       console.log('[MicroSaaS Generator] Calling OpenAI API...');
