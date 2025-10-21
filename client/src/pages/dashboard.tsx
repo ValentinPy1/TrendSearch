@@ -6,7 +6,6 @@ import { TrendChart } from "@/components/trend-chart";
 import { KeywordsTable } from "@/components/keywords-table";
 import { KeywordMetricsCards } from "@/components/keyword-metrics-cards";
 import { IdeaHistory } from "@/components/idea-history";
-import { PioneersCTA } from "@/components/pioneers-cta";
 import { Button } from "@/components/ui/button";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
 import { LogOut, Loader2 } from "lucide-react";
@@ -149,8 +148,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               selectedKeyword={selectedKeyword}
               onKeywordSelect={setSelectedKeyword}
             />
-
-            <PioneersCTA />
 
             {selectedKeyword && selectedIdea.report.keywords.find(k => k.keyword === selectedKeyword) && (
               <>

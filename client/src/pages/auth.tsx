@@ -65,7 +65,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         <div className="text-center">
           <h1 className="text-6xl font-bold bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent mb-4">Idea Watcher</h1>
           <p className="text-lg text-white/60">
-            Find & Validate your startup ideas with real market data
+            Validate your startup ideas with real market data
           </p>
         </div>
 

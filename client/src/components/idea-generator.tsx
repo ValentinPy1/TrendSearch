@@ -130,13 +130,9 @@ export function IdeaGenerator({
             Idea Watcher
           </h2>
           <p className="text-base text-white/80 leading-relaxed">
-            Validate startup ideas with AI-powered generation and real market
-            data. Click the{" "}
-            <span className="text-primary font-semibold">sparkle</span> for AI
-            ideas or enter your own and press{" "}
-            <span className="text-secondary font-semibold">Enter</span> to
-            analyze 10 related keywords with search volume, competition, and
-            trends metrics.
+            Validate startup ideas with AI-powered generation and real market data. Click the{" "}
+            <span className="text-primary font-semibold">sparkle</span> for AI ideas or enter your own and press{" "}
+            <span className="text-secondary font-semibold">Enter</span> to analyze 10 related keywords with search volume, competition, trends, and growth metrics.
           </p>
         </div>
 
