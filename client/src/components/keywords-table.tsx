@@ -3,7 +3,7 @@ import { GlassmorphicCard } from "./glassmorphic-card";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { Keyword } from "@shared/schema";
 
-type SortField = 'keyword' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy';
+type SortField = 'keyword' | 'similarityScore' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy';
 type SortDirection = 'asc' | 'desc' | null;
 
 interface KeywordsTableProps {
@@ -47,6 +47,10 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
         case 'keyword':
           aVal = a.keyword?.toLowerCase() || '';
           bVal = b.keyword?.toLowerCase() || '';
+          break;
+        case 'similarityScore':
+          aVal = parseFloat(a.similarityScore || "0");
+          bVal = parseFloat(b.similarityScore || "0");
           break;
         case 'volume':
           aVal = a.volume || 0;
@@ -116,6 +120,16 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                   <div className="flex items-center">
                     Keyword
                     <SortIcon field="keyword" />
+                  </div>
+                </th>
+                <th 
+                  className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort('similarityScore')}
+                  data-testid="header-similarity"
+                >
+                  <div className="flex items-center justify-center">
+                    Match
+                    <SortIcon field="similarityScore" />
                   </div>
                 </th>
                 <th 
@@ -198,6 +212,16 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                   >
                     <td className="py-4 px-4 text-sm text-white font-medium">
                       {keyword.keyword}
+                    </td>
+                    <td className="py-4 px-4 text-sm text-center">
+                      <span className={`
+                        inline-block px-2 py-1 rounded text-xs font-medium
+                        ${parseFloat(keyword.similarityScore || "0") >= 0.8 ? 'bg-green-500/20 text-green-300' : ''}
+                        ${parseFloat(keyword.similarityScore || "0") >= 0.6 && parseFloat(keyword.similarityScore || "0") < 0.8 ? 'bg-blue-500/20 text-blue-300' : ''}
+                        ${parseFloat(keyword.similarityScore || "0") < 0.6 ? 'bg-yellow-500/20 text-yellow-300' : ''}
+                      `}>
+                        {(parseFloat(keyword.similarityScore || "0") * 100).toFixed(0)}%
+                      </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-white text-right">
                       {keyword.volume?.toLocaleString() || "N/A"}

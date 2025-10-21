@@ -105,13 +105,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createKeyword(insertKeyword: InsertKeyword): Promise<Keyword> {
-    const result = await db.insert(keywords).values(insertKeyword).returning();
+    const result = await db.insert(keywords).values(insertKeyword as any).returning();
     return result[0];
   }
 
   async createKeywords(insertKeywords: InsertKeyword[]): Promise<Keyword[]> {
     if (insertKeywords.length === 0) return [];
-    const result = await db.insert(keywords).values(insertKeywords).returning();
+    const result = await db.insert(keywords).values(insertKeywords as any).returning();
     return result;
   }
 }

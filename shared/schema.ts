@@ -42,6 +42,7 @@ export const keywords = pgTable("keywords", {
   topPageBid: decimal("top_page_bid", { precision: 10, scale: 2 }),
   growth3m: decimal("growth_3m", { precision: 10, scale: 2 }),
   growthYoy: decimal("growth_yoy", { precision: 10, scale: 2 }),
+  similarityScore: decimal("similarity_score", { precision: 5, scale: 4 }),
   // Monthly search volume data (12 months)
   monthlyData: jsonb("monthly_data").$type<{ month: string; volume: number }[]>(),
 });

@@ -4,6 +4,7 @@ import session from "express-session";
 import { storage } from "./storage";
 import { insertUserSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
+import { keywordVectorService } from "./keyword-vector-service";
 
 // Stupidity Mixer data
 const PERSONAS = [
@@ -70,54 +71,47 @@ function llmFormulator(ideas: string[]): string {
   return selectedIdea.charAt(0).toUpperCase() + selectedIdea.slice(1);
 }
 
-function generateMockGoogleAdsData(idea: string) {
-  // Generate mock keywords based on the idea
-  const keywords = [];
-  const baseKeywords = [
-    idea.split(' ').slice(0, 3).join(' '),
-    idea.split(' ').slice(-3).join(' '),
-    idea.split(' ').slice(1, 4).join(' ')
-  ];
-
+async function getKeywordsFromVectorDB(idea: string) {
+  // Use vector similarity search to find most relevant keywords
+  const similarKeywords = await keywordVectorService.findSimilarKeywords(idea, 10);
+  
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   
-  for (let i = 0; i < Math.min(10, baseKeywords.length * 3); i++) {
-    const volume = Math.floor(Math.random() * 50000) + 5000;
-    const competition = Math.floor(Math.random() * 100); // 0-100
-    const cpc = (Math.random() * 5 + 0.5).toFixed(2);
-    const topPageBid = (Math.random() * 8 + 1).toFixed(2);
-    const growth3m = ((Math.random() - 0.3) * 40).toFixed(2); // -12% to +28%
-    const growthYoy = ((Math.random() - 0.2) * 50).toFixed(2); // -10% to +40%
-    
-    // Generate monthly data
-    const monthlyData = months.map(month => ({
-      month,
-      volume: Math.floor(volume + (Math.random() - 0.5) * volume * 0.4)
-    }));
-
-    keywords.push({
-      keyword: baseKeywords[i % baseKeywords.length] + (i > 2 ? ` ${['tool', 'app', 'platform', 'software', 'solution'][i % 5]}` : ''),
-      volume,
-      competition,
-      cpc,
-      topPageBid,
-      growth3m,
-      growthYoy,
-      monthlyData
+  const keywords = similarKeywords.map(kw => {
+    // Convert monthly data from CSV format to our format
+    const monthlyData = months.map((month, idx) => {
+      const monthKey = ['2024_10', '2024_11', '2024_12', '2025_01', '2025_02', '2025_03', '2025_04', '2025_05', '2025_06', '2025_07', '2025_08', '2025_09'][idx];
+      return {
+        month,
+        volume: Math.floor(kw[monthKey as keyof typeof kw] as number || kw.search_volume || 0)
+      };
     });
-  }
 
-  // Calculate aggregate metrics
+    return {
+      keyword: kw.keyword,
+      volume: Math.floor(kw.search_volume || 0),
+      competition: Math.floor(kw.competition || 0),
+      cpc: (kw.cpc || 0).toFixed(2),
+      topPageBid: (kw.high_top_of_page_bid || kw.low_top_of_page_bid || 0).toFixed(2),
+      growth3m: (kw['3month_trend_%'] || 0).toFixed(2),
+      growthYoy: (kw['yoy_trend_%'] || 0).toFixed(2),
+      similarityScore: kw.similarityScore.toFixed(4),
+      monthlyData
+    };
+  });
+
+  // Calculate aggregate metrics from actual data
   const avgVolume = Math.floor(keywords.reduce((sum, k) => sum + k.volume, 0) / keywords.length);
-  const growth3m = ((Math.random() - 0.3) * 40).toFixed(2); // -12% to +28%
-  const growthYoy = ((Math.random() - 0.2) * 50).toFixed(2); // -10% to +40%
-  const competitionCounts = keywords.reduce((acc, k) => {
-    acc[k.competition] = (acc[k.competition] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-  const competition = Object.entries(competitionCounts).sort((a, b) => b[1] - a[1])[0][0];
+  const growth3m = (keywords.reduce((sum, k) => sum + parseFloat(k.growth3m), 0) / keywords.length).toFixed(2);
+  const growthYoy = (keywords.reduce((sum, k) => sum + parseFloat(k.growthYoy), 0) / keywords.length).toFixed(2);
+  const avgCompetition = Math.floor(keywords.reduce((sum, k) => sum + k.competition, 0) / keywords.length);
   const avgTopPageBid = (keywords.reduce((sum, k) => sum + parseFloat(k.topPageBid), 0) / keywords.length).toFixed(2);
   const avgCpc = (keywords.reduce((sum, k) => sum + parseFloat(k.cpc), 0) / keywords.length).toFixed(2);
+
+  // Map competition to text for compatibility
+  let competitionText = 'medium';
+  if (avgCompetition < 33) competitionText = 'low';
+  if (avgCompetition >= 66) competitionText = 'high';
 
   return {
     keywords,
@@ -125,7 +119,7 @@ function generateMockGoogleAdsData(idea: string) {
       avgVolume,
       growth3m,
       growthYoy,
-      competition,
+      competition: competitionText,
       avgTopPageBid,
       avgCpc
     }
@@ -291,8 +285,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Generate mock Google Ads data
-      const { keywords: keywordData, aggregates } = generateMockGoogleAdsData(idea.generatedIdea);
+      // Get real keyword data from vector database
+      const { keywords: keywordData, aggregates } = await getKeywordsFromVectorDB(idea.generatedIdea);
 
       // Create report
       const report = await storage.createReport({
@@ -307,19 +301,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Create keywords
-      const keywords = await storage.createKeywords(
-        keywordData.map(kw => ({
-          reportId: report.id,
-          keyword: kw.keyword,
-          volume: kw.volume,
-          competition: kw.competition,
-          cpc: kw.cpc,
-          topPageBid: kw.topPageBid,
-          growth3m: kw.growth3m,
-          growthYoy: kw.growthYoy,
-          monthlyData: kw.monthlyData,
-        }))
-      );
+      const keywordsToInsert = keywordData.map(kw => ({
+        reportId: report.id,
+        keyword: kw.keyword,
+        volume: kw.volume,
+        competition: kw.competition,
+        cpc: kw.cpc,
+        topPageBid: kw.topPageBid,
+        growth3m: kw.growth3m,
+        growthYoy: kw.growthYoy,
+        similarityScore: kw.similarityScore,
+        monthlyData: kw.monthlyData,
+      }));
+      
+      const keywords = await storage.createKeywords(keywordsToInsert);
 
       res.json({ report, keywords });
     } catch (error) {
