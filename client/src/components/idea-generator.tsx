@@ -126,7 +126,7 @@ export function IdeaGenerator({
     <div className="space-y-6">
       <div className="space-y-8 pt-12">
         <div className="text-center max-w-2xl mx-auto">
-          <h2 className="text-xl md:text-2xl font-bold text-secondary mb-4">
+          <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent mb-4">
             Idea Watcher
           </h2>
           <p className="text-sm text-white/70 mb-2 leading-relaxed">
