@@ -86,6 +86,8 @@ function generateMockGoogleAdsData(idea: string) {
     const competition = ['low', 'medium', 'high'][Math.floor(Math.random() * 3)];
     const cpc = (Math.random() * 5 + 0.5).toFixed(2);
     const topPageBid = (Math.random() * 8 + 1).toFixed(2);
+    const growth3m = ((Math.random() - 0.3) * 40).toFixed(2); // -12% to +28%
+    const growthYoy = ((Math.random() - 0.2) * 50).toFixed(2); // -10% to +40%
     
     // Generate monthly data
     const monthlyData = months.map(month => ({
@@ -99,6 +101,8 @@ function generateMockGoogleAdsData(idea: string) {
       competition,
       cpc,
       topPageBid,
+      growth3m,
+      growthYoy,
       monthlyData
     });
   }
@@ -311,6 +315,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           competition: kw.competition,
           cpc: kw.cpc,
           topPageBid: kw.topPageBid,
+          growth3m: kw.growth3m,
+          growthYoy: kw.growthYoy,
           monthlyData: kw.monthlyData,
         }))
       );
