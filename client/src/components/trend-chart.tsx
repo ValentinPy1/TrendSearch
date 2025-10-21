@@ -1,9 +1,6 @@
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { Button } from "@/components/ui/button";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Download } from "lucide-react";
 import type { Keyword } from "@shared/schema";
-import jsPDF from "jspdf";
 
 interface TrendChartProps {
   keywords: Keyword[];
@@ -14,60 +11,6 @@ interface TrendChartProps {
 export function TrendChart({ keywords, reportId, selectedKeyword }: TrendChartProps) {
   const keyword = keywords.find((k) => k.keyword === selectedKeyword) || keywords[0];
 
-  const handleExportPDF = async () => {
-    const pdf = new jsPDF();
-    
-    // Add gradient header
-    pdf.setFillColor(147, 51, 234); // Purple
-    pdf.rect(0, 0, 210, 40, "F");
-    
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(24);
-    pdf.text("Idea Finder Report", 20, 25);
-    
-    // Reset text color
-    pdf.setTextColor(0, 0, 0);
-    pdf.setFontSize(12);
-    
-    let yPosition = 60;
-    
-    // Keyword information
-    pdf.setFontSize(16);
-    pdf.text("Keyword Analysis", 20, yPosition);
-    yPosition += 10;
-    
-    pdf.setFontSize(12);
-    pdf.text(`Keyword: ${keyword.keyword}`, 20, yPosition);
-    yPosition += 8;
-    pdf.text(`Volume: ${keyword.volume?.toLocaleString() || "N/A"}`, 20, yPosition);
-    yPosition += 8;
-    pdf.text(`Competition: ${keyword.competition || "N/A"}`, 20, yPosition);
-    yPosition += 8;
-    pdf.text(`CPC: $${keyword.cpc || "0.00"}`, 20, yPosition);
-    yPosition += 15;
-    
-    // All keywords table
-    pdf.setFontSize(16);
-    pdf.text("All Keywords", 20, yPosition);
-    yPosition += 10;
-    
-    pdf.setFontSize(10);
-    keywords.forEach((kw, index) => {
-      if (yPosition > 270) {
-        pdf.addPage();
-        yPosition = 20;
-      }
-      pdf.text(
-        `${index + 1}. ${kw.keyword} - Vol: ${kw.volume?.toLocaleString() || "N/A"} - CPC: $${kw.cpc || "0.00"}`,
-        20,
-        yPosition
-      );
-      yPosition += 7;
-    });
-    
-    pdf.save(`idea-report-${reportId}.pdf`);
-  };
-
   if (!keyword || !keyword.monthlyData) {
     return null;
   }
@@ -75,25 +18,13 @@ export function TrendChart({ keywords, reportId, selectedKeyword }: TrendChartPr
   return (
     <GlassmorphicCard className="p-8">
       <div className="space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h3 className="text-xl font-semibold text-white mb-2">
-              {keyword.keyword}
-            </h3>
-            <p className="text-sm text-white/60">
-              12-month search volume history
-            </p>
-          </div>
-          
-          <Button
-            onClick={handleExportPDF}
-            variant="secondary"
-            className="gap-2"
-            data-testid="button-export-pdf"
-          >
-            <Download className="h-4 w-4" />
-            Export PDF
-          </Button>
+        <div>
+          <h3 className="text-xl font-semibold text-white mb-2">
+            {keyword.keyword}
+          </h3>
+          <p className="text-sm text-white/60">
+            12-month search volume history
+          </p>
         </div>
 
         <div className="h-96">

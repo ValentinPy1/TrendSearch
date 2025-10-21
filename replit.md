@@ -96,9 +96,6 @@ Generates report with:
 - Dropdown to select from the 10 keywords
 - Recharts library with gradient styling
 
-### 4. PDF Export
-- jsPDF generates downloadable reports
-- Includes gradient header, metrics, and keyword table
 
 ## Current Implementation Status
 
@@ -115,8 +112,7 @@ Generates report with:
 - ✅ Red gradient for Competition (0-100)
 - ✅ Purple gradient for CPC and Top Page Bid (scaled to max value)
 - ✅ Fixed keyword count (always 10 keywords)
-- ✅ Trend chart visualization  
-- ✅ PDF export functionality
+- ✅ Trend chart visualization
 - ✅ Dark theme with gradient orbs
 - ✅ Glassmorphic UI design
 - ⏳ Real LLM integration (currently mocked)
@@ -142,9 +138,8 @@ Required:
 3. Click "Generate Idea" - Stupidity Mixer creates 5 candidates, LLM picks best
 4. Click "Generate Report" - Mock Google Ads API returns market data
 5. View 6 metric cards and interactive 12-month trend chart
-6. Select keywords from dropdown to analyze different terms
-7. Click "Export PDF" to download full report
-8. Click "History" to view all previous ideas and reports
+6. Select keywords from table to view their trends
+7. Click "History" to view all previous ideas and reports
 
 ## Development Notes
 
