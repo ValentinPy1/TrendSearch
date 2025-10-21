@@ -80,7 +80,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     <div className="min-h-screen">
       <header className="border-b border-white/10 backdrop-blur-xl bg-background/80 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">Idea Finder</h1>
+          <h1 className="text-2xl font-bold text-white">Idea Watcher</h1>
           <div className="flex items-center gap-4">
             <span className="text-sm text-white/60">{user.email}</span>
             <Button

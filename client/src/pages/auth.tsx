@@ -63,7 +63,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <h1 className="text-6xl font-bold text-white mb-4">Idea Finder</h1>
+          <h1 className="text-6xl font-bold text-white mb-4">Idea Watcher</h1>
           <p className="text-lg text-white/60">
             Validate your startup ideas with real market data
           </p>

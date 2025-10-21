@@ -1,4 +1,4 @@
-Build a full-stack web app called “Pioneer Idea Finder” with the following features and specifications. The app should run on Replit, using React (Vite or Next.js) for the frontend, Node.js (Express) or FastAPI for the backend, and Supabase for authentication and database storage. The app should be deployable instantly on Replit with environment variables for API keys.
+Build a full-stack web app called “Pioneer Idea Watcher” with the following features and specifications. The app should run on Replit, using React (Vite or Next.js) for the frontend, Node.js (Express) or FastAPI for the backend, and Supabase for authentication and database storage. The app should be deployable instantly on Replit with environment variables for API keys.
 
 Features & Workflow:
 
@@ -58,7 +58,7 @@ Dark theme: #0a0a0f background with floating gradient orbs in purple, blue, and 
 
 Font: Inter (matching pioneerslab.ai).
 
-Title: “Idea Finder” prominently displayed, 6xl size, white text.
+Title: “Idea Watcher” prominently displayed, 6xl size, white text.
 
 Cards: Glassmorphic with backdrop blur for metrics.
 

@@ -1,4 +1,4 @@
-# Design Guidelines: Pioneer Idea Finder
+# Design Guidelines: Pioneer Idea Watcher
 
 ## Design Approach
 **Hybrid Approach**: Material Design principles for data visualization and form patterns, combined with modern glassmorphic aesthetics inspired by Linear and Notion for a sophisticated startup tool experience.
@@ -44,7 +44,7 @@
 - Weights: 400 (Regular), 500 (Medium), 600 (Semi-bold), 700 (Bold)
 
 **Type Scale:**
-- Hero Title: `text-6xl font-bold` (Idea Finder branding)
+- Hero Title: `text-6xl font-bold` (Idea Watcher branding)
 - Page Heading: `text-4xl font-bold`
 - Section Heading: `text-2xl font-semibold`
 - Card Title: `text-xl font-semibold`
