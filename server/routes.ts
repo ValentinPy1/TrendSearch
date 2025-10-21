@@ -5,71 +5,7 @@ import { storage } from "./storage";
 import { insertUserSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { keywordVectorService } from "./keyword-vector-service";
-
-// Stupidity Mixer data
-const PERSONAS = [
-  "Busy professionals",
-  "Tech-savvy millennials", 
-  "Remote workers",
-  "Small business owners",
-  "Freelancers",
-  "Students",
-  "Parents",
-  "Fitness enthusiasts"
-];
-
-const PROBLEMS = [
-  "who struggle with time management",
-  "who can't track their expenses",
-  "who need better collaboration tools",
-  "who want to automate repetitive tasks",
-  "who find it hard to stay organized",
-  "who need to learn new skills quickly",
-  "who want personalized recommendations",
-  "who struggle with data privacy"
-];
-
-const DELIVERY_TYPES = [
-  "AI-powered",
-  "Mobile-first",
-  "Voice-assisted",
-  "Blockchain-based",
-  "Subscription-based",
-  "Community-driven",
-  "Gamified",
-  "Real-time"
-];
-
-const APP_INSPIRATIONS = [
-  "marketplace",
-  "dashboard",
-  "social network",
-  "skill-connecting platform",
-  "analytics tool",
-  "scheduling assistant",
-  "content creator",
-  "comparison engine"
-];
-
-function generateStupidityMixerIdeas(): string[] {
-  const ideas: string[] = [];
-  for (let i = 0; i < 5; i++) {
-    const persona = PERSONAS[Math.floor(Math.random() * PERSONAS.length)];
-    const problem = PROBLEMS[Math.floor(Math.random() * PROBLEMS.length)];
-    const delivery = DELIVERY_TYPES[Math.floor(Math.random() * DELIVERY_TYPES.length)];
-    const app = APP_INSPIRATIONS[Math.floor(Math.random() * APP_INSPIRATIONS.length)];
-    
-    ideas.push(`${delivery} ${app} for ${persona} ${problem}`);
-  }
-  return ideas;
-}
-
-function llmFormulator(ideas: string[]): string {
-  // In production, this would call an actual LLM
-  // For now, we select the first idea and clean it up
-  const selectedIdea = ideas[0];
-  return selectedIdea.charAt(0).toUpperCase() + selectedIdea.slice(1);
-}
+import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
 
 async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
   // Use vector similarity search to find most relevant keywords
@@ -257,11 +193,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (originalIdea && originalIdea.trim().length > 0) {
         generatedIdea = originalIdea.trim();
       } else {
-        // Otherwise, use Stupidity Mixer to generate 5 candidate ideas
-        const candidateIdeas = generateStupidityMixerIdeas();
-        
-        // LLM Formulator selects and reformulates the best idea
-        generatedIdea = llmFormulator(candidateIdeas);
+        // Otherwise, use GPT-5-nano to generate microSaaS idea
+        generatedIdea = await microSaaSIdeaGenerator.generateIdea();
       }
 
       const idea = await storage.createIdea({
@@ -272,6 +205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ idea });
     } catch (error) {
+      console.error("Error generating idea:", error);
       res.status(500).json({ message: "Failed to generate idea" });
     }
   });
