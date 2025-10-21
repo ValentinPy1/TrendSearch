@@ -1,7 +1,5 @@
-import { useState } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Download } from "lucide-react";
 import type { Keyword } from "@shared/schema";
@@ -10,11 +8,10 @@ import jsPDF from "jspdf";
 interface TrendChartProps {
   keywords: Keyword[];
   reportId: string;
+  selectedKeyword: string | null;
 }
 
-export function TrendChart({ keywords, reportId }: TrendChartProps) {
-  const [selectedKeyword, setSelectedKeyword] = useState<string>(keywords[0]?.keyword || "");
-
+export function TrendChart({ keywords, reportId, selectedKeyword }: TrendChartProps) {
   const keyword = keywords.find((k) => k.keyword === selectedKeyword) || keywords[0];
 
   const handleExportPDF = async () => {
@@ -84,41 +81,19 @@ export function TrendChart({ keywords, reportId }: TrendChartProps) {
               Keyword Trend Analysis
             </h3>
             <p className="text-sm text-white/60">
-              12-month search volume history
+              12-month search volume history for {keyword.keyword}
             </p>
           </div>
           
-          <div className="flex items-center gap-3">
-            <Select value={selectedKeyword} onValueChange={setSelectedKeyword}>
-              <SelectTrigger 
-                className="w-[280px] bg-white/5 border-white/10 text-white"
-                data-testid="select-keyword"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-white/10">
-                {keywords.map((kw) => (
-                  <SelectItem 
-                    key={kw.id} 
-                    value={kw.keyword}
-                    data-testid={`select-item-${kw.keyword}`}
-                  >
-                    {kw.keyword}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Button
-              onClick={handleExportPDF}
-              variant="secondary"
-              className="gap-2"
-              data-testid="button-export-pdf"
-            >
-              <Download className="h-4 w-4" />
-              Export PDF
-            </Button>
-          </div>
+          <Button
+            onClick={handleExportPDF}
+            variant="secondary"
+            className="gap-2"
+            data-testid="button-export-pdf"
+          >
+            <Download className="h-4 w-4" />
+            Export PDF
+          </Button>
         </div>
 
         <div className="h-96">

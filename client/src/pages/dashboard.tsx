@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { IdeaGenerator } from "@/components/idea-generator";
 import { MetricsCards } from "@/components/metrics-cards";
 import { TrendChart } from "@/components/trend-chart";
+import { KeywordsTable } from "@/components/keywords-table";
 import { IdeaHistory } from "@/components/idea-history";
 import { Button } from "@/components/ui/button";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
@@ -17,6 +18,7 @@ interface DashboardProps {
 export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [selectedIdea, setSelectedIdea] = useState<IdeaWithReport | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
 
   const { data: ideas, isLoading, error, refetch } = useQuery<IdeaWithReport[]>({
     queryKey: ['/api/ideas'],
@@ -27,12 +29,21 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     if (ideas && ideas.length > 0) {
       if (!selectedIdea || !ideas.find(i => i.id === selectedIdea.id)) {
         // Select the most recent idea
-        setSelectedIdea(ideas[0]);
+        const newIdea = ideas[0];
+        setSelectedIdea(newIdea);
+        // Set first keyword as selected
+        if (newIdea?.report?.keywords && newIdea.report.keywords.length > 0) {
+          setSelectedKeyword(newIdea.report.keywords[0].keyword);
+        }
       } else {
         // Update selected idea with latest data
         const updated = ideas.find(i => i.id === selectedIdea.id);
         if (updated) {
           setSelectedIdea(updated);
+          // Set first keyword if not already set
+          if (updated?.report?.keywords && updated.report.keywords.length > 0 && !selectedKeyword) {
+            setSelectedKeyword(updated.report.keywords[0].keyword);
+          }
         }
       }
     }
@@ -40,16 +51,27 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
   const handleIdeaGenerated = (newIdea: IdeaWithReport) => {
     setSelectedIdea(newIdea);
+    if (newIdea?.report?.keywords && newIdea.report.keywords.length > 0) {
+      setSelectedKeyword(newIdea.report.keywords[0].keyword);
+    }
     refetch();
   };
 
   const handleIdeaSelect = (idea: IdeaWithReport) => {
     setSelectedIdea(idea);
+    if (idea?.report?.keywords && idea.report.keywords.length > 0) {
+      setSelectedKeyword(idea.report.keywords[0].keyword);
+    } else {
+      setSelectedKeyword(null);
+    }
     setShowHistory(false);
   };
 
   const handleReportGenerated = (ideaWithReport: IdeaWithReport) => {
     setSelectedIdea(ideaWithReport);
+    if (ideaWithReport?.report?.keywords && ideaWithReport.report.keywords.length > 0) {
+      setSelectedKeyword(ideaWithReport.report.keywords[0].keyword);
+    }
     refetch();
   };
 
@@ -122,10 +144,19 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
             <MetricsCards report={selectedIdea.report} />
 
-            <TrendChart
+            <KeywordsTable
               keywords={selectedIdea.report.keywords}
-              reportId={selectedIdea.report.id}
+              selectedKeyword={selectedKeyword}
+              onKeywordSelect={setSelectedKeyword}
             />
+
+            {selectedKeyword && (
+              <TrendChart
+                keywords={selectedIdea.report.keywords}
+                reportId={selectedIdea.report.id}
+                selectedKeyword={selectedKeyword}
+              />
+            )}
           </div>
         )}
       </main>
