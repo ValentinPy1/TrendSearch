@@ -37,7 +37,14 @@ class MicroSaaSIdeaGenerator {
   }
 
   async generateIdea(): Promise<string> {
-    await this.loadData();
+    console.log('[MicroSaaS Generator] Starting idea generation...');
+    
+    try {
+      await this.loadData();
+    } catch (error) {
+      console.error('[MicroSaaS Generator] Failed to load data:', error);
+      throw new Error('Failed to load parameter data');
+    }
 
     if (!this.paramData) {
       throw new Error('Parameter data not loaded');
@@ -51,6 +58,9 @@ class MicroSaaSIdeaGenerator {
 
     const userTypeDescription = this.paramData.user_types[selectedUserTypeKey];
     const problemDescription = this.paramData.problem_nature[selectedProblemKey];
+    
+    console.log('[MicroSaaS Generator] Selected user type:', selectedUserTypeKey);
+    console.log('[MicroSaaS Generator] Selected problem:', selectedProblemKey);
 
     const prompt = `You are a microSaaS idea generator. Your goal is to create focused, actionable, and specific microSaaS ideas based on the following principles:
 
@@ -67,8 +77,10 @@ Generate a ONE-SENTENCE microSaaS idea that:
 Format your response as a single concise sentence describing the microSaaS idea. Make it compelling and specific. Do not include any preamble or explanation - just the idea itself.`;
 
     try {
+      console.log('[MicroSaaS Generator] Calling OpenAI API...');
+      
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-5-nano',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -79,20 +91,26 @@ Format your response as a single concise sentence describing the microSaaS idea.
             content: prompt
           }
         ],
-        temperature: 0.9,
         max_tokens: 150,
+        temperature: 0.9,
       });
 
       const generatedIdea = response.choices[0]?.message?.content?.trim();
       
       if (!generatedIdea) {
+        console.error('[MicroSaaS Generator] No idea in response');
         throw new Error('No idea generated from OpenAI');
       }
 
+      console.log('[MicroSaaS Generator] Successfully generated idea:', generatedIdea.substring(0, 100));
       return generatedIdea;
     } catch (error) {
-      console.error('Error generating idea with OpenAI:', error);
-      throw new Error('Failed to generate idea with AI');
+      console.error('[MicroSaaS Generator] Error generating idea with OpenAI:', error);
+      if (error instanceof Error) {
+        console.error('[MicroSaaS Generator] Error message:', error.message);
+        console.error('[MicroSaaS Generator] Error stack:', error.stack);
+      }
+      throw new Error('Failed to generate idea with AI: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   }
 }
