@@ -62,37 +62,40 @@ class MicroSaaSIdeaGenerator {
     console.log('[MicroSaaS Generator] Selected user type:', selectedUserTypeKey);
     console.log('[MicroSaaS Generator] Selected problem:', selectedProblemKey);
 
-    const prompt = `You are a microSaaS idea generator. Your goal is to create focused, actionable, and specific microSaaS ideas based on the following principles:
+    const prompt = `Generate an EXTREMELY CONCISE microSaaS idea (5-8 words maximum).
 
+User type: ${userTypeDescription}
+Problem: ${problemDescription}
+
+MicroSaaS principles:
 ${this.microSaaSPrinciples}
 
-Generate a ONE-SENTENCE microSaaS idea that:
-- Targets this user type: ${userTypeDescription}
-- Solves this problem: ${problemDescription}
-- Follows all the microSaaS principles above (single killer feature, high pain/low friction, clearly defined niche, immediate value)
-- Is specific, actionable, and focused on solving ONE concrete problem
-- Can be built by one person in a few weeks
-- Provides immediate value within 30 seconds of first use
+Requirements:
+- MAXIMUM 5-8 words total
+- One specific tool/solution
+- Clear target audience
+- No fluff or explanations
 
-Format your response as a single concise sentence describing the microSaaS idea. Make it compelling and specific. Do not include any preamble or explanation - just the idea itself.`;
+Example format: "AI expense tracker for freelancers" or "Automated scheduling for trainers"
+
+Your idea (5-8 words only):`;
 
     try {
       console.log('[MicroSaaS Generator] Calling OpenAI API...');
       
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-nano-2025-08-07',
         messages: [
           {
             role: 'system',
-            content: 'You are an expert microSaaS idea generator. You create focused, specific, and actionable startup ideas that solve real problems for niche audiences.'
+            content: 'You are a microSaaS idea generator. Generate ONLY 5-8 word ideas. Be extremely concise.'
           },
           {
             role: 'user',
             content: prompt
           }
         ],
-        max_tokens: 150,
-        temperature: 0.9,
+        max_completion_tokens: 50,
       });
 
       const generatedIdea = response.choices[0]?.message?.content?.trim();
