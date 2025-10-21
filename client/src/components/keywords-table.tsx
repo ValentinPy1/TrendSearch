@@ -95,32 +95,33 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
   };
 
   const getBlueGradient = (value: number) => {
-    const intensity = Math.min(100, Math.max(0, value));
-    const opacity = 0.1 + (intensity / 100) * 0.4;
-    const lightness = 60 - (intensity / 100) * 20;
+    // Map 30-70 range to 0-100 intensity
+    const normalizedValue = Math.min(100, Math.max(0, ((value - 30) / 40) * 100));
+    const opacity = 0.1 + (normalizedValue / 100) * 0.5;
+    const lightness = 65 - (normalizedValue / 100) * 30;
     return {
-      backgroundColor: `hsla(210, 70%, ${lightness}%, ${opacity})`,
-      color: `hsl(210, 70%, ${lightness - 20}%)`,
+      backgroundColor: `hsla(210, 80%, ${lightness}%, ${opacity})`,
+      color: 'rgb(255, 255, 255)',
     };
   };
 
   const getRedGradient = (value: number) => {
     const intensity = Math.min(100, Math.max(0, value));
-    const opacity = 0.1 + (intensity / 100) * 0.4;
-    const lightness = 60 - (intensity / 100) * 20;
+    const opacity = 0.1 + (intensity / 100) * 0.5;
+    const lightness = 65 - (intensity / 100) * 30;
     return {
-      backgroundColor: `hsla(0, 70%, ${lightness}%, ${opacity})`,
-      color: `hsl(0, 70%, ${lightness - 20}%)`,
+      backgroundColor: `hsla(0, 80%, ${lightness}%, ${opacity})`,
+      color: 'rgb(255, 255, 255)',
     };
   };
 
   const getPurpleGradient = (value: number, max: number) => {
     const intensity = Math.min(100, (value / max) * 100);
-    const opacity = 0.1 + (intensity / 100) * 0.4;
-    const lightness = 60 - (intensity / 100) * 20;
+    const opacity = 0.1 + (intensity / 100) * 0.5;
+    const lightness = 65 - (intensity / 100) * 30;
     return {
-      backgroundColor: `hsla(250, 70%, ${lightness}%, ${opacity})`,
-      color: `hsl(250, 70%, ${lightness - 20}%)`,
+      backgroundColor: `hsla(250, 80%, ${lightness}%, ${opacity})`,
+      color: 'rgb(255, 255, 255)',
     };
   };
 
