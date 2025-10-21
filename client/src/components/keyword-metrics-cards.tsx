@@ -1,5 +1,6 @@
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { TrendingUp, TrendingDown, Search, Target, DollarSign, MousePointerClick } from "lucide-react";
+import { TrendingUp, TrendingDown, Search, Target, DollarSign, MousePointerClick, Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Keyword } from "@shared/schema";
 
 interface KeywordMetricsCardsProps {
@@ -49,6 +50,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       subtitle: "monthly searches",
       icon: Search,
       style: { color: 'rgb(255, 255, 255)' },
+      info: "Average monthly searches for this keyword",
     },
     {
       label: "3M Growth",
@@ -56,6 +58,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       subtitle: "3-month trend",
       icon: growth3m >= 0 ? TrendingUp : TrendingDown,
       style: getTrendGradientText(growth3m),
+      info: "Search volume change over last 3 months",
     },
     {
       label: "YoY Growth",
@@ -63,6 +66,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       subtitle: "year over year",
       icon: growthYoy >= 0 ? TrendingUp : TrendingDown,
       style: getTrendGradientText(growthYoy),
+      info: "Search volume change compared to last year",
     },
     {
       label: "Competition",
@@ -70,6 +74,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       subtitle: "market saturation",
       icon: Target,
       style: getRedGradientText(competition),
+      info: "Level of advertiser competition (0-100 scale)",
     },
     {
       label: "Top Page Bid",
@@ -77,6 +82,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       subtitle: "advertiser bid",
       icon: DollarSign,
       style: getPurpleGradientText(topPageBid, maxTopPageBid),
+      info: "Estimated bid to appear at top of search results",
     },
     {
       label: "CPC",
@@ -84,6 +90,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       subtitle: "cost per click",
       icon: MousePointerClick,
       style: getPurpleGradientText(cpc, maxCpc),
+      info: "Average cost per click in advertising",
     },
   ];
 
@@ -97,7 +104,17 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-white/60">{metric.label}</span>
-                  <Icon className="h-5 w-5 text-white/60" />
+                  <div className="flex items-center gap-2">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-white/40 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{metric.info}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Icon className="h-5 w-5 text-white/60" />
+                  </div>
                 </div>
                 <div>
                   <div 

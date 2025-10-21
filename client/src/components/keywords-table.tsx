@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Keyword } from "@shared/schema";
 
 type SortField = 'keyword' | 'similarityScore' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy';
@@ -15,6 +16,17 @@ interface KeywordsTableProps {
 export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: KeywordsTableProps) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+
+  const columnInfo = {
+    keyword: "Search terms related to your idea",
+    similarityScore: "How closely this keyword matches your idea (30-70% range)",
+    volume: "Average monthly searches for this keyword",
+    competition: "Level of advertiser competition (0-100 scale)",
+    cpc: "Average cost per click in advertising",
+    topPageBid: "Estimated bid to appear at top of search results",
+    growth3m: "Search volume change over last 3 months",
+    growthYoy: "Search volume change compared to last year"
+  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -161,80 +173,136 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                   onClick={() => handleSort('keyword')}
                   data-testid="header-keyword"
                 >
-                  <div className="flex items-center">
-                    Keyword
-                    <SortIcon field="keyword" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center">
+                        Keyword
+                        <SortIcon field="keyword" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.keyword}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
                 <th 
                   className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort('similarityScore')}
                   data-testid="header-similarity"
                 >
-                  <div className="flex items-center justify-center">
-                    Match
-                    <SortIcon field="similarityScore" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-center">
+                        Match
+                        <SortIcon field="similarityScore" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.similarityScore}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
                 <th 
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort('volume')}
                   data-testid="header-volume"
                 >
-                  <div className="flex items-center justify-end">
-                    Volume
-                    <SortIcon field="volume" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        Volume
+                        <SortIcon field="volume" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.volume}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
                 <th 
                   className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort('competition')}
                   data-testid="header-competition"
                 >
-                  <div className="flex items-center justify-center">
-                    Competition
-                    <SortIcon field="competition" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-center">
+                        Competition
+                        <SortIcon field="competition" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.competition}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
                 <th 
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort('cpc')}
                   data-testid="header-cpc"
                 >
-                  <div className="flex items-center justify-end">
-                    CPC
-                    <SortIcon field="cpc" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        CPC
+                        <SortIcon field="cpc" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.cpc}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
                 <th 
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort('topPageBid')}
                   data-testid="header-top-page-bid"
                 >
-                  <div className="flex items-center justify-end">
-                    Top Page Bid
-                    <SortIcon field="topPageBid" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        Top Page Bid
+                        <SortIcon field="topPageBid" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.topPageBid}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
                 <th 
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort('growth3m')}
                   data-testid="header-growth-3m"
                 >
-                  <div className="flex items-center justify-end">
-                    3Mo Trend
-                    <SortIcon field="growth3m" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        3Mo Trend
+                        <SortIcon field="growth3m" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.growth3m}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
                 <th 
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort('growthYoy')}
                   data-testid="header-growth-yoy"
                 >
-                  <div className="flex items-center justify-end">
-                    YoY Trend
-                    <SortIcon field="growthYoy" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        YoY Trend
+                        <SortIcon field="growthYoy" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.growthYoy}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
               </tr>
             </thead>
