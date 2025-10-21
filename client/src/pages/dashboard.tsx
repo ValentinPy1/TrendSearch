@@ -4,6 +4,7 @@ import { IdeaGenerator } from "@/components/idea-generator";
 import { MetricsCards } from "@/components/metrics-cards";
 import { TrendChart } from "@/components/trend-chart";
 import { KeywordsTable } from "@/components/keywords-table";
+import { KeywordMetricsCards } from "@/components/keyword-metrics-cards";
 import { IdeaHistory } from "@/components/idea-history";
 import { Button } from "@/components/ui/button";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
@@ -150,12 +151,17 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               onKeywordSelect={setSelectedKeyword}
             />
 
-            {selectedKeyword && (
-              <TrendChart
-                keywords={selectedIdea.report.keywords}
-                reportId={selectedIdea.report.id}
-                selectedKeyword={selectedKeyword}
-              />
+            {selectedKeyword && selectedIdea.report.keywords.find(k => k.keyword === selectedKeyword) && (
+              <>
+                <KeywordMetricsCards 
+                  keyword={selectedIdea.report.keywords.find(k => k.keyword === selectedKeyword)!}
+                />
+                <TrendChart
+                  keywords={selectedIdea.report.keywords}
+                  reportId={selectedIdea.report.id}
+                  selectedKeyword={selectedKeyword}
+                />
+              </>
             )}
           </div>
         )}

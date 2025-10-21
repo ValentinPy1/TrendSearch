@@ -1,5 +1,10 @@
+import { useState, useMemo } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { Keyword } from "@shared/schema";
+
+type SortField = 'keyword' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy';
+type SortDirection = 'asc' | 'desc' | null;
 
 interface KeywordsTableProps {
   keywords: Keyword[];
@@ -8,7 +13,85 @@ interface KeywordsTableProps {
 }
 
 export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: KeywordsTableProps) {
-  const topKeywords = keywords.slice(0, 10);
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        setSortDirection(null);
+        setSortField(null);
+      } else {
+        setSortDirection('asc');
+      }
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedKeywords = useMemo(() => {
+    const topKeywords = keywords.slice(0, 10);
+    
+    if (!sortField || !sortDirection) {
+      return topKeywords;
+    }
+
+    return [...topKeywords].sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+
+      switch (sortField) {
+        case 'keyword':
+          aVal = a.keyword?.toLowerCase() || '';
+          bVal = b.keyword?.toLowerCase() || '';
+          break;
+        case 'volume':
+          aVal = a.volume || 0;
+          bVal = b.volume || 0;
+          break;
+        case 'competition':
+          const compOrder = { low: 1, medium: 2, high: 3 };
+          aVal = compOrder[a.competition as keyof typeof compOrder] || 0;
+          bVal = compOrder[b.competition as keyof typeof compOrder] || 0;
+          break;
+        case 'cpc':
+          aVal = parseFloat(a.cpc || "0");
+          bVal = parseFloat(b.cpc || "0");
+          break;
+        case 'topPageBid':
+          aVal = parseFloat(a.topPageBid || "0");
+          bVal = parseFloat(b.topPageBid || "0");
+          break;
+        case 'growth3m':
+          aVal = parseFloat(a.growth3m || "0");
+          bVal = parseFloat(b.growth3m || "0");
+          break;
+        case 'growthYoy':
+          aVal = parseFloat(a.growthYoy || "0");
+          bVal = parseFloat(b.growthYoy || "0");
+          break;
+      }
+
+      if (sortDirection === 'asc') {
+        return aVal > bVal ? 1 : -1;
+      } else {
+        return aVal < bVal ? 1 : -1;
+      }
+    });
+  }, [keywords, sortField, sortDirection]);
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-4 w-4 ml-1 text-white/40" />;
+    }
+    if (sortDirection === 'asc') {
+      return <ArrowUp className="h-4 w-4 ml-1 text-primary" />;
+    }
+    return <ArrowDown className="h-4 w-4 ml-1 text-primary" />;
+  };
 
   return (
     <GlassmorphicCard className="p-8">
@@ -26,31 +109,80 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/10">
-                <th className="text-left py-3 px-4 text-sm font-semibold text-white/80">
-                  Keyword
+                <th 
+                  className="text-left py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort('keyword')}
+                  data-testid="header-keyword"
+                >
+                  <div className="flex items-center">
+                    Keyword
+                    <SortIcon field="keyword" />
+                  </div>
                 </th>
-                <th className="text-right py-3 px-4 text-sm font-semibold text-white/80">
-                  Volume
+                <th 
+                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort('volume')}
+                  data-testid="header-volume"
+                >
+                  <div className="flex items-center justify-end">
+                    Volume
+                    <SortIcon field="volume" />
+                  </div>
                 </th>
-                <th className="text-center py-3 px-4 text-sm font-semibold text-white/80">
-                  Competition
+                <th 
+                  className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort('competition')}
+                  data-testid="header-competition"
+                >
+                  <div className="flex items-center justify-center">
+                    Competition
+                    <SortIcon field="competition" />
+                  </div>
                 </th>
-                <th className="text-right py-3 px-4 text-sm font-semibold text-white/80">
-                  CPC
+                <th 
+                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort('cpc')}
+                  data-testid="header-cpc"
+                >
+                  <div className="flex items-center justify-end">
+                    CPC
+                    <SortIcon field="cpc" />
+                  </div>
                 </th>
-                <th className="text-right py-3 px-4 text-sm font-semibold text-white/80">
-                  Top Page Bid
+                <th 
+                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort('topPageBid')}
+                  data-testid="header-top-page-bid"
+                >
+                  <div className="flex items-center justify-end">
+                    Top Page Bid
+                    <SortIcon field="topPageBid" />
+                  </div>
                 </th>
-                <th className="text-right py-3 px-4 text-sm font-semibold text-white/80">
-                  3Mo Trend
+                <th 
+                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort('growth3m')}
+                  data-testid="header-growth-3m"
+                >
+                  <div className="flex items-center justify-end">
+                    3Mo Trend
+                    <SortIcon field="growth3m" />
+                  </div>
                 </th>
-                <th className="text-right py-3 px-4 text-sm font-semibold text-white/80">
-                  YoY Trend
+                <th 
+                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort('growthYoy')}
+                  data-testid="header-growth-yoy"
+                >
+                  <div className="flex items-center justify-end">
+                    YoY Trend
+                    <SortIcon field="growthYoy" />
+                  </div>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {topKeywords.map((keyword, index) => {
+              {sortedKeywords.map((keyword, index) => {
                 const growth3m = parseFloat(keyword.growth3m || "0");
                 const growthYoy = parseFloat(keyword.growthYoy || "0");
                 
