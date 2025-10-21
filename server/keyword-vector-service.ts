@@ -1,7 +1,6 @@
 import { pipeline } from '@xenova/transformers';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parse } from 'csv-parse/sync';
 
 interface KeywordData {
   keyword: string;
@@ -28,6 +27,13 @@ interface KeywordData {
 
 interface KeywordWithScore extends KeywordData {
   similarityScore: number;
+}
+
+interface PrebuiltVectorData {
+  keywords: KeywordData[];
+  embeddings: number[][];
+  version: string;
+  createdAt: string;
 }
 
 class KeywordVectorService {
@@ -66,42 +72,32 @@ class KeywordVectorService {
       this.extractor = null;
       this.initialized = false;
       
-      console.log('[KeywordVectorService] Loading keywords from CSV...');
-      const csvPath = path.join(process.cwd(), 'data', 'keywords_data.csv');
+      console.log('[KeywordVectorService] Loading prebuilt vector database...');
+      const embeddingsPath = path.join(process.cwd(), 'data', 'embeddings.json');
       
-      if (!fs.existsSync(csvPath)) {
-        throw new Error(`Keywords CSV file not found at ${csvPath}`);
+      if (!fs.existsSync(embeddingsPath)) {
+        throw new Error(`Prebuilt embeddings file not found at ${embeddingsPath}. Run: npx tsx scripts/prebuild-embeddings.ts`);
       }
       
-      const csvContent = fs.readFileSync(csvPath, 'utf-8');
+      const fileContent = fs.readFileSync(embeddingsPath, 'utf-8');
+      const vectorData: PrebuiltVectorData = JSON.parse(fileContent);
       
-      this.keywords = parse(csvContent, {
-        columns: true,
-        skip_empty_lines: true,
-        cast: (value, context) => {
-          if (context.column && value === '') return null;
-          if (!isNaN(Number(value))) return Number(value);
-          return value;
-        },
-      }) as KeywordData[];
+      this.keywords = vectorData.keywords;
+      this.embeddings = vectorData.embeddings.map(arr => new Float32Array(arr));
       
-      if (this.keywords.length === 0) {
-        throw new Error('No keywords loaded from CSV file');
+      if (this.keywords.length === 0 || this.embeddings.length === 0) {
+        throw new Error('Prebuilt vector database is empty');
       }
       
-      console.log(`[KeywordVectorService] Loaded ${this.keywords.length} keywords`);
+      if (this.keywords.length !== this.embeddings.length) {
+        throw new Error(`Prebuilt data mismatch: ${this.keywords.length} keywords but ${this.embeddings.length} embeddings`);
+      }
       
-      console.log('[KeywordVectorService] Initializing sentence transformer...');
+      console.log(`[KeywordVectorService] Loaded ${this.keywords.length} keywords with prebuilt embeddings`);
+      console.log(`[KeywordVectorService] Vector database version: ${vectorData.version}, created: ${vectorData.createdAt}`);
+      
+      console.log('[KeywordVectorService] Initializing sentence transformer for queries...');
       this.extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-      
-      console.log('[KeywordVectorService] Creating embeddings (this may take a minute)...');
-      for (let i = 0; i < this.keywords.length; i++) {
-        if (i % 500 === 0) {
-          console.log(`[KeywordVectorService] Progress: ${i}/${this.keywords.length}`);
-        }
-        const output = await this.extractor(this.keywords[i].keyword, { pooling: 'mean', normalize: true });
-        this.embeddings.push(new Float32Array(output.data));
-      }
       
       this.initialized = true;
       console.log('[KeywordVectorService] Initialization complete!');
