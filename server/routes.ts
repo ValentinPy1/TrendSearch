@@ -246,11 +246,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { originalIdea } = req.body;
       const userId = req.session.userId!; // Use session userId instead of client-provided
 
-      // Stupidity Mixer generates 5 candidate ideas
-      const candidateIdeas = generateStupidityMixerIdeas();
-      
-      // LLM Formulator selects and reformulates the best idea
-      const generatedIdea = llmFormulator(candidateIdeas);
+      let generatedIdea: string;
+
+      // If user provided their own idea, use it directly
+      if (originalIdea && originalIdea.trim().length > 0) {
+        generatedIdea = originalIdea.trim();
+      } else {
+        // Otherwise, use Stupidity Mixer to generate 5 candidate ideas
+        const candidateIdeas = generateStupidityMixerIdeas();
+        
+        // LLM Formulator selects and reformulates the best idea
+        generatedIdea = llmFormulator(candidateIdeas);
+      }
 
       const idea = await storage.createIdea({
         userId,
