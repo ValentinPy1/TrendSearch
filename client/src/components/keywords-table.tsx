@@ -53,9 +53,8 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
           bVal = b.volume || 0;
           break;
         case 'competition':
-          const compOrder = { low: 1, medium: 2, high: 3 };
-          aVal = compOrder[a.competition as keyof typeof compOrder] || 0;
-          bVal = compOrder[b.competition as keyof typeof compOrder] || 0;
+          aVal = a.competition || 0;
+          bVal = b.competition || 0;
           break;
         case 'cpc':
           aVal = parseFloat(a.cpc || "0");
@@ -206,11 +205,11 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     <td className="py-4 px-4 text-sm text-white text-center">
                       <span className={`
                         inline-block px-3 py-1 rounded-full text-xs font-medium
-                        ${keyword.competition === 'low' ? 'bg-green-500/20 text-green-300' : ''}
-                        ${keyword.competition === 'medium' ? 'bg-yellow-500/20 text-yellow-300' : ''}
-                        ${keyword.competition === 'high' ? 'bg-red-500/20 text-red-300' : ''}
+                        ${(keyword.competition || 0) < 33 ? 'bg-green-500/20 text-green-300' : ''}
+                        ${(keyword.competition || 0) >= 33 && (keyword.competition || 0) < 66 ? 'bg-yellow-500/20 text-yellow-300' : ''}
+                        ${(keyword.competition || 0) >= 66 ? 'bg-red-500/20 text-red-300' : ''}
                       `}>
-                        {keyword.competition || "N/A"}
+                        {keyword.competition ?? "N/A"}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-white text-right">

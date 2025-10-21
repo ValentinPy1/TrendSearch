@@ -34,13 +34,13 @@ export function KeywordMetricsCards({ keyword }: KeywordMetricsCardsProps) {
     },
     {
       label: "Competition",
-      value: keyword.competition || "Unknown",
+      value: keyword.competition ?? "N/A",
       subtitle: "market saturation",
       icon: Target,
       color:
-        keyword.competition === "low"
+        (keyword.competition || 0) < 33
           ? "text-chart-4"
-          : keyword.competition === "medium"
+          : (keyword.competition || 0) < 66
           ? "text-chart-5"
           : "text-destructive",
     },

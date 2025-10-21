@@ -83,7 +83,7 @@ function generateMockGoogleAdsData(idea: string) {
   
   for (let i = 0; i < Math.min(10, baseKeywords.length * 3); i++) {
     const volume = Math.floor(Math.random() * 50000) + 5000;
-    const competition = ['low', 'medium', 'high'][Math.floor(Math.random() * 3)];
+    const competition = Math.floor(Math.random() * 100); // 0-100
     const cpc = (Math.random() * 5 + 0.5).toFixed(2);
     const topPageBid = (Math.random() * 8 + 1).toFixed(2);
     const growth3m = ((Math.random() - 0.3) * 40).toFixed(2); // -12% to +28%

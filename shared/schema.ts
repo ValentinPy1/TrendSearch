@@ -37,7 +37,7 @@ export const keywords = pgTable("keywords", {
   reportId: varchar("report_id").notNull().references(() => reports.id, { onDelete: 'cascade' }),
   keyword: text("keyword").notNull(),
   volume: integer("volume"),
-  competition: text("competition"),
+  competition: integer("competition"),
   cpc: decimal("cpc", { precision: 10, scale: 2 }),
   topPageBid: decimal("top_page_bid", { precision: 10, scale: 2 }),
   growth3m: decimal("growth_3m", { precision: 10, scale: 2 }),
