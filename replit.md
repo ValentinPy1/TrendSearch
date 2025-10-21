@@ -1,14 +1,14 @@
 # Pioneer Idea Finder
 
-A dark-themed startup idea validation platform with AI-powered idea generation, market research insights, and PDF report export capabilities.
+A dark-themed startup idea validation platform with AI-powered idea generation using GPT-4o-mini, market research insights with real keyword data, and interactive trend visualization.
 
 ## Overview
 
 Pioneer Idea Finder helps entrepreneurs validate their startup ideas using:
-- AI-powered idea generation with the "Stupidity Mixer" + LLM Formulator pipeline
-- Market research data with 10 related keywords (fixed count)
-- Interactive trend analysis and visualization
-- PDF export for comprehensive reports
+- AI-powered idea generation with GPT-4o-mini using paramV4.json data and microSaaS principles
+- Market research data with exactly 10 semantically-related keywords (vector similarity search)
+- Interactive trend analysis and visualization with gradient-styled metrics
+- Real keyword data from Google Ads CSV (6,443 keywords with prebuilt embeddings)
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Pioneer Idea Finder helps entrepreneurs validate their startup ideas using:
   - `POST /api/auth/login` - User login
   - `GET /api/auth/me` - Get current user session
   - `POST /api/auth/logout` - Logout user
-  - `POST /api/generate-idea` - Generate new idea using Stupidity Mixer
+  - `POST /api/generate-idea` - Generate new idea using GPT-4o-mini with paramV4.json
   - `GET /api/ideas` - Get user's idea history
   - `POST /api/generate-report` - Generate market research report
 
@@ -63,13 +63,15 @@ Pioneer Idea Finder helps entrepreneurs validate their startup ideas using:
 ## Features
 
 ### 1. Idea Generation
-The Stupidity Mixer randomly combines:
-- Persona (e.g., "Busy professionals")
-- Problem (e.g., "who can't track expenses")
-- Delivery Type (e.g., "AI-powered")
-- App Inspiration (e.g., "marketplace")
-
-Generates 5 candidate ideas, then LLM Formulator selects the best one.
+**AI-Powered Generation with GPT-4o-mini:**
+- Randomly selects one `user_type` from paramV4.json (48 options: students, freelancers, creators, etc.)
+- Randomly selects one `problem_nature` from paramV4.json (47 options: repetitive_tasks, information_overload, etc.)
+- Sends structured prompt to GPT-4o-mini with:
+  - Selected user type and problem descriptions
+  - Complete microSaaS principles guide (focus, niche, immediate value, etc.)
+  - Instruction to generate focused one-sentence idea
+- GPT-4o-mini generates specific, actionable microSaaS idea following best practices
+- User-provided ideas are preserved exactly; blank input triggers AI generation
 
 ### 2. Market Validation
 Generates report with:
@@ -102,7 +104,7 @@ Generates report with:
 - ✅ Authentication (email/password with bcrypt)
 - ✅ Database persistence (Supabase PostgreSQL via Drizzle ORM)
 - ✅ Session management (express-session with userId tracking)
-- ✅ Idea generation with Stupidity Mixer algorithm
+- ✅ AI-powered idea generation with GPT-4o-mini using paramV4.json + microSaaS principles
 - ✅ Vector database with prebuilt embeddings (instant keyword matching)
 - ✅ Semantic keyword search using sentence-transformers
 - ✅ Interactive dashboard with metrics
@@ -115,14 +117,16 @@ Generates report with:
 - ✅ Trend chart visualization
 - ✅ Dark theme with gradient orbs
 - ✅ Glassmorphic UI design
-- ⏳ Real LLM integration (currently mocked)
-- ⏳ Real Google Ads API integration (using real keyword data from CSV)
+- ✅ Real LLM integration (GPT-4o-mini via Replit AI Integrations)
+- ✅ Real keyword data (6,443 keywords from Google Ads CSV with vector embeddings)
 
 ## Environment Variables
 
 Required:
 - `DATABASE_URL` - Supabase PostgreSQL connection string
 - `SESSION_SECRET` - Session encryption key
+- `AI_INTEGRATIONS_OPENAI_API_KEY` - Replit AI Integrations API key (auto-configured)
+- `AI_INTEGRATIONS_OPENAI_BASE_URL` - Replit AI Integrations base URL (auto-configured)
 
 ## Tech Stack
 
@@ -135,8 +139,8 @@ Required:
 
 1. User signs up/logs in with email/password
 2. User enters an existing idea or leaves blank for AI generation
-3. Click "Generate Idea" - Stupidity Mixer creates 5 candidates, LLM picks best
-4. Click "Generate Report" - Mock Google Ads API returns market data
+3. Click "Generate Idea" - GPT-4o-mini generates focused microSaaS idea
+4. Click "Generate Report" - Vector database returns 10 semantically-related keywords with real data
 5. View 6 metric cards and interactive 12-month trend chart
 6. Select keywords from table to view their trends
 7. Click "History" to view all previous ideas and reports
@@ -184,10 +188,39 @@ npx tsx scripts/prebuild-embeddings.ts
 - UserId is derived from server-side session (never from client payload)
 - All protected routes use `requireAuth` middleware
 
+### AI Idea Generation (GPT-4o-mini)
+The app uses GPT-4o-mini via Replit AI Integrations to generate microSaaS ideas:
+
+**Files:**
+- `data/paramV4.json` - 48 user types and 47 problem natures
+- `data/microsaas-principles.txt` - MicroSaaS best practices guide
+- `server/microsaas-idea-generator.ts` - AI idea generation service
+
+**How It Works:**
+1. User leaves input blank and clicks "Generate Idea"
+2. System randomly selects one `user_type` and one `problem_nature` from paramV4.json
+3. Constructs prompt with:
+   - User type description (e.g., "freelancers: designers, developers, writers...")
+   - Problem description (e.g., "Repetitive tasks")
+   - Complete microSaaS principles (focus, niche, immediate value, etc.)
+4. Calls GPT-4o-mini via Replit AI Integrations (no API key needed, billed to credits)
+5. Receives focused one-sentence microSaaS idea
+6. Saves to database and returns to frontend
+
+**Model Choice:**
+- Initially attempted `gpt-5-nano` but it's a reasoning model that returns empty content
+- Switched to `gpt-4o-mini` which is a standard completion model
+- Uses standard OpenAI parameters: `max_tokens: 150`, `temperature: 0.9`
+
+**Example Generated Ideas:**
+- "A no-code website builder for busy photographers who need professional portfolios without learning to code"
+- "An automated expense tracker for freelancers that categorizes receipts using AI and generates tax-ready reports"
+- "A simple scheduling tool for fitness trainers that handles client bookings and sends automated reminders"
+
 ## Next Steps
 
-1. Integrate real LLM API (OpenAI/Anthropic) for idea formulation
-2. Connect Google Ads API for real market data
+1. ~~Integrate real LLM API (OpenAI/Anthropic) for idea formulation~~ ✅ Complete
+2. ~~Connect Google Ads API for real market data~~ ✅ Using real keyword CSV data
 3. Add idea refinement and comparison features
 4. Implement advanced filtering in history view
 5. Add batch idea generation and A/B comparison
