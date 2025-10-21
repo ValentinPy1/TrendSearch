@@ -121,6 +121,25 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
     };
   };
 
+  const getTrendGradientText = (value: number) => {
+    // White at 0%, full green at +200%, full red at -100%
+    if (value >= 0) {
+      // Positive: white to green (0% to +200%)
+      const normalizedValue = Math.min(1, value / 200);
+      const lightness = 100 - (normalizedValue * 50); // 100% (white) to 50% (green)
+      return {
+        color: `hsl(142, 70%, ${lightness}%)`,
+      };
+    } else {
+      // Negative: white to red (0% to -100%)
+      const normalizedValue = Math.min(1, Math.abs(value) / 100);
+      const lightness = 100 - (normalizedValue * 50); // 100% (white) to 50% (red)
+      return {
+        color: `hsl(0, 80%, ${lightness}%)`,
+      };
+    }
+  };
+
   return (
     <GlassmorphicCard className="p-8">
       <div className="space-y-6">
@@ -281,12 +300,18 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
-                      <span className={growth3m >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      <span 
+                        className="font-medium"
+                        style={getTrendGradientText(growth3m)}
+                      >
                         {growth3m >= 0 ? '+' : ''}{growth3m.toFixed(1)}%
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
-                      <span className={growthYoy >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      <span 
+                        className="font-medium"
+                        style={getTrendGradientText(growthYoy)}
+                      >
                         {growthYoy >= 0 ? '+' : ''}{growthYoy.toFixed(1)}%
                       </span>
                     </td>
