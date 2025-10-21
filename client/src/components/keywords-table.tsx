@@ -135,9 +135,9 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[640px] overflow-y-auto">
           <table className="w-full">
-            <thead>
+            <thead className="sticky top-0 bg-[#0a0a0f] z-10">
               <tr className="border-b border-white/10">
                 <th 
                   className="text-left py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
