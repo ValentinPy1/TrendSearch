@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
 import { Input } from "@/components/ui/input";
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import type { Keyword } from "@shared/schema";
 
 type SortField = 'keyword' | 'similarityScore' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy' | 'sustainedGrowthScore';
@@ -18,6 +19,8 @@ interface KeywordsTableProps {
 export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keywordCount, onKeywordCountChange }: KeywordsTableProps) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const keywordsPerPage = 10;
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -91,6 +94,21 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
     });
   }, [keywords, sortField, sortDirection]);
 
+  const totalPages = Math.ceil(sortedKeywords.length / keywordsPerPage);
+  const paginatedKeywords = useMemo(() => {
+    const startIndex = (currentPage - 1) * keywordsPerPage;
+    const endIndex = startIndex + keywordsPerPage;
+    return sortedKeywords.slice(startIndex, endIndex);
+  }, [sortedKeywords, currentPage]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleRefresh = () => {
+    onKeywordCountChange(keywordCount);
+  };
+
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
       return <ArrowUpDown className="h-4 w-4 ml-1 text-white/40" />;
@@ -113,10 +131,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
               Click a keyword to view its trend analysis
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <label htmlFor="keyword-count" className="text-sm text-white/80 font-medium">
-              Keywords:
-            </label>
+          <div className="flex items-center gap-2">
             <Input
               id="keyword-count"
               type="number"
@@ -127,17 +142,27 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
                 const value = parseInt(e.target.value);
                 if (!isNaN(value) && value >= 1 && value <= 100) {
                   onKeywordCountChange(value);
+                  setCurrentPage(1);
                 }
               }}
               className="w-20 bg-white/5 border-white/10 text-white text-center"
               data-testid="input-keyword-count"
             />
+            <Button
+              onClick={handleRefresh}
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              data-testid="button-refresh-keywords"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
-        <div className="overflow-x-auto max-h-[640px] overflow-y-auto">
+        <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="sticky top-0 bg-[#0a0a0f] z-10">
+            <thead>
               <tr className="border-b border-white/10">
                 <th 
                   className="text-left py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
@@ -232,7 +257,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
               </tr>
             </thead>
             <tbody>
-              {sortedKeywords.map((keyword, index) => {
+              {paginatedKeywords.map((keyword, index) => {
                 const growth3m = parseFloat(keyword.growth3m || "0");
                 const growthYoy = parseFloat(keyword.growthYoy || "0");
                 const growthScore = parseFloat(keyword.sustainedGrowthScore || "0");
@@ -306,6 +331,52 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
             </tbody>
           </table>
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-4 border-t border-white/10">
+            <div className="text-sm text-white/60">
+              Showing {(currentPage - 1) * keywordsPerPage + 1} to {Math.min(currentPage * keywordsPerPage, sortedKeywords.length)} of {sortedKeywords.length} keywords
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                variant="ghost"
+                size="sm"
+                className="h-8"
+                data-testid="button-prev-page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <Button
+                    key={page}
+                    onClick={() => handlePageChange(page)}
+                    variant={currentPage === page ? "default" : "ghost"}
+                    size="sm"
+                    className="h-8 w-8"
+                    data-testid={`button-page-${page}`}
+                  >
+                    {page}
+                  </Button>
+                ))}
+              </div>
+              <Button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                variant="ghost"
+                size="sm"
+                className="h-8"
+                data-testid="button-next-page"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </GlassmorphicCard>
   );
