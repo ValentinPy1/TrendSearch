@@ -6,7 +6,7 @@ A dark-themed startup idea validation platform with AI-powered idea generation, 
 
 Pioneer Idea Finder helps entrepreneurs validate their startup ideas using:
 - AI-powered idea generation with the "Stupidity Mixer" + LLM Formulator pipeline
-- Market research data (Google Ads keyword metrics)
+- Market research data with 10 related keywords (fixed count)
 - Interactive trend analysis and visualization
 - PDF export for comprehensive reports
 
@@ -94,7 +94,7 @@ Generates report with:
 
 ### 3. Trend Analysis
 - Interactive line chart showing 12 months of search volume
-- Dropdown to select from up to 10 keywords
+- Dropdown to select from the 10 keywords
 - Recharts library with gradient styling
 
 ### 4. PDF Export
@@ -112,7 +112,7 @@ Generates report with:
 - ✅ Interactive dashboard with metrics
 - ✅ Keywords table with 9 columns including Growth Score
 - ✅ Sortable table columns (click headers to sort)
-- ✅ Customizable keyword count (1-100, default 10)
+- ✅ Fixed keyword count (always 10 keywords)
 - ✅ Trend chart visualization  
 - ✅ PDF export functionality
 - ✅ Dark theme with gradient orbs

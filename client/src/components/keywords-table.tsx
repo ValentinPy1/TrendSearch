@@ -1,8 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { Keyword } from "@shared/schema";
 
 type SortField = 'keyword' | 'similarityScore' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy' | 'sustainedGrowthScore';
@@ -12,20 +10,11 @@ interface KeywordsTableProps {
   keywords: Keyword[];
   selectedKeyword: string | null;
   onKeywordSelect: (keyword: string) => void;
-  keywordCount: number;
-  onKeywordCountChange: (count: number) => void;
 }
 
-export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keywordCount, onKeywordCountChange }: KeywordsTableProps) {
+export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: KeywordsTableProps) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [inputValue, setInputValue] = useState(keywordCount.toString());
-  const keywordsPerPage = 10;
-
-  useEffect(() => {
-    setInputValue(keywordCount.toString());
-  }, [keywordCount]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -99,25 +88,6 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
     });
   }, [keywords, sortField, sortDirection]);
 
-  const totalPages = Math.ceil(sortedKeywords.length / keywordsPerPage);
-  const paginatedKeywords = useMemo(() => {
-    const startIndex = (currentPage - 1) * keywordsPerPage;
-    const endIndex = startIndex + keywordsPerPage;
-    return sortedKeywords.slice(startIndex, endIndex);
-  }, [sortedKeywords, currentPage]);
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
-
-  const handleRefresh = () => {
-    const value = parseInt(inputValue);
-    if (!isNaN(value) && value >= 1 && value <= 100) {
-      onKeywordCountChange(value);
-      setCurrentPage(1);
-    }
-  };
-
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
       return <ArrowUpDown className="h-4 w-4 ml-1 text-white/40" />;
@@ -131,41 +101,13 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
   return (
     <GlassmorphicCard className="p-8">
       <div className="space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h3 className="text-xl font-semibold text-white mb-2">
-              Top {keywordCount} Related Keywords
-            </h3>
-            <p className="text-sm text-white/60">
-              Click a keyword to view its trend analysis
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              id="keyword-count"
-              type="number"
-              min="1"
-              max="100"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleRefresh();
-                }
-              }}
-              className="w-20 bg-white/5 border-white/10 text-white text-center"
-              data-testid="input-keyword-count"
-            />
-            <Button
-              onClick={handleRefresh}
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-              data-testid="button-refresh-keywords"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
+        <div>
+          <h3 className="text-xl font-semibold text-white mb-2">
+            Top 10 Related Keywords
+          </h3>
+          <p className="text-sm text-white/60">
+            Click a keyword to view its trend analysis
+          </p>
         </div>
 
         <div className="overflow-x-auto">
@@ -265,7 +207,7 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
               </tr>
             </thead>
             <tbody>
-              {paginatedKeywords.map((keyword, index) => {
+              {sortedKeywords.map((keyword, index) => {
                 const growth3m = parseFloat(keyword.growth3m || "0");
                 const growthYoy = parseFloat(keyword.growthYoy || "0");
                 const growthScore = parseFloat(keyword.sustainedGrowthScore || "0");
@@ -339,52 +281,6 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect, keyw
             </tbody>
           </table>
         </div>
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between pt-4 border-t border-white/10">
-            <div className="text-sm text-white/60">
-              Showing {(currentPage - 1) * keywordsPerPage + 1} to {Math.min(currentPage * keywordsPerPage, sortedKeywords.length)} of {sortedKeywords.length} keywords
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                variant="ghost"
-                size="sm"
-                className="h-8"
-                data-testid="button-prev-page"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </Button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <Button
-                    key={page}
-                    onClick={() => handlePageChange(page)}
-                    variant={currentPage === page ? "default" : "ghost"}
-                    size="sm"
-                    className="h-8 w-8"
-                    data-testid={`button-page-${page}`}
-                  >
-                    {page}
-                  </Button>
-                ))}
-              </div>
-              <Button
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                variant="ghost"
-                size="sm"
-                className="h-8"
-                data-testid="button-next-page"
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
     </GlassmorphicCard>
   );

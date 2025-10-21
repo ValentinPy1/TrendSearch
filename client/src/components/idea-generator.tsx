@@ -12,17 +12,13 @@ interface IdeaGeneratorProps {
   onShowHistory: () => void;
   onReportGenerated: (idea: IdeaWithReport) => void;
   currentIdea?: IdeaWithReport | null;
-  keywordCount: number;
-  onKeywordCountChange: (count: number) => void;
 }
 
 export function IdeaGenerator({ 
   onIdeaGenerated, 
   onShowHistory,
   onReportGenerated,
-  currentIdea,
-  keywordCount,
-  onKeywordCountChange
+  currentIdea
 }: IdeaGeneratorProps) {
   const { toast } = useToast();
 
@@ -61,7 +57,7 @@ export function IdeaGenerator({
 
   const generateReportMutation = useMutation({
     mutationFn: async (ideaId: string) => {
-      const res = await apiRequest("POST", "/api/generate-report", { ideaId, keywordCount });
+      const res = await apiRequest("POST", "/api/generate-report", { ideaId, keywordCount: 10 });
       return res.json();
     },
     onSuccess: (result) => {
