@@ -152,9 +152,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             {selectedKeyword && selectedIdea.report.keywords.find(k => k.keyword === selectedKeyword) && (
               <>
                 <KeywordMetricsCards 
+                  key={`metrics-${selectedKeyword}`}
                   keyword={selectedIdea.report.keywords.find(k => k.keyword === selectedKeyword)!}
                 />
                 <TrendChart
+                  key={`chart-${selectedKeyword}`}
                   keywords={selectedIdea.report.keywords}
                   reportId={selectedIdea.report.id}
                   selectedKeyword={selectedKeyword}
