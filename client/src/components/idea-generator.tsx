@@ -42,6 +42,9 @@ export function IdeaGenerator({
       form.setValue("idea", result.idea.generatedIdea);
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
       onIdeaGenerated(result.idea);
+      
+      // Automatically generate report
+      generateReportMutation.mutate(result.idea.id);
     },
     onError: (error) => {
       toast({
@@ -88,11 +91,6 @@ export function IdeaGenerator({
     });
   };
 
-  const handleGenerateReport = () => {
-    if (!currentIdea) return;
-    generateReportMutation.mutate(currentIdea.id);
-  };
-
   return (
     <div className="space-y-6">
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 pt-12">
@@ -125,13 +123,13 @@ export function IdeaGenerator({
             </Button>
             <Button
               type="submit"
-              disabled={generateIdeaMutation.isPending}
+              disabled={generateIdeaMutation.isPending || generateReportMutation.isPending}
               variant="ghost"
               size="icon"
               className="h-10 w-10 text-primary hover:bg-transparent"
               data-testid="button-generate"
             >
-              {generateIdeaMutation.isPending ? (
+              {(generateIdeaMutation.isPending || generateReportMutation.isPending) ? (
                 <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
               ) : (
                 <Sparkles className="h-5 w-5 stroke-[2.5]" />
@@ -140,30 +138,6 @@ export function IdeaGenerator({
           </div>
         </div>
       </form>
-
-      {currentIdea && !currentIdea.report && (
-        <div className="text-center">
-          <Button
-            onClick={handleGenerateReport}
-            disabled={generateReportMutation.isPending}
-            size="lg"
-            className="gap-2"
-            data-testid="button-generate-report"
-          >
-            {generateReportMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Generating Report...
-              </>
-            ) : (
-              <>
-                <BarChart className="h-4 w-4" />
-                Generate Report
-              </>
-            )}
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
