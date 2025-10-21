@@ -81,16 +81,15 @@ Generates report with:
 - CPC - Cost Per Click ($)
 - Growth Score (sustained growth quality metric)
 
-**Keywords Table** displays 9 columns:
+**Keywords Table** displays 8 columns:
 1. Keyword - the search term
-2. Match - similarity score to the idea (percentage)
+2. Match - similarity score to the idea (percentage with blue gradient 0-100)
 3. Volume - monthly search volume
-4. Competition - competition level (0-100)
-5. CPC - cost per click
-6. Top Page Bid - average top-of-page bid
+4. Competition - competition level (0-100 with red gradient)
+5. CPC - cost per click (purple gradient based on max value)
+6. Top Page Bid - average top-of-page bid (purple gradient based on max value)
 7. 3Mo Trend - 3-month growth percentage
 8. YoY Trend - year-over-year growth percentage
-9. **Growth Score** - sustained growth quality (composite metric from slope, R², consistency, stability)
 
 ### 3. Trend Analysis
 - Interactive line chart showing 12 months of search volume
@@ -110,8 +109,11 @@ Generates report with:
 - ✅ Vector database with prebuilt embeddings (instant keyword matching)
 - ✅ Semantic keyword search using sentence-transformers
 - ✅ Interactive dashboard with metrics
-- ✅ Keywords table with 9 columns including Growth Score
+- ✅ Keywords table with 8 columns with gradient styling
 - ✅ Sortable table columns (click headers to sort)
+- ✅ Blue gradient for Match percentage (0-100)
+- ✅ Red gradient for Competition (0-100)
+- ✅ Purple gradient for CPC and Top Page Bid (scaled to max value)
 - ✅ Fixed keyword count (always 10 keywords)
 - ✅ Trend chart visualization  
 - ✅ PDF export functionality

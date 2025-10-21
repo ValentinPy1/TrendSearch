@@ -3,7 +3,7 @@ import { GlassmorphicCard } from "./glassmorphic-card";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { Keyword } from "@shared/schema";
 
-type SortField = 'keyword' | 'similarityScore' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy' | 'sustainedGrowthScore';
+type SortField = 'keyword' | 'similarityScore' | 'volume' | 'competition' | 'cpc' | 'topPageBid' | 'growth3m' | 'growthYoy';
 type SortDirection = 'asc' | 'desc' | null;
 
 interface KeywordsTableProps {
@@ -74,10 +74,6 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
           aVal = parseFloat(a.growthYoy || "0");
           bVal = parseFloat(b.growthYoy || "0");
           break;
-        case 'sustainedGrowthScore':
-          aVal = parseFloat(a.sustainedGrowthScore || "0");
-          bVal = parseFloat(b.sustainedGrowthScore || "0");
-          break;
       }
 
       if (sortDirection === 'asc') {
@@ -96,6 +92,36 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
       return <ArrowUp className="h-4 w-4 ml-1 text-primary" />;
     }
     return <ArrowDown className="h-4 w-4 ml-1 text-primary" />;
+  };
+
+  const getBlueGradient = (value: number) => {
+    const intensity = Math.min(100, Math.max(0, value));
+    const opacity = 0.1 + (intensity / 100) * 0.4;
+    const lightness = 60 - (intensity / 100) * 20;
+    return {
+      backgroundColor: `hsla(210, 70%, ${lightness}%, ${opacity})`,
+      color: `hsl(210, 70%, ${lightness - 20}%)`,
+    };
+  };
+
+  const getRedGradient = (value: number) => {
+    const intensity = Math.min(100, Math.max(0, value));
+    const opacity = 0.1 + (intensity / 100) * 0.4;
+    const lightness = 60 - (intensity / 100) * 20;
+    return {
+      backgroundColor: `hsla(0, 70%, ${lightness}%, ${opacity})`,
+      color: `hsl(0, 70%, ${lightness - 20}%)`,
+    };
+  };
+
+  const getPurpleGradient = (value: number, max: number) => {
+    const intensity = Math.min(100, (value / max) * 100);
+    const opacity = 0.1 + (intensity / 100) * 0.4;
+    const lightness = 60 - (intensity / 100) * 20;
+    return {
+      backgroundColor: `hsla(250, 70%, ${lightness}%, ${opacity})`,
+      color: `hsl(250, 70%, ${lightness - 20}%)`,
+    };
   };
 
   return (
@@ -194,23 +220,19 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     <SortIcon field="growthYoy" />
                   </div>
                 </th>
-                <th 
-                  className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort('sustainedGrowthScore')}
-                  data-testid="header-growth-score"
-                >
-                  <div className="flex items-center justify-center">
-                    Growth Score
-                    <SortIcon field="sustainedGrowthScore" />
-                  </div>
-                </th>
               </tr>
             </thead>
             <tbody>
               {sortedKeywords.map((keyword, index) => {
                 const growth3m = parseFloat(keyword.growth3m || "0");
                 const growthYoy = parseFloat(keyword.growthYoy || "0");
-                const growthScore = parseFloat(keyword.sustainedGrowthScore || "0");
+                const matchPercentage = parseFloat(keyword.similarityScore || "0") * 100;
+                const competition = keyword.competition || 0;
+                const cpc = parseFloat(keyword.cpc || "0");
+                const topPageBid = parseFloat(keyword.topPageBid || "0");
+                
+                const maxCpc = Math.max(...sortedKeywords.map(k => parseFloat(k.cpc || "0")));
+                const maxTopPageBid = Math.max(...sortedKeywords.map(k => parseFloat(k.topPageBid || "0")));
                 
                 return (
                   <tr
@@ -227,33 +249,39 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                       {keyword.keyword}
                     </td>
                     <td className="py-4 px-4 text-sm text-center">
-                      <span className={`
-                        inline-block px-2 py-1 rounded text-xs font-medium
-                        ${parseFloat(keyword.similarityScore || "0") >= 0.8 ? 'bg-green-500/20 text-green-300' : ''}
-                        ${parseFloat(keyword.similarityScore || "0") >= 0.6 && parseFloat(keyword.similarityScore || "0") < 0.8 ? 'bg-blue-500/20 text-blue-300' : ''}
-                        ${parseFloat(keyword.similarityScore || "0") < 0.6 ? 'bg-yellow-500/20 text-yellow-300' : ''}
-                      `}>
-                        {(parseFloat(keyword.similarityScore || "0") * 100).toFixed(0)}%
+                      <span 
+                        className="inline-block px-2 py-1 rounded text-xs font-medium"
+                        style={getBlueGradient(matchPercentage)}
+                      >
+                        {matchPercentage.toFixed(0)}%
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-white text-right">
                       {keyword.volume?.toLocaleString() || "N/A"}
                     </td>
-                    <td className="py-4 px-4 text-sm text-white text-center">
-                      <span className={`
-                        inline-block px-3 py-1 rounded-full text-xs font-medium
-                        ${(keyword.competition || 0) < 33 ? 'bg-green-500/20 text-green-300' : ''}
-                        ${(keyword.competition || 0) >= 33 && (keyword.competition || 0) < 66 ? 'bg-yellow-500/20 text-yellow-300' : ''}
-                        ${(keyword.competition || 0) >= 66 ? 'bg-red-500/20 text-red-300' : ''}
-                      `}>
-                        {keyword.competition ?? "N/A"}
+                    <td className="py-4 px-4 text-sm text-center">
+                      <span 
+                        className="inline-block px-3 py-1 rounded-full text-xs font-medium"
+                        style={getRedGradient(competition)}
+                      >
+                        {competition}
                       </span>
                     </td>
-                    <td className="py-4 px-4 text-sm text-white text-right">
-                      ${keyword.cpc || "0.00"}
+                    <td className="py-4 px-4 text-sm text-right">
+                      <span 
+                        className="inline-block px-2 py-1 rounded text-xs font-medium"
+                        style={getPurpleGradient(cpc, maxCpc)}
+                      >
+                        ${cpc.toFixed(2)}
+                      </span>
                     </td>
-                    <td className="py-4 px-4 text-sm text-white text-right">
-                      ${keyword.topPageBid || "0.00"}
+                    <td className="py-4 px-4 text-sm text-right">
+                      <span 
+                        className="inline-block px-2 py-1 rounded text-xs font-medium"
+                        style={getPurpleGradient(topPageBid, maxTopPageBid)}
+                      >
+                        ${topPageBid.toFixed(2)}
+                      </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
                       <span className={growth3m >= 0 ? 'text-green-400' : 'text-red-400'}>
@@ -263,16 +291,6 @@ export function KeywordsTable({ keywords, selectedKeyword, onKeywordSelect }: Ke
                     <td className="py-4 px-4 text-sm text-right">
                       <span className={growthYoy >= 0 ? 'text-green-400' : 'text-red-400'}>
                         {growthYoy >= 0 ? '+' : ''}{growthYoy.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-center">
-                      <span className={`
-                        inline-block px-2 py-1 rounded text-xs font-medium
-                        ${growthScore >= 0.01 ? 'bg-green-500/20 text-green-300' : ''}
-                        ${growthScore < 0.01 && growthScore >= 0 ? 'bg-blue-500/20 text-blue-300' : ''}
-                        ${growthScore < 0 ? 'bg-red-500/20 text-red-300' : ''}
-                      `}>
-                        {growthScore.toFixed(4)}
                       </span>
                     </td>
                   </tr>
