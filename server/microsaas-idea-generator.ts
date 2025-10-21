@@ -84,7 +84,7 @@ Your idea (5-8 words only):`;
       console.log('[MicroSaaS Generator] Calling OpenAI API...');
       
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-5-nano',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -95,7 +95,8 @@ Your idea (5-8 words only):`;
             content: prompt
           }
         ],
-        max_completion_tokens: 50,
+        max_tokens: 50,
+        temperature: 0.9,
       });
 
       const generatedIdea = response.choices[0]?.message?.content?.trim();
