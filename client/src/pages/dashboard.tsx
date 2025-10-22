@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { IdeaGenerator } from "@/components/idea-generator";
 import { MetricsCards } from "@/components/metrics-cards";
+import { AverageTrendChart } from "@/components/average-trend-chart";
 import { TrendChart } from "@/components/trend-chart";
 import { KeywordsTable } from "@/components/keywords-table";
 import { KeywordMetricsCards } from "@/components/keyword-metrics-cards";
@@ -189,6 +190,18 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               </div>
             </div>
 
+            <div className="pt-8">
+              <GlassmorphicCard className="p-8">
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <div className="h-6 bg-white/10 rounded animate-pulse w-64" />
+                    <div className="h-4 bg-white/10 rounded animate-pulse w-96" />
+                  </div>
+                  <div className="h-96 bg-white/5 rounded animate-pulse" />
+                </div>
+              </GlassmorphicCard>
+            </div>
+
             <div className="pt-16 space-y-4">
               <div>
                 <h3 className="text-xl font-semibold text-white/90 mb-2">
@@ -222,6 +235,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 Overall KPIs
               </h3>
               <MetricsCards keywords={selectedIdea.report.keywords} />
+            </div>
+
+            <div className="pt-8">
+              <AverageTrendChart keywords={selectedIdea.report.keywords} />
             </div>
 
             <div className="pt-16 space-y-4">
