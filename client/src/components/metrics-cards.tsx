@@ -2,6 +2,7 @@ import { GlassmorphicCard } from "./glassmorphic-card";
 import { TrendingUp, TrendingDown, Search, Target, DollarSign, MousePointerClick } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Keyword } from "@shared/schema";
+import { calculateAverageTrendData, calculateGrowthFromTrend } from "@/lib/trend-calculations";
 
 interface MetricsCardsProps {
   keywords: Keyword[];
@@ -69,8 +70,10 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
   const avgCompetition = Math.round(calculateWeightedAverage(k => k.competition || 0));
   const avgTopPageBid = calculateWeightedAverage(k => parseFloat(k.topPageBid || "0"));
   const avgCpc = calculateWeightedAverage(k => parseFloat(k.cpc || "0"));
-  const avg3mGrowth = calculateWeightedAverage(k => parseFloat(k.growth3m || "0"));
-  const avgYoyGrowth = calculateWeightedAverage(k => parseFloat(k.growthYoy || "0"));
+  
+  // Calculate 3M and YoY growth from the average trend data
+  const averageTrendData = calculateAverageTrendData(keywords);
+  const { growth3m: avg3mGrowth, growthYoy: avgYoyGrowth } = calculateGrowthFromTrend(averageTrendData);
 
   // Calculate max values for purple gradients
   const maxCpc = Math.max(...keywords.map(k => parseFloat(k.cpc || "0")), 1);
