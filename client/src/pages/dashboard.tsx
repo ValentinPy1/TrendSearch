@@ -143,6 +143,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               </h2>
             </div>
 
+            <MetricsCards keywords={selectedIdea.report.keywords} />
+
             <KeywordsTable
               keywords={selectedIdea.report.keywords}
               selectedKeyword={selectedKeyword}
