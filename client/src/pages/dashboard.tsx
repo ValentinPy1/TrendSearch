@@ -176,7 +176,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-xl font-semibold text-white/90">Overall KPIs</h3>
+              <h3 className="text-xl font-semibold text-white/90">
+                Overall KPIs
+              </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 {[...Array(6)].map((_, i) => (
                   <GlassmorphicCard key={i} className="p-6">
@@ -214,7 +216,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               <GlassmorphicCard className="p-6">
                 <div className="space-y-3">
                   {[...Array(10)].map((_, i) => (
-                    <div key={i} className="h-12 bg-white/10 rounded animate-pulse" />
+                    <div
+                      key={i}
+                      className="h-12 bg-white/10 rounded animate-pulse"
+                    />
                   ))}
                 </div>
               </GlassmorphicCard>
@@ -222,65 +227,68 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           </div>
         )}
 
-        {!isLoading && !error && !isGeneratingReport && selectedIdea?.report && (
-          <div className="space-y-4">
-            <div className="text-center pt-8 pb-4">
-              <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
-                {selectedIdea.generatedIdea}
-              </h2>
-            </div>
-
+        {!isLoading &&
+          !error &&
+          !isGeneratingReport &&
+          selectedIdea?.report && (
             <div className="space-y-4">
-              <h3 className="text-xl font-semibold text-white/90">
-                Overall KPIs
-              </h3>
-              <MetricsCards keywords={selectedIdea.report.keywords} />
-            </div>
-
-            <div>
-              <AverageTrendChart keywords={selectedIdea.report.keywords} />
-            </div>
-
-            <div className="pt-16 space-y-4">
-              <div>
-                <h3 className="text-xl font-semibold text-white/90 mb-2">
-                  Top 10 Related Keywords
-                </h3>
-                <p className="text-sm text-white/60">
-                  Click a keyword to view its trend analysis
-                </p>
+              <div className="text-center pt-8 pb-4">
+                <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
+                  {selectedIdea.generatedIdea}
+                </h2>
               </div>
-              <KeywordsTable
-                keywords={selectedIdea.report.keywords}
-                selectedKeyword={selectedKeyword}
-                onKeywordSelect={setSelectedKeyword}
-              />
-            </div>
 
-            {selectedKeyword &&
-              selectedIdea.report.keywords.find(
-                (k) => k.keyword === selectedKeyword,
-              ) && (
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr_175px] gap-4">
-                  <TrendChart
-                    key={`chart-${selectedKeyword}`}
-                    keywords={selectedIdea.report.keywords}
-                    reportId={selectedIdea.report.id}
-                    selectedKeyword={selectedKeyword}
-                  />
-                  <KeywordMetricsCards
-                    key={`metrics-${selectedKeyword}`}
-                    keyword={
-                      selectedIdea.report.keywords.find(
-                        (k) => k.keyword === selectedKeyword,
-                      )!
-                    }
-                    allKeywords={selectedIdea.report.keywords}
-                  />
+              <div className="space-y-4">
+                <h3 className="text-xl font-semibold text-white/90">
+                  Overall KPIs
+                </h3>
+                <MetricsCards keywords={selectedIdea.report.keywords} />
+              </div>
+
+              <div>
+                <AverageTrendChart keywords={selectedIdea.report.keywords} />
+              </div>
+
+              <div className="pt-16 space-y-4">
+                <div>
+                  <h3 className="text-xl font-semibold text-white/90 mb-2">
+                    Top 10 Related Keywords
+                  </h3>
+                  <p className="text-sm text-white/60">
+                    Click a keyword to view its trend analysis
+                  </p>
                 </div>
-              )}
-          </div>
-        )}
+                <KeywordsTable
+                  keywords={selectedIdea.report.keywords}
+                  selectedKeyword={selectedKeyword}
+                  onKeywordSelect={setSelectedKeyword}
+                />
+              </div>
+
+              {selectedKeyword &&
+                selectedIdea.report.keywords.find(
+                  (k) => k.keyword === selectedKeyword,
+                ) && (
+                  <div className="grid grid-cols-1 lg:grid-cols-[1fr_175px] gap-4">
+                    <TrendChart
+                      key={`chart-${selectedKeyword}`}
+                      keywords={selectedIdea.report.keywords}
+                      reportId={selectedIdea.report.id}
+                      selectedKeyword={selectedKeyword}
+                    />
+                    <KeywordMetricsCards
+                      key={`metrics-${selectedKeyword}`}
+                      keyword={
+                        selectedIdea.report.keywords.find(
+                          (k) => k.keyword === selectedKeyword,
+                        )!
+                      }
+                      allKeywords={selectedIdea.report.keywords}
+                    />
+                  </div>
+                )}
+            </div>
+          )}
 
         {/* Call to Action */}
         <div className="text-center py-8">
@@ -301,7 +309,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               target="_blank"
               rel="noopener noreferrer"
             >
-              Join the programm
+              Join the program
             </a>
           </Button>
         </div>
