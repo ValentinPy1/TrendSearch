@@ -163,7 +163,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               selectedIdea.report.keywords.find(
                 (k) => k.keyword === selectedKeyword,
               ) && (
-                <>
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
                   <TrendChart
                     key={`chart-${selectedKeyword}`}
                     keywords={selectedIdea.report.keywords}
@@ -179,7 +179,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     }
                     allKeywords={selectedIdea.report.keywords}
                   />
-                </>
+                </div>
               )}
           </div>
         )}

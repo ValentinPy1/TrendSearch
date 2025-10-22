@@ -69,22 +69,6 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       info: "Average cost per click in advertising",
     },
     {
-      label: "Top Page Bid",
-      value: `$${topPageBid.toFixed(2)}`,
-      subtitle: "advertiser bid",
-      icon: DollarSign,
-      style: getPurpleGradientText(topPageBid, maxTopPageBid),
-      info: "Estimated bid to appear at top of search results",
-    },
-    {
-      label: "3M Growth",
-      value: `${growth3m >= 0 ? '+' : ''}${growth3m.toFixed(1)}%`,
-      subtitle: "3-month trend",
-      icon: growth3m >= 0 ? TrendingUp : TrendingDown,
-      style: getTrendGradientText(growth3m),
-      info: "Search volume change over last 3 months",
-    },
-    {
       label: "YoY Growth",
       value: `${growthYoy >= 0 ? '+' : ''}${growthYoy.toFixed(1)}%`,
       subtitle: "year over year",
@@ -95,39 +79,37 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
   ];
 
   return (
-    <div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {metrics.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <Tooltip key={metric.label}>
-              <TooltipTrigger asChild>
-                <GlassmorphicCard className="p-6 cursor-help">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-white/60">{metric.label}</span>
-                      <Icon className="h-5 w-5 text-white/60" />
-                    </div>
-                    <div>
-                      <div 
-                        className="text-3xl font-bold mb-1" 
-                        style={metric.style}
-                        data-testid={`keyword-metric-${metric.label.toLowerCase().replace(/\s+/g, '-')}`}
-                      >
-                        {metric.value}
-                      </div>
-                      <div className="text-xs text-white/40">{metric.subtitle}</div>
-                    </div>
+    <div className="space-y-4">
+      {metrics.map((metric) => {
+        const Icon = metric.icon;
+        return (
+          <Tooltip key={metric.label}>
+            <TooltipTrigger asChild>
+              <GlassmorphicCard className="p-6 cursor-help">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-white/60">{metric.label}</span>
+                    <Icon className="h-5 w-5 text-white/60" />
                   </div>
-                </GlassmorphicCard>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{metric.info}</p>
-              </TooltipContent>
-            </Tooltip>
-          );
-        })}
-      </div>
+                  <div>
+                    <div 
+                      className="text-3xl font-bold mb-1" 
+                      style={metric.style}
+                      data-testid={`keyword-metric-${metric.label.toLowerCase().replace(/\s+/g, '-')}`}
+                    >
+                      {metric.value}
+                    </div>
+                    <div className="text-xs text-white/40">{metric.subtitle}</div>
+                  </div>
+                </div>
+              </GlassmorphicCard>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{metric.info}</p>
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
