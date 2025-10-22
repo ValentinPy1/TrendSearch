@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/hooks/useAuth";
-import { queryClient } from "@/lib/queryClient";
 import { IdeaGenerator } from "@/components/idea-generator";
 import { MetricsCards } from "@/components/metrics-cards";
 import { AverageTrendChart } from "@/components/average-trend-chart";
@@ -30,8 +28,12 @@ import { LogOut, Loader2, HelpCircle } from "lucide-react";
 import type { IdeaWithReport } from "@shared/schema";
 import logoImage from "@assets/image_1761146000585.png";
 
-export default function Dashboard() {
-  const { user } = useAuth();
+interface DashboardProps {
+  user: { id: string; email: string };
+  onLogout: () => void;
+}
+
+export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [selectedIdea, setSelectedIdea] = useState<IdeaWithReport | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -108,7 +110,7 @@ export default function Dashboard() {
             <img src={logoImage} alt="Pioneers AI Lab" className="h-6" />
           </a>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-white/60">{user?.email}</span>
+            <span className="text-sm text-white/60">{user.email}</span>
             <Button
               variant="ghost"
               onClick={() => setShowHelp(true)}
@@ -121,10 +123,7 @@ export default function Dashboard() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => {
-                queryClient.clear();
-                window.location.href = "/api/logout";
-              }}
+              onClick={onLogout}
               data-testid="button-logout"
             >
               <LogOut className="h-5 w-5" />
