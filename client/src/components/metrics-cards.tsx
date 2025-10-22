@@ -38,16 +38,15 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
   };
 
   // Special calculation for volume: average the square roots, then square back
-  // Using weight = (match%)² × √(volume)
+  // Using weight = (match%)² only (no volume in weight)
   const calculateVolumeAverage = () => {
     if (keywords.length === 0) return 0;
     
     const totalWeight = keywords.reduce((sum, k) => {
       const scoreStr = k.similarityScore || "0";
       const matchPct = parseFloat(scoreStr.replace('%', '')) / 100;
-      const volume = k.volume || 0;
-      // weight = (match%)² × √(volume)
-      const weight = (matchPct * matchPct) * Math.sqrt(volume);
+      // weight = (match%)² only
+      const weight = matchPct * matchPct;
       return sum + weight;
     }, 0);
     
@@ -57,7 +56,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
       const scoreStr = k.similarityScore || "0";
       const matchPct = parseFloat(scoreStr.replace('%', '')) / 100;
       const volume = k.volume || 0;
-      const weight = (matchPct * matchPct) * Math.sqrt(volume);
+      const weight = matchPct * matchPct;
       if (isNaN(weight) || isNaN(volume) || volume < 0) return sum;
       return sum + (Math.sqrt(volume) * weight);
     }, 0);
