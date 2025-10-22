@@ -293,7 +293,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         {/* Call to Action */}
         <div className="text-center py-8">
           <h3 className="text-2xl font-semibold text-white mb-6">
-            Validated an idea ? Let's help you launch it !
+            Validated an idea ? Let's launch it !
           </h3>
           <Button
             asChild
