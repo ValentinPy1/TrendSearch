@@ -168,7 +168,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
         {!isLoading && !error && selectedIdea?.report && (
           <div className="space-y-8">
-            <div className="text-center py-12">
+            <div className="text-center py-8">
               <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
                 {selectedIdea.generatedIdea}
               </h2>
@@ -179,7 +179,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               <MetricsCards keywords={selectedIdea.report.keywords} />
             </div>
 
-            <div className="pt-8">
+            <div className="pt-16 space-y-4">
+              <div>
+                <h3 className="text-xl font-semibold text-white/90 mb-2">
+                  Top 10 Related Keywords
+                </h3>
+                <p className="text-sm text-white/60">
+                  Click a keyword to view its trend analysis
+                </p>
+              </div>
               <KeywordsTable
                 keywords={selectedIdea.report.keywords}
                 selectedKeyword={selectedKeyword}

@@ -170,18 +170,8 @@ export function KeywordsTable({
 
   return (
     <GlassmorphicCard className="p-8">
-      <div className="space-y-6">
-        <div>
-          <h3 className="text-xl font-semibold text-white mb-2">
-            Top 10 Related Keywords
-          </h3>
-          <p className="text-sm text-white/60">
-            Click a keyword to view its trend analysis
-          </p>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
+      <div className="overflow-x-auto">
+        <table className="w-full">
             <thead>
               <tr className="border-b border-white/10">
                 <th
@@ -411,7 +401,6 @@ export function KeywordsTable({
               })}
             </tbody>
           </table>
-        </div>
       </div>
     </GlassmorphicCard>
   );
