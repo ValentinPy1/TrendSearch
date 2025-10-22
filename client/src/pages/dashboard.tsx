@@ -237,7 +237,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               <MetricsCards keywords={selectedIdea.report.keywords} />
             </div>
 
-            <div className="pt-8">
+            <div className="pt-4">
               <AverageTrendChart keywords={selectedIdea.report.keywords} />
             </div>
 

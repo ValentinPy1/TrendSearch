@@ -65,7 +65,7 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
           </div>
           
           {/* Sustained Growth Indicators */}
-          <div className="flex gap-4 flex-wrap">
+          <div className="flex gap-6 flex-wrap">
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="text-right cursor-help">
