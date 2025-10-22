@@ -45,6 +45,14 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
 
   const metrics = [
     {
+      label: "YoY Growth",
+      value: `${growthYoy >= 0 ? '+' : ''}${growthYoy.toFixed(1)}%`,
+      subtitle: "year over year",
+      icon: growthYoy >= 0 ? TrendingUp : TrendingDown,
+      style: getTrendGradientText(growthYoy),
+      info: "Search volume change compared to last year",
+    },
+    {
       label: "Volume",
       value: keyword.volume?.toLocaleString() || "0",
       subtitle: "monthly searches",
@@ -75,14 +83,6 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       icon: DollarSign,
       style: getPurpleGradientText(topPageBid, maxTopPageBid),
       info: "Estimated bid to appear at top of search results",
-    },
-    {
-      label: "YoY Growth",
-      value: `${growthYoy >= 0 ? '+' : ''}${growthYoy.toFixed(1)}%`,
-      subtitle: "year over year",
-      icon: growthYoy >= 0 ? TrendingUp : TrendingDown,
-      style: getTrendGradientText(growthYoy),
-      info: "Search volume change compared to last year",
     },
   ];
 
