@@ -295,10 +295,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
         {/* Call to Action */}
         <div className="text-center py-8">
-          <h3 className="text-2xl font-semibold text-white mb-6">
-            Validated an idea ?
-          </h3>
-          <h3 className="text-2xl font-semibold text-white mb-6">
+          <h3 className="text-2xl font-semibold mb-6 bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent">
+            Validated an idea ?<br />
             Let's find a cofounder and launch it with Pioneers
           </h3>
           <Button
@@ -315,7 +313,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               target="_blank"
               rel="noopener noreferrer"
             >
-              Join the program
+              Join the AI Lab
             </a>
           </Button>
         </div>
