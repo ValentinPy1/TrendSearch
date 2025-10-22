@@ -8,6 +8,7 @@ import { KeywordMetricsCards } from "@/components/keyword-metrics-cards";
 import { IdeaHistory } from "@/components/idea-history";
 import { Button } from "@/components/ui/button";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { LogOut, Loader2 } from "lucide-react";
 import type { IdeaWithReport } from "@shared/schema";
 
@@ -142,10 +143,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           </GlassmorphicCard>
         )}
 
-        {!isLoading && !error && showHistory && (
-          <IdeaHistory ideas={ideas || []} onIdeaSelect={handleIdeaSelect} />
-        )}
-
         {!isLoading && !error && selectedIdea?.report && (
           <div className="space-y-8">
             <div className="text-center py-12">
@@ -211,6 +208,18 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           </Button>
         </div>
       </main>
+
+      {/* History Sidebar */}
+      <Sheet open={showHistory} onOpenChange={setShowHistory}>
+        <SheetContent className="w-full sm:w-[500px] bg-background/95 backdrop-blur-xl border-white/10">
+          <SheetHeader>
+            <SheetTitle className="text-white">Idea History</SheetTitle>
+          </SheetHeader>
+          <div className="mt-6 overflow-y-auto h-[calc(100vh-100px)]">
+            <IdeaHistory ideas={ideas || []} onIdeaSelect={handleIdeaSelect} />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
