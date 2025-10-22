@@ -87,7 +87,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
   ];
 
   return (
-    <div className="flex flex-col justify-between h-full">
+    <div className="flex flex-col justify-between h-full gap-3">
       {metrics.map((metric) => {
         const Icon = metric.icon;
         return (
