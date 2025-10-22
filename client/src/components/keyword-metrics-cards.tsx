@@ -69,6 +69,22 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       info: "Average cost per click in advertising",
     },
     {
+      label: "Top Page Bid",
+      value: `$${topPageBid.toFixed(2)}`,
+      subtitle: "advertiser bid",
+      icon: DollarSign,
+      style: getPurpleGradientText(topPageBid, maxTopPageBid),
+      info: "Estimated bid to appear at top of search results",
+    },
+    {
+      label: "3M Growth",
+      value: `${growth3m >= 0 ? '+' : ''}${growth3m.toFixed(1)}%`,
+      subtitle: "3-month trend",
+      icon: growth3m >= 0 ? TrendingUp : TrendingDown,
+      style: getTrendGradientText(growth3m),
+      info: "Search volume change over last 3 months",
+    },
+    {
       label: "YoY Growth",
       value: `${growthYoy >= 0 ? '+' : ''}${growthYoy.toFixed(1)}%`,
       subtitle: "year over year",
