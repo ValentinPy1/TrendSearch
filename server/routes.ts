@@ -222,6 +222,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete an idea
+  app.delete("/api/ideas/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const idea = await storage.getIdea(id);
+
+      if (!idea) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+
+      if (idea.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      await storage.deleteIdea(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting idea:", error);
+      res.status(500).json({ message: "Failed to delete idea" });
+    }
+  });
+
   // Generate report for an idea
   app.post("/api/generate-report", requireAuth, async (req, res) => {
     try {

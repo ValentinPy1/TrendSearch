@@ -19,6 +19,7 @@ export interface IStorage {
   getIdea(id: string): Promise<Idea | undefined>;
   getIdeasByUser(userId: string): Promise<IdeaWithReport[]>;
   createIdea(idea: InsertIdea): Promise<Idea>;
+  deleteIdea(id: string): Promise<void>;
   
   // Report methods
   getReport(id: string): Promise<Report | undefined>;
@@ -83,6 +84,17 @@ export class DatabaseStorage implements IStorage {
   async createIdea(insertIdea: InsertIdea): Promise<Idea> {
     const result = await db.insert(ideas).values(insertIdea).returning();
     return result[0];
+  }
+
+  async deleteIdea(id: string): Promise<void> {
+    // Delete associated keywords first (via reports)
+    const report = await this.getReportByIdeaId(id);
+    if (report) {
+      await db.delete(keywords).where(eq(keywords.reportId, report.id));
+      await db.delete(reports).where(eq(reports.id, report.id));
+    }
+    // Delete the idea
+    await db.delete(ideas).where(eq(ideas.id, id));
   }
 
   async getReport(id: string): Promise<Report | undefined> {

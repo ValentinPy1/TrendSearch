@@ -1,5 +1,20 @@
-import { FileText } from "lucide-react";
+import { FileText, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useState } from "react";
 import type { IdeaWithReport } from "@shared/schema";
 
 interface IdeaHistoryProps {
@@ -8,6 +23,31 @@ interface IdeaHistoryProps {
 }
 
 export function IdeaHistory({ ideas, onIdeaSelect }: IdeaHistoryProps) {
+  const { toast } = useToast();
+  const [ideaToDelete, setIdeaToDelete] = useState<string | null>(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: async (ideaId: string) => {
+      await apiRequest("DELETE", `/api/ideas/${ideaId}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Idea deleted",
+        description: "The idea has been removed from your history.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
+      setIdeaToDelete(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete idea",
+        variant: "destructive",
+      });
+      setIdeaToDelete(null);
+    },
+  });
+
   if (ideas.length === 0) {
     return (
       <div className="text-center py-12">
@@ -21,7 +61,8 @@ export function IdeaHistory({ ideas, onIdeaSelect }: IdeaHistoryProps) {
   }
 
   return (
-    <div className="space-y-3">
+    <>
+      <div className="space-y-3">
         {ideas.map((idea) => (
           <div
             key={idea.id}
@@ -43,9 +84,42 @@ export function IdeaHistory({ ideas, onIdeaSelect }: IdeaHistoryProps) {
                   {formatDistanceToNow(new Date(idea.createdAt), { addSuffix: true })}
                 </p>
               </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="text-destructive hover:bg-destructive/10 flex-shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIdeaToDelete(idea.id);
+                }}
+                data-testid={`button-delete-${idea.id}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         ))}
-    </div>
+      </div>
+
+      <AlertDialog open={!!ideaToDelete} onOpenChange={() => setIdeaToDelete(null)}>
+        <AlertDialogContent className="bg-background/95 backdrop-blur-xl border-white/10">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">Delete Idea</AlertDialogTitle>
+            <AlertDialogDescription className="text-white/60">
+              Are you sure you want to delete this idea? This action cannot be undone and will also delete the associated report and keywords.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-white/10">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => ideaToDelete && deleteMutation.mutate(ideaToDelete)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
