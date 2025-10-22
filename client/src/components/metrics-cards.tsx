@@ -71,7 +71,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
 
   const metrics = [
     {
-      label: "Volume",
+      label: "Avg Volume",
       value: avgVolume.toLocaleString(),
       subtitle: "monthly searches",
       icon: Search,
@@ -79,7 +79,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
       info: "Weighted average monthly searches across all 10 keywords",
     },
     {
-      label: "Competition",
+      label: "Avg Competition",
       value: avgCompetition,
       subtitle: "market saturation",
       icon: Target,
@@ -87,7 +87,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
       info: "Weighted average advertiser competition (0-100 scale)",
     },
     {
-      label: "Top Page Bid",
+      label: "Avg Top Page Bid",
       value: `$${avgTopPageBid.toFixed(2)}`,
       subtitle: "advertiser bid",
       icon: DollarSign,
@@ -95,7 +95,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
       info: "Weighted average bid to appear at top of search results",
     },
     {
-      label: "CPC",
+      label: "Avg CPC",
       value: `$${avgCpc.toFixed(2)}`,
       subtitle: "cost per click",
       icon: MousePointerClick,
@@ -103,7 +103,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
       info: "Weighted average cost per click in advertising",
     },
     {
-      label: "3M Growth",
+      label: "Avg 3M Growth",
       value: `${avg3mGrowth >= 0 ? '+' : ''}${avg3mGrowth.toFixed(1)}%`,
       subtitle: "3-month trend",
       icon: avg3mGrowth >= 0 ? TrendingUp : TrendingDown,
@@ -111,7 +111,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
       info: "Weighted average search volume change over last 3 months",
     },
     {
-      label: "YoY Growth",
+      label: "Avg YoY Growth",
       value: `${avgYoyGrowth >= 0 ? '+' : ''}${avgYoyGrowth.toFixed(1)}%`,
       subtitle: "year over year",
       icon: avgYoyGrowth >= 0 ? TrendingUp : TrendingDown,
