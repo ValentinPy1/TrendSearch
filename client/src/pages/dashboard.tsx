@@ -174,13 +174,18 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               </h2>
             </div>
 
-            <MetricsCards keywords={selectedIdea.report.keywords} />
+            <div className="space-y-4">
+              <h3 className="text-xl font-semibold text-white/90">Overall KPIs</h3>
+              <MetricsCards keywords={selectedIdea.report.keywords} />
+            </div>
 
-            <KeywordsTable
-              keywords={selectedIdea.report.keywords}
-              selectedKeyword={selectedKeyword}
-              onKeywordSelect={setSelectedKeyword}
-            />
+            <div className="pt-8">
+              <KeywordsTable
+                keywords={selectedIdea.report.keywords}
+                selectedKeyword={selectedKeyword}
+                onKeywordSelect={setSelectedKeyword}
+              />
+            </div>
 
             {selectedKeyword &&
               selectedIdea.report.keywords.find(
