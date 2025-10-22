@@ -2,7 +2,7 @@ import { eq, desc } from "drizzle-orm";
 import { db } from "./db";
 import { 
   users, ideas, reports, keywords,
-  type User, type InsertUser,
+  type User, type UpsertUser,
   type Idea, type InsertIdea,
   type Report, type InsertReport,
   type Keyword, type InsertKeyword,
@@ -10,10 +10,9 @@ import {
 } from "@shared/schema";
 
 export interface IStorage {
-  // User methods
+  // User methods (for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
-  getUserByEmail(email: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  upsertUser(user: UpsertUser): Promise<User>;
   
   // Idea methods
   getIdea(id: string): Promise<Idea | undefined>;
@@ -38,14 +37,19 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const result = await db.select().from(users).where(eq(users.email, email));
-    return result[0];
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const result = await db.insert(users).values(insertUser).returning();
-    return result[0];
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
   }
 
   async getIdea(id: string): Promise<Idea | undefined> {
