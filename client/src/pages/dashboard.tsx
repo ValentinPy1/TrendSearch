@@ -264,28 +264,28 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             <div className="space-y-4 text-white/80 text-left">
               <div>
                 <h3 className="text-base font-semibold text-white mb-1">
-                  1. Enter or Generate an Idea
+                  <span className="text-blue-400">1.</span> Enter or Generate an Idea
                 </h3>
                 <p className="text-sm">
-                  Type your idea or keyword in the text field, or click the sparkle icon ✨ to generate one with AI. Press <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-xs">Enter</kbd> to generate a market report.
+                  <span className="text-white">Type</span> your idea or keyword in the text field, or <span className="text-white">click</span> the <span className="text-yellow-300">sparkle icon ✨</span> to generate one with AI. Press <kbd className="px-1.5 py-0.5 bg-blue-500/20 border border-blue-400/30 rounded text-xs text-blue-300 font-semibold">Enter</kbd> to generate a market report.
                 </p>
               </div>
 
               <div>
                 <h3 className="text-base font-semibold text-white mb-1">
-                  2. Review the 6 Key Metrics
+                  <span className="text-blue-400">2.</span> Review the <span className="text-purple-300">6 Key Metrics</span>
                 </h3>
-                <p className="text-sm">
-                  <strong>Avg Volume:</strong> Monthly search demand • <strong>Avg Competition:</strong> How crowded the market is • <strong>Avg CPC:</strong> Cost per click for ads • <strong>Avg Top Page Bid:</strong> Top-of-page advertising cost • <strong>Avg 3M Growth:</strong> Short-term trend • <strong>Avg YoY Growth:</strong> Long-term trend
+                <p className="text-sm leading-relaxed">
+                  <span className="text-green-300 font-semibold">Avg Volume:</span> Monthly search demand • <span className="text-red-300 font-semibold">Avg Competition:</span> How crowded the market is • <span className="text-purple-300 font-semibold">Avg CPC:</span> Cost per click for ads • <span className="text-purple-300 font-semibold">Avg Top Page Bid:</span> Top-of-page advertising cost • <span className="text-blue-300 font-semibold">Avg 3M Growth:</span> Short-term trend • <span className="text-blue-300 font-semibold">Avg YoY Growth:</span> Long-term trend
                 </p>
               </div>
 
               <div>
                 <h3 className="text-base font-semibold text-white mb-1">
-                  3. Explore Keyword Trends
+                  <span className="text-blue-400">3.</span> Explore Keyword Trends
                 </h3>
                 <p className="text-sm">
-                  Click any keyword in the table to view its 12-month historical search volume chart and detailed metrics.
+                  <span className="text-white">Click</span> any keyword in the table to view its <span className="text-cyan-300">12-month historical</span> search volume chart and detailed metrics.
                 </p>
               </div>
 
@@ -294,7 +294,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   💡 Pro Tip
                 </h3>
                 <p className="text-sm text-purple-200/80">
-                  Found a trending keyword? Enter it back into the text field to discover even more related ideas and iterate your way to the perfect niche!
+                  Found a <span className="text-green-300 font-semibold">trending keyword</span>? Enter it back into the text field to discover even more related ideas and <span className="text-purple-300 font-semibold">iterate</span> your way to the perfect niche!
                 </p>
               </div>
             </div>
