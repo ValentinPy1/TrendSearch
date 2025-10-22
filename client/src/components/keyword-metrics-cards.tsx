@@ -95,21 +95,21 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {metrics.map((metric) => {
         const Icon = metric.icon;
         return (
           <Tooltip key={metric.label}>
             <TooltipTrigger asChild>
-              <GlassmorphicCard className="p-3 cursor-help">
-                <div className="space-y-2">
+              <GlassmorphicCard className="p-2.5 cursor-help">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-white/60">{metric.label}</span>
                     <Icon className="h-4 w-4 text-white/60" />
                   </div>
                   <div>
                     <div 
-                      className="text-2xl font-bold mb-0.5" 
+                      className="text-2xl font-bold" 
                       style={metric.style}
                       data-testid={`keyword-metric-${metric.label.toLowerCase().replace(/\s+/g, '-')}`}
                     >
