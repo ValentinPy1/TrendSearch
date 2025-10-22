@@ -86,7 +86,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               {!isLogin && (
-                <>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName" className="text-white/90">
                       First Name
@@ -124,7 +124,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                       </p>
                     )}
                   </div>
-                </>
+                </div>
               )}
 
               <div className="space-y-2">
