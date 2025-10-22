@@ -165,6 +165,15 @@ class KeywordVectorService {
     return dotProduct;
   }
 
+  isExactKeyword(text: string): boolean {
+    if (!this.initialized) {
+      return false;
+    }
+    
+    const normalizedText = text.toLowerCase().trim();
+    return this.keywords.some(k => k.keyword.toLowerCase() === normalizedText);
+  }
+
   async findSimilarKeywords(query: string, topN: number = 10): Promise<KeywordWithScore[]> {
     if (!this.initialized) {
       await this.initialize();

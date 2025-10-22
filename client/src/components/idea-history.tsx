@@ -67,28 +67,15 @@ export function IdeaHistory({ ideas, onIdeaSelect }: IdeaHistoryProps) {
         {ideas.map((idea) => (
           <div
             key={idea.id}
-            className="bg-white/5 hover-elevate rounded-lg p-4 border border-white/10 transition-all cursor-pointer"
+            className="bg-white/5 hover-elevate rounded-lg p-4 border border-white/10 transition-all cursor-pointer relative"
             onClick={() => onIdeaSelect(idea)}
             data-testid={`idea-${idea.id}`}
           >
             <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-white font-medium line-clamp-2 flex-1">
-                    {idea.generatedIdea}
-                  </p>
-                  <Badge 
-                    variant="secondary"
-                    className={`flex-shrink-0 ${
-                      idea.originalIdea 
-                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' 
-                        : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                    }`}
-                    data-testid={`badge-${idea.originalIdea ? 'original' : 'generated'}-${idea.id}`}
-                  >
-                    {idea.originalIdea ? 'Original' : 'Generated'}
-                  </Badge>
-                </div>
+              <div className="flex-1 min-w-0 pr-20">
+                <p className="text-white font-medium line-clamp-2 mb-2">
+                  {idea.generatedIdea}
+                </p>
                 <p className="text-xs text-white/40">
                   {formatDistanceToNow(new Date(idea.createdAt), { addSuffix: true })}
                 </p>
@@ -105,6 +92,28 @@ export function IdeaHistory({ ideas, onIdeaSelect }: IdeaHistoryProps) {
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
+            </div>
+            <div className="absolute bottom-3 right-3 flex gap-1">
+              {(idea as any).isKeyword && (
+                <Badge 
+                  variant="secondary"
+                  className="bg-green-500/20 text-green-300 border-green-500/30 text-xs"
+                  data-testid={`badge-keyword-${idea.id}`}
+                >
+                  Keyword
+                </Badge>
+              )}
+              <Badge 
+                variant="secondary"
+                className={`text-xs ${
+                  idea.originalIdea 
+                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' 
+                    : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                }`}
+                data-testid={`badge-${idea.originalIdea ? 'original' : 'generated'}-${idea.id}`}
+              >
+                {idea.originalIdea ? 'Original' : 'Generated'}
+              </Badge>
             </div>
           </div>
         ))}

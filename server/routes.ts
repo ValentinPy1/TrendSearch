@@ -216,7 +216,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/ideas", requireAuth, async (req, res) => {
     try {
       const ideas = await storage.getIdeasByUser(req.session.userId!);
-      res.json(ideas);
+      
+      // Add isKeyword flag to each idea
+      const ideasWithKeywordFlag = ideas.map(idea => ({
+        ...idea,
+        isKeyword: keywordVectorService.isExactKeyword(idea.generatedIdea)
+      }));
+      
+      res.json(ideasWithKeywordFlag);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ideas" });
     }
