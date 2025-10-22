@@ -1,7 +1,9 @@
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer } from "recharts";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Keyword } from "@shared/schema";
 import { calculateAverageTrendData, calculateGrowthFromTrend } from "@/lib/trend-calculations";
+import { HelpCircle } from "lucide-react";
 
 interface AverageTrendChartProps {
   keywords: Keyword[];
@@ -52,7 +54,7 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
   return (
     <GlassmorphicCard className="p-8">
       <div className="space-y-6">
-        <div className="flex items-start justify-between">
+        <div className="space-y-4">
           <div>
             <h3 className="text-xl font-semibold text-white mb-2">
               Average Search Volume Trend
@@ -61,33 +63,102 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
               Weighted average across all 10 keywords over 12 months
             </p>
           </div>
-          <div className="flex gap-6">
-            <div className="text-right">
-              <div className="text-xs text-white/60 mb-1">3M Growth</div>
-              <div 
-                className="text-lg font-bold"
-                style={{
-                  color: growth3m >= 0 
-                    ? `hsl(142, 70%, ${100 - Math.min(1, growth3m / 200) * 50}%)` 
-                    : `hsl(0, 80%, ${100 - Math.min(1, Math.abs(growth3m) / 100) * 50}%)`
-                }}
-              >
-                {growth3m >= 0 ? '+' : ''}{growth3m.toFixed(1)}%
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-xs text-white/60 mb-1">YoY Growth</div>
-              <div 
-                className="text-lg font-bold"
-                style={{
-                  color: growthYoy >= 0 
-                    ? `hsl(142, 70%, ${100 - Math.min(1, growthYoy / 200) * 50}%)` 
-                    : `hsl(0, 80%, ${100 - Math.min(1, Math.abs(growthYoy) / 100) * 50}%)`
-                }}
-              >
-                {growthYoy >= 0 ? '+' : ''}{growthYoy.toFixed(1)}%
-              </div>
-            </div>
+
+          {/* Sustained Growth Indicators */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="bg-white/5 rounded-lg p-3 cursor-help">
+                  <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
+                    <span>Growth Slope</span>
+                    <HelpCircle className="h-3 w-3" />
+                  </div>
+                  <div className="text-base font-semibold text-white">
+                    {avgGrowthSlope.toFixed(2)}
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Linear regression slope showing the rate of volume change over time. Higher values indicate faster growth.</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="bg-white/5 rounded-lg p-3 cursor-help">
+                  <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
+                    <span>Growth R²</span>
+                    <HelpCircle className="h-3 w-3" />
+                  </div>
+                  <div className="text-base font-semibold text-white">
+                    {avgGrowthR2.toFixed(3)}
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>R-squared value (0-1) measuring how well growth fits a linear trend. Values closer to 1 indicate more predictable, linear growth.</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="bg-white/5 rounded-lg p-3 cursor-help">
+                  <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
+                    <span>Consistency</span>
+                    <HelpCircle className="h-3 w-3" />
+                  </div>
+                  <div className="text-base font-semibold text-white">
+                    {avgGrowthConsistency.toFixed(2)}
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Measures how regularly the trend moves in the same direction. Higher values mean fewer reversals in growth direction.</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="bg-white/5 rounded-lg p-3 cursor-help">
+                  <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
+                    <span>Stability</span>
+                    <HelpCircle className="h-3 w-3" />
+                  </div>
+                  <div className="text-base font-semibold text-white">
+                    {avgGrowthStability.toFixed(2)}
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Inverse of volatility - measures how steady the growth is. Higher values indicate less fluctuation in month-to-month changes.</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="bg-white/5 rounded-lg p-3 cursor-help">
+                  <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
+                    <span>Sustained Score</span>
+                    <HelpCircle className="h-3 w-3" />
+                  </div>
+                  <div 
+                    className="text-base font-bold"
+                    style={{
+                      color: avgSustainedGrowthScore >= 7 
+                        ? 'hsl(142, 70%, 60%)' 
+                        : avgSustainedGrowthScore >= 4
+                        ? 'hsl(45, 90%, 60%)'
+                        : 'hsl(0, 80%, 65%)'
+                    }}
+                  >
+                    {avgSustainedGrowthScore.toFixed(2)}
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Overall growth quality score (0-10) combining all metrics. Green ≥7 (excellent), Yellow ≥4 (moderate), Red &lt;4 (weak).</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
 
@@ -110,7 +181,7 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
                 stroke="rgba(255,255,255,0.6)"
                 tick={{ fill: "rgba(255,255,255,0.6)" }}
               />
-              <Tooltip
+              <ChartTooltip
                 contentStyle={{
                   backgroundColor: "rgba(10, 10, 15, 0.9)",
                   border: "1px solid rgba(255,255,255,0.1)",
@@ -130,49 +201,6 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
               />
             </LineChart>
           </ResponsiveContainer>
-        </div>
-
-        {/* Sustained Growth Indicators */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4 border-t border-white/10">
-          <div className="text-center">
-            <div className="text-xs text-white/60 mb-1">Growth Slope</div>
-            <div className="text-sm font-semibold text-white">
-              {avgGrowthSlope.toFixed(2)}
-            </div>
-          </div>
-          <div className="text-center">
-            <div className="text-xs text-white/60 mb-1">Growth R²</div>
-            <div className="text-sm font-semibold text-white">
-              {avgGrowthR2.toFixed(3)}
-            </div>
-          </div>
-          <div className="text-center">
-            <div className="text-xs text-white/60 mb-1">Consistency</div>
-            <div className="text-sm font-semibold text-white">
-              {avgGrowthConsistency.toFixed(2)}
-            </div>
-          </div>
-          <div className="text-center">
-            <div className="text-xs text-white/60 mb-1">Stability</div>
-            <div className="text-sm font-semibold text-white">
-              {avgGrowthStability.toFixed(2)}
-            </div>
-          </div>
-          <div className="text-center">
-            <div className="text-xs text-white/60 mb-1">Sustained Score</div>
-            <div 
-              className="text-sm font-bold"
-              style={{
-                color: avgSustainedGrowthScore >= 7 
-                  ? 'hsl(142, 70%, 60%)' 
-                  : avgSustainedGrowthScore >= 4
-                  ? 'hsl(45, 90%, 60%)'
-                  : 'hsl(0, 80%, 65%)'
-              }}
-            >
-              {avgSustainedGrowthScore.toFixed(2)}
-            </div>
-          </div>
         </div>
       </div>
     </GlassmorphicCard>
