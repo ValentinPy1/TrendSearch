@@ -80,7 +80,7 @@ Pioneer Idea Watcher helps entrepreneurs Find and validate their startup ideas u
 **Metrics Cards** (positioned above table):
 - 6 cards displaying weighted averages of all 10 keywords
 - Each metric weighted by keyword's match percentage (similarityScore)
-- Metrics: Volume, Competition, Top Page Bid, CPC, 3M Growth, YoY Growth
+- Metrics: Avg Volume, Avg Competition, Avg CPC, Avg Top Page Bid, Avg 3M Growth, Avg YoY Growth
 - Order matches table column order for consistency
 
 **Keywords Table** displays 8 columns:
@@ -88,8 +88,8 @@ Pioneer Idea Watcher helps entrepreneurs Find and validate their startup ideas u
 2. Match - similarity score to the idea (percentage with blue gradient 0-100)
 3. Volume - monthly search volume
 4. Competition - competition level (0-100 with red gradient)
-5. Top Page Bid - average top-of-page bid (purple gradient based on max value)
-6. CPC - cost per click (purple gradient based on max value)
+5. CPC - cost per click (purple gradient based on max value)
+6. Top Page Bid - average top-of-page bid (purple gradient based on max value)
 7. 3Mo Trend - 3-month growth percentage
 8. YoY Trend - year-over-year growth percentage
 

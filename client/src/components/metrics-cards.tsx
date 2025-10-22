@@ -87,20 +87,20 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
       info: "Weighted average advertiser competition (0-100 scale)",
     },
     {
-      label: "Avg Top Page Bid",
-      value: `$${avgTopPageBid.toFixed(2)}`,
-      subtitle: "advertiser bid",
-      icon: DollarSign,
-      style: getPurpleGradientText(avgTopPageBid, maxTopPageBid),
-      info: "Weighted average bid to appear at top of search results",
-    },
-    {
       label: "Avg CPC",
       value: `$${avgCpc.toFixed(2)}`,
       subtitle: "cost per click",
       icon: MousePointerClick,
       style: getPurpleGradientText(avgCpc, maxCpc),
       info: "Weighted average cost per click in advertising",
+    },
+    {
+      label: "Avg Top Page Bid",
+      value: `$${avgTopPageBid.toFixed(2)}`,
+      subtitle: "advertiser bid",
+      icon: DollarSign,
+      style: getPurpleGradientText(avgTopPageBid, maxTopPageBid),
+      info: "Weighted average bid to appear at top of search results",
     },
     {
       label: "Avg 3M Growth",
