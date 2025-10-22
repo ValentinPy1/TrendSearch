@@ -164,7 +164,7 @@ export function IdeaGenerator({
               }
               variant="ghost"
               size="icon"
-              className="h-10 w-10 text-primary hover:bg-transparent"
+              className="h-10 w-10 text-yellow-300 hover:bg-transparent"
               data-testid="button-generate"
             >
               {generateIdeaMutation.isPending ||
