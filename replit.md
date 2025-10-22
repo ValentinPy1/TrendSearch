@@ -145,7 +145,7 @@ Required:
 5. View 6 metric cards and interactive 12-month trend chart
 6. Select keywords from table to view their trends
 7. Click "History" to view all previous ideas and reports
-8. At the bottom of the page: Call-to-action linking to thepioneer.vc - "Validated an idea? Let's help you launch it."
+8. At the bottom of the page: Call-to-action linking to thepioneer.vc - "Validated an idea ? Let's help you launch it !"
 
 ## Development Notes
 

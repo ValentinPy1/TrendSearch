@@ -21,14 +21,19 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
 
-  const { data: ideas, isLoading, error, refetch } = useQuery<IdeaWithReport[]>({
-    queryKey: ['/api/ideas'],
+  const {
+    data: ideas,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<IdeaWithReport[]>({
+    queryKey: ["/api/ideas"],
   });
 
   // Update selected idea when ideas change
   useEffect(() => {
     if (ideas && ideas.length > 0) {
-      if (!selectedIdea || !ideas.find(i => i.id === selectedIdea.id)) {
+      if (!selectedIdea || !ideas.find((i) => i.id === selectedIdea.id)) {
         // Select the most recent idea
         const newIdea = ideas[0];
         setSelectedIdea(newIdea);
@@ -38,11 +43,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         }
       } else {
         // Update selected idea with latest data
-        const updated = ideas.find(i => i.id === selectedIdea.id);
+        const updated = ideas.find((i) => i.id === selectedIdea.id);
         if (updated) {
           setSelectedIdea(updated);
           // Set first keyword if not already set
-          if (updated?.report?.keywords && updated.report.keywords.length > 0 && !selectedKeyword) {
+          if (
+            updated?.report?.keywords &&
+            updated.report.keywords.length > 0 &&
+            !selectedKeyword
+          ) {
             setSelectedKeyword(updated.report.keywords[0].keyword);
           }
         }
@@ -70,7 +79,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
   const handleReportGenerated = (ideaWithReport: IdeaWithReport) => {
     setSelectedIdea(ideaWithReport);
-    if (ideaWithReport?.report?.keywords && ideaWithReport.report.keywords.length > 0) {
+    if (
+      ideaWithReport?.report?.keywords &&
+      ideaWithReport.report.keywords.length > 0
+    ) {
       setSelectedKeyword(ideaWithReport.report.keywords[0].keyword);
     }
     refetch();
@@ -119,7 +131,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 Error loading ideas
               </h3>
               <p className="text-sm text-white/60 mb-4">
-                {error instanceof Error ? error.message : "Something went wrong"}
+                {error instanceof Error
+                  ? error.message
+                  : "Something went wrong"}
               </p>
               <Button onClick={() => refetch()} variant="secondary">
                 Try Again
@@ -129,10 +143,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         )}
 
         {!isLoading && !error && showHistory && (
-          <IdeaHistory
-            ideas={ideas || []}
-            onIdeaSelect={handleIdeaSelect}
-          />
+          <IdeaHistory ideas={ideas || []} onIdeaSelect={handleIdeaSelect} />
         )}
 
         {!isLoading && !error && selectedIdea?.report && (
@@ -151,34 +162,42 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               onKeywordSelect={setSelectedKeyword}
             />
 
-            {selectedKeyword && selectedIdea.report.keywords.find(k => k.keyword === selectedKeyword) && (
-              <>
-                <TrendChart
-                  key={`chart-${selectedKeyword}`}
-                  keywords={selectedIdea.report.keywords}
-                  reportId={selectedIdea.report.id}
-                  selectedKeyword={selectedKeyword}
-                />
-                <KeywordMetricsCards 
-                  key={`metrics-${selectedKeyword}`}
-                  keyword={selectedIdea.report.keywords.find(k => k.keyword === selectedKeyword)!}
-                  allKeywords={selectedIdea.report.keywords}
-                />
-              </>
-            )}
+            {selectedKeyword &&
+              selectedIdea.report.keywords.find(
+                (k) => k.keyword === selectedKeyword,
+              ) && (
+                <>
+                  <TrendChart
+                    key={`chart-${selectedKeyword}`}
+                    keywords={selectedIdea.report.keywords}
+                    reportId={selectedIdea.report.id}
+                    selectedKeyword={selectedKeyword}
+                  />
+                  <KeywordMetricsCards
+                    key={`metrics-${selectedKeyword}`}
+                    keyword={
+                      selectedIdea.report.keywords.find(
+                        (k) => k.keyword === selectedKeyword,
+                      )!
+                    }
+                    allKeywords={selectedIdea.report.keywords}
+                  />
+                </>
+              )}
           </div>
         )}
 
         {/* Call to Action */}
         <div className="text-center py-8">
           <h3 className="text-2xl font-semibold text-white mb-6">
-            Validated an idea? Let's help you launch it.
+            Validated an idea ? Let's help you launch it !
           </h3>
           <Button
             asChild
             className="px-8 py-3 text-base font-semibold text-white border border-white/20 shadow-[0_0_30px_rgba(139,92,246,0.5)] hover:shadow-[0_0_50px_rgba(139,92,246,0.7)] hover:scale-105 transition-all duration-300"
             style={{
-              background: 'radial-gradient(ellipse 120% 120% at 50% -20%, rgba(139, 92, 246, 0.95), rgba(59, 130, 246, 0.85) 60%, rgba(99, 102, 241, 0.75))'
+              background:
+                "radial-gradient(ellipse 120% 120% at 50% -20%, rgba(139, 92, 246, 0.95), rgba(59, 130, 246, 0.85) 60%, rgba(99, 102, 241, 0.75))",
             }}
             data-testid="button-launch-cta"
           >
