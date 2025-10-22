@@ -119,6 +119,7 @@ Pioneer Idea Watcher helps entrepreneurs Find and validate their startup ideas u
 - ✅ Glassmorphic UI design
 - ✅ Real LLM integration (GPT-4o-mini via Replit AI Integrations)
 - ✅ Real keyword data (80,157 keywords from Google Ads dataset with binary embeddings)
+- ✅ Call-to-action linking to thepioneer.vc for validated ideas
 
 ## Environment Variables
 
@@ -144,6 +145,7 @@ Required:
 5. View 6 metric cards and interactive 12-month trend chart
 6. Select keywords from table to view their trends
 7. Click "History" to view all previous ideas and reports
+8. At the bottom of the page: Call-to-action linking to thepioneer.vc - "Validated an idea? Let's help you launch it."
 
 ## Development Notes
 

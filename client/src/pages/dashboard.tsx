@@ -168,6 +168,28 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             )}
           </div>
         )}
+
+        {/* Call to Action */}
+        <GlassmorphicCard className="p-8 text-center">
+          <h3 className="text-2xl font-semibold text-white mb-3">
+            Validated an idea? Let's help you launch it.
+          </h3>
+          <Button
+            asChild
+            variant="default"
+            size="lg"
+            className="mt-2"
+            data-testid="button-launch-cta"
+          >
+            <a
+              href="https://thepioneer.vc/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Visit Pioneer
+            </a>
+          </Button>
+        </GlassmorphicCard>
       </main>
     </div>
   );
