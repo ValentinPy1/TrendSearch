@@ -295,33 +295,33 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     />
                   </div>
                 )}
+
+              {/* Call to Action */}
+              <div className="text-center py-8">
+                <h3 className="text-2xl font-semibold mb-6 bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent">
+                  Validated an idea ?<br />
+                  Let's find a cofounder and launch with Pioneers
+                </h3>
+                <Button
+                  asChild
+                  className="px-8 py-3 text-base font-semibold text-white border border-white/20 shadow-[0_0_30px_rgba(139,92,246,0.5)] hover:shadow-[0_0_50px_rgba(139,92,246,0.7)] hover:scale-105 transition-all duration-300"
+                  style={{
+                    background:
+                      "radial-gradient(ellipse 120% 120% at 50% -20%, rgba(139, 92, 246, 0.95), rgba(59, 130, 246, 0.85) 60%, rgba(99, 102, 241, 0.75))",
+                  }}
+                  data-testid="button-launch-cta"
+                >
+                  <a
+                    href="https://thepioneer.vc/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {">"} Join the AI Lab
+                  </a>
+                </Button>
+              </div>
             </div>
           )}
-
-        {/* Call to Action */}
-        <div className="text-center py-8">
-          <h3 className="text-2xl font-semibold mb-6 bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent">
-            Validated an idea ?<br />
-            Let's find a cofounder and launch with Pioneers
-          </h3>
-          <Button
-            asChild
-            className="px-8 py-3 text-base font-semibold text-white border border-white/20 shadow-[0_0_30px_rgba(139,92,246,0.5)] hover:shadow-[0_0_50px_rgba(139,92,246,0.7)] hover:scale-105 transition-all duration-300"
-            style={{
-              background:
-                "radial-gradient(ellipse 120% 120% at 50% -20%, rgba(139, 92, 246, 0.95), rgba(59, 130, 246, 0.85) 60%, rgba(99, 102, 241, 0.75))",
-            }}
-            data-testid="button-launch-cta"
-          >
-            <a
-              href="https://thepioneer.vc/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {">"} Launch your startup
-            </a>
-          </Button>
-        </div>
       </main>
 
       {/* History Sidebar */}
