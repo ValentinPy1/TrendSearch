@@ -39,6 +39,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [showHelp, setShowHelp] = useState(false);
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState<string | null>(null);
 
   const {
     data: ideas,
@@ -138,6 +139,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           onReportGenerated={handleReportGenerated}
           currentIdea={selectedIdea}
           onGeneratingChange={setIsGeneratingReport}
+          searchKeyword={searchKeyword}
         />
 
         {isLoading && (
@@ -260,6 +262,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   keywords={selectedIdea.report.keywords}
                   selectedKeyword={selectedKeyword}
                   onKeywordSelect={setSelectedKeyword}
+                  onSearchKeyword={setSearchKeyword}
                 />
               </div>
 

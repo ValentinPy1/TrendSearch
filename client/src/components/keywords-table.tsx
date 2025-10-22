@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Copy, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import {
   Tooltip,
   TooltipContent,
@@ -23,13 +25,16 @@ interface KeywordsTableProps {
   keywords: Keyword[];
   selectedKeyword: string | null;
   onKeywordSelect: (keyword: string) => void;
+  onSearchKeyword?: (keyword: string) => void;
 }
 
 export function KeywordsTable({
   keywords,
   selectedKeyword,
   onKeywordSelect,
+  onSearchKeyword,
 }: KeywordsTableProps) {
+  const { toast } = useToast();
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
@@ -334,14 +339,50 @@ export function KeywordsTable({
                     key={keyword.id}
                     onClick={() => onKeywordSelect(keyword.keyword)}
                     className={`
-                      border-b border-white/5 cursor-pointer transition-all
+                      group border-b border-white/5 cursor-pointer transition-all
                       hover-elevate active-elevate-2
                       ${selectedKeyword === keyword.keyword ? "bg-white/10" : ""}
                     `}
                     data-testid={`row-keyword-${index}`}
                   >
                     <td className="py-4 px-4 text-sm text-white font-medium">
-                      {keyword.keyword}
+                      <div className="flex items-center gap-2">
+                        <span>{keyword.keyword}</span>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(keyword.keyword);
+                              toast({
+                                title: "Copied!",
+                                description: `"${keyword.keyword}" copied to clipboard`,
+                              });
+                            }}
+                            data-testid={`button-copy-${index}`}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSearchKeyword?.(keyword.keyword);
+                              toast({
+                                title: "Keyword added to search",
+                                description: `"${keyword.keyword}" added to input field`,
+                              });
+                            }}
+                            data-testid={`button-search-${index}`}
+                          >
+                            <Search className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
                     </td>
                     <td className="py-4 px-4 text-sm text-center">
                       <span

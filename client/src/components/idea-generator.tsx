@@ -14,6 +14,7 @@ interface IdeaGeneratorProps {
   onReportGenerated: (idea: IdeaWithReport) => void;
   currentIdea?: IdeaWithReport | null;
   onGeneratingChange?: (isGenerating: boolean) => void;
+  searchKeyword?: string | null;
 }
 
 export function IdeaGenerator({
@@ -22,6 +23,7 @@ export function IdeaGenerator({
   onReportGenerated,
   currentIdea,
   onGeneratingChange,
+  searchKeyword,
 }: IdeaGeneratorProps) {
   const { toast } = useToast();
 
@@ -30,6 +32,13 @@ export function IdeaGenerator({
       idea: "",
     },
   });
+
+  // Update form when searchKeyword changes
+  useEffect(() => {
+    if (searchKeyword) {
+      form.setValue("idea", searchKeyword);
+    }
+  }, [searchKeyword, form]);
 
   const generateIdeaMutation = useMutation({
     mutationFn: async (data: { originalIdea: string | null }) => {
