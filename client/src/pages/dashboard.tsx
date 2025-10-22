@@ -48,30 +48,20 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     queryKey: ["/api/ideas"],
   });
 
-  // Update selected idea when ideas change
+  // Update selected idea when ideas change (but don't auto-select on initial load)
   useEffect(() => {
-    if (ideas && ideas.length > 0) {
-      if (!selectedIdea || !ideas.find((i) => i.id === selectedIdea.id)) {
-        // Select the most recent idea
-        const newIdea = ideas[0];
-        setSelectedIdea(newIdea);
-        // Set first keyword as selected
-        if (newIdea?.report?.keywords && newIdea.report.keywords.length > 0) {
-          setSelectedKeyword(newIdea.report.keywords[0].keyword);
-        }
-      } else {
-        // Update selected idea with latest data
-        const updated = ideas.find((i) => i.id === selectedIdea.id);
-        if (updated) {
-          setSelectedIdea(updated);
-          // Set first keyword if not already set
-          if (
-            updated?.report?.keywords &&
-            updated.report.keywords.length > 0 &&
-            !selectedKeyword
-          ) {
-            setSelectedKeyword(updated.report.keywords[0].keyword);
-          }
+    if (ideas && ideas.length > 0 && selectedIdea) {
+      // Only update if there's already a selected idea
+      const updated = ideas.find((i) => i.id === selectedIdea.id);
+      if (updated) {
+        setSelectedIdea(updated);
+        // Set first keyword if not already set
+        if (
+          updated?.report?.keywords &&
+          updated.report.keywords.length > 0 &&
+          !selectedKeyword
+        ) {
+          setSelectedKeyword(updated.report.keywords[0].keyword);
         }
       }
     }
