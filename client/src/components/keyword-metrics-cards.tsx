@@ -87,13 +87,13 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
   ];
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col justify-between h-full">
       {metrics.map((metric) => {
         const Icon = metric.icon;
         return (
           <Tooltip key={metric.label}>
             <TooltipTrigger asChild>
-              <GlassmorphicCard className="p-2.5 cursor-help">
+              <GlassmorphicCard className="p-2.5 cursor-help flex-1 flex flex-col justify-center">
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-white/60">{metric.label}</span>
