@@ -8,14 +8,16 @@ interface MetricsCardsProps {
 }
 
 export function MetricsCards({ keywords }: MetricsCardsProps) {
-  // Calculate weighted averages based on match percentage (similarityScore)
+  // Calculate weighted averages using: weight = (match%)² × √(volume)
   const calculateWeightedAverage = (getValue: (k: Keyword) => number) => {
     if (keywords.length === 0) return 0;
     
     const totalWeight = keywords.reduce((sum, k) => {
       const scoreStr = k.similarityScore || "0";
-      // Remove % sign if present and convert to 0-1 range
-      const weight = parseFloat(scoreStr.replace('%', '')) / 100;
+      const matchPct = parseFloat(scoreStr.replace('%', '')) / 100; // 0-1 range
+      const volume = k.volume || 0;
+      // weight = (match%)² × √(volume)
+      const weight = (matchPct * matchPct) * Math.sqrt(volume);
       return sum + weight;
     }, 0);
     
@@ -23,8 +25,9 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
     
     const weightedSum = keywords.reduce((sum, k) => {
       const scoreStr = k.similarityScore || "0";
-      // Remove % sign if present and convert to 0-1 range
-      const weight = parseFloat(scoreStr.replace('%', '')) / 100;
+      const matchPct = parseFloat(scoreStr.replace('%', '')) / 100;
+      const volume = k.volume || 0;
+      const weight = (matchPct * matchPct) * Math.sqrt(volume);
       const value = getValue(k);
       // Add defensive check for NaN
       if (isNaN(weight) || isNaN(value)) return sum;
