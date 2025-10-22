@@ -240,7 +240,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
               <div className="space-y-4">
                 <h3 className="text-xl font-semibold text-white/90">
-                  Overall KPIs
+                  Aggregated KPIs
                 </h3>
                 <MetricsCards keywords={selectedIdea.report.keywords} />
               </div>
