@@ -87,23 +87,6 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
               <TooltipTrigger asChild>
                 <div className="text-right cursor-help">
                   <div className="flex items-center justify-end gap-1 text-xs text-white/60 mb-1">
-                    <span>R²</span>
-                    <HelpCircle className="h-3 w-3" />
-                  </div>
-                  <div className="text-sm font-semibold text-white">
-                    {avgGrowthR2.toFixed(3)}
-                  </div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>R-squared value (0-1) measuring how well growth fits a linear trend. Values closer to 1 indicate more predictable, linear growth.</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="text-right cursor-help">
-                  <div className="flex items-center justify-end gap-1 text-xs text-white/60 mb-1">
                     <span>Consistency</span>
                     <HelpCircle className="h-3 w-3" />
                   </div>
@@ -131,6 +114,23 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
               </TooltipTrigger>
               <TooltipContent>
                 <p>Inverse of volatility - measures how steady the growth is. Higher values indicate less fluctuation in month-to-month changes.</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-right cursor-help">
+                  <div className="flex items-center justify-end gap-1 text-xs text-white/60 mb-1">
+                    <span>R²</span>
+                    <HelpCircle className="h-3 w-3" />
+                  </div>
+                  <div className="text-sm font-semibold text-white">
+                    {avgGrowthR2.toFixed(3)}
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>R-squared value (0-1) measuring how well growth fits a linear trend. Values closer to 1 indicate more predictable, linear growth.</p>
               </TooltipContent>
             </Tooltip>
 
