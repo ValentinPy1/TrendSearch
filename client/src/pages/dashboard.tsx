@@ -318,7 +318,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               target="_blank"
               rel="noopener noreferrer"
             >
-              {">"} Join the AI Lab
+              {">"} Launch your startup
             </a>
           </Button>
         </div>
@@ -421,7 +421,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         rel="noopener noreferrer"
         className="fixed bottom-4 right-4 z-50"
       >
-        <img src={logoImage} alt="Pioneers AI Lab" className="h-6 opacity-60 hover:opacity-100 transition-opacity" />
+        <img
+          src={logoImage}
+          alt="Pioneers AI Lab"
+          className="h-6 opacity-60 hover:opacity-100 transition-opacity"
+        />
       </a>
     </div>
   );
