@@ -122,11 +122,12 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             <span className="text-sm text-white/60">{user.email}</span>
             <Button
               variant="ghost"
-              size="icon"
               onClick={() => setShowHelp(true)}
               data-testid="button-help"
+              className="gap-2"
             >
               <HelpCircle className="h-5 w-5" />
+              <span>Help</span>
             </Button>
             <Button
               variant="ghost"
@@ -301,7 +302,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         <div className="text-center py-8">
           <h3 className="text-2xl font-semibold mb-6 bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent">
             Validated an idea ?<br />
-            Let's find a cofounder and launch it with Pioneers
+            Let's find a cofounder and launch with Pioneers
           </h3>
           <Button
             asChild
@@ -317,7 +318,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               target="_blank"
               rel="noopener noreferrer"
             >
-              {">"} Join Pioneers
+              {">"} Join the AI Lab
             </a>
           </Button>
         </div>
@@ -412,6 +413,16 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           </DialogContent>
         </DialogPortal>
       </Dialog>
+
+      {/* Logo in bottom right corner */}
+      <a
+        href="https://www.pioneerslab.ai/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-4 right-4 z-50"
+      >
+        <img src={logoImage} alt="Pioneers AI Lab" className="h-6 opacity-60 hover:opacity-100 transition-opacity" />
+      </a>
     </div>
   );
 }
