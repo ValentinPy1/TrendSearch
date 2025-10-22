@@ -9,7 +9,8 @@ import { IdeaHistory } from "@/components/idea-history";
 import { Button } from "@/components/ui/button";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { LogOut, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { LogOut, Loader2, HelpCircle } from "lucide-react";
 import type { IdeaWithReport } from "@shared/schema";
 
 interface DashboardProps {
@@ -20,6 +21,7 @@ interface DashboardProps {
 export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [selectedIdea, setSelectedIdea] = useState<IdeaWithReport | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
 
   const {
@@ -96,6 +98,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           <h1 className="text-2xl font-bold text-white">Idea Watcher</h1>
           <div className="flex items-center gap-4">
             <span className="text-sm text-white/60">{user.email}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowHelp(true)}
+              data-testid="button-help"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -220,6 +230,65 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Help Dialog */}
+      <Dialog open={showHelp} onOpenChange={setShowHelp}>
+        <DialogContent className="bg-background/95 backdrop-blur-xl border-white/10 max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl text-white">How to Use Idea Watcher</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Validate your startup ideas with real market data from 80,000+ keywords
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 text-white/80">
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">1. Generate or Validate an Idea</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li><strong>AI Generation:</strong> Leave the input blank and click "Generate Idea" to get an ultra-concise microSaaS idea powered by GPT-4o-mini</li>
+                <li><strong>Your Own Idea:</strong> Enter your startup idea and click "Generate Idea" to validate it</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">2. Get Market Insights</h3>
+              <p className="text-sm mb-2">
+                Click "Generate Report" to analyze your idea with real Google Ads data:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li><strong>6 Weighted Metrics:</strong> Average volume, competition, CPC, top page bid, 3M growth, and YoY growth</li>
+                <li><strong>10 Related Keywords:</strong> Semantically matched keywords using AI embeddings</li>
+                <li><strong>Color-Coded Data:</strong> Blue for match %, red for competition, purple for costs</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">3. Analyze Trends</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li>Click any keyword in the table to view its 12-month trend chart</li>
+                <li>See key metrics on the right sidebar (Volume, Competition, CPC, Top Page Bid, YoY Growth)</li>
+                <li>Compare different keywords by clicking through the table</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">4. Manage Your Ideas</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li>Click "History" to view all your generated ideas</li>
+                <li>Ideas are tagged as "Original" (yours) or "Generated" (AI)</li>
+                <li>Click any idea to view its full report</li>
+                <li>Delete ideas using the trash icon</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">5. Take Action</h3>
+              <p className="text-sm">
+                Once you've validated a promising idea, click "Join the programm" at the bottom to launch it with The Pioneer.
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
