@@ -54,7 +54,7 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
   return (
     <GlassmorphicCard className="p-8">
       <div className="space-y-6">
-        <div className="space-y-4">
+        <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <h3 className="text-xl font-semibold text-white mb-2">
               Average Search Volume Trend
@@ -63,17 +63,17 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
               Weighted average across all 10 keywords over 12 months
             </p>
           </div>
-
+          
           {/* Sustained Growth Indicators */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="flex gap-4 flex-wrap">
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="bg-white/5 rounded-lg p-3 cursor-help">
-                  <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
-                    <span>Growth Slope</span>
+                <div className="text-right cursor-help">
+                  <div className="flex items-center justify-end gap-1 text-xs text-white/60 mb-1">
+                    <span>Slope</span>
                     <HelpCircle className="h-3 w-3" />
                   </div>
-                  <div className="text-base font-semibold text-white">
+                  <div className="text-sm font-semibold text-white">
                     {avgGrowthSlope.toFixed(2)}
                   </div>
                 </div>
@@ -85,12 +85,12 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="bg-white/5 rounded-lg p-3 cursor-help">
-                  <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
-                    <span>Growth R²</span>
+                <div className="text-right cursor-help">
+                  <div className="flex items-center justify-end gap-1 text-xs text-white/60 mb-1">
+                    <span>R²</span>
                     <HelpCircle className="h-3 w-3" />
                   </div>
-                  <div className="text-base font-semibold text-white">
+                  <div className="text-sm font-semibold text-white">
                     {avgGrowthR2.toFixed(3)}
                   </div>
                 </div>
@@ -102,12 +102,12 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="bg-white/5 rounded-lg p-3 cursor-help">
-                  <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
+                <div className="text-right cursor-help">
+                  <div className="flex items-center justify-end gap-1 text-xs text-white/60 mb-1">
                     <span>Consistency</span>
                     <HelpCircle className="h-3 w-3" />
                   </div>
-                  <div className="text-base font-semibold text-white">
+                  <div className="text-sm font-semibold text-white">
                     {avgGrowthConsistency.toFixed(2)}
                   </div>
                 </div>
@@ -119,12 +119,12 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="bg-white/5 rounded-lg p-3 cursor-help">
-                  <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
+                <div className="text-right cursor-help">
+                  <div className="flex items-center justify-end gap-1 text-xs text-white/60 mb-1">
                     <span>Stability</span>
                     <HelpCircle className="h-3 w-3" />
                   </div>
-                  <div className="text-base font-semibold text-white">
+                  <div className="text-sm font-semibold text-white">
                     {avgGrowthStability.toFixed(2)}
                   </div>
                 </div>
@@ -136,13 +136,13 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="bg-white/5 rounded-lg p-3 cursor-help">
-                  <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
-                    <span>Sustained Score</span>
+                <div className="text-right cursor-help">
+                  <div className="flex items-center justify-end gap-1 text-xs text-white/60 mb-1">
+                    <span>Score</span>
                     <HelpCircle className="h-3 w-3" />
                   </div>
                   <div 
-                    className="text-base font-bold"
+                    className="text-sm font-bold"
                     style={{
                       color: avgSustainedGrowthScore >= 7 
                         ? 'hsl(142, 70%, 60%)' 
