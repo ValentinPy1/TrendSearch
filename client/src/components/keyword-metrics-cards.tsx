@@ -101,15 +101,15 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
         return (
           <Tooltip key={metric.label}>
             <TooltipTrigger asChild>
-              <GlassmorphicCard className="p-6 cursor-help">
-                <div className="space-y-3">
+              <GlassmorphicCard className="p-3 cursor-help">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-white/60">{metric.label}</span>
-                    <Icon className="h-5 w-5 text-white/60" />
+                    <span className="text-xs text-white/60">{metric.label}</span>
+                    <Icon className="h-4 w-4 text-white/60" />
                   </div>
                   <div>
                     <div 
-                      className="text-3xl font-bold mb-1" 
+                      className="text-2xl font-bold mb-0.5" 
                       style={metric.style}
                       data-testid={`keyword-metric-${metric.label.toLowerCase().replace(/\s+/g, '-')}`}
                     >
