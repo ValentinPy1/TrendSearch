@@ -36,6 +36,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const {
     data: ideas,
@@ -137,6 +138,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           onShowHistory={() => setShowHistory(!showHistory)}
           onReportGenerated={handleReportGenerated}
           currentIdea={selectedIdea}
+          onGeneratingChange={setIsGeneratingReport}
         />
 
         {isLoading && (
@@ -166,7 +168,48 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           </GlassmorphicCard>
         )}
 
-        {!isLoading && !error && selectedIdea?.report && (
+        {!isLoading && !error && isGeneratingReport && (
+          <div className="space-y-8">
+            <div className="text-center pt-8 pb-4">
+              <div className="h-12 bg-white/10 rounded-lg animate-pulse max-w-2xl mx-auto" />
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-xl font-semibold text-white/90">Overall KPIs</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <GlassmorphicCard key={i} className="p-6">
+                    <div className="space-y-3">
+                      <div className="h-4 bg-white/10 rounded animate-pulse w-24" />
+                      <div className="h-8 bg-white/10 rounded animate-pulse w-20" />
+                      <div className="h-3 bg-white/10 rounded animate-pulse w-16" />
+                    </div>
+                  </GlassmorphicCard>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-16 space-y-4">
+              <div>
+                <h3 className="text-xl font-semibold text-white/90 mb-2">
+                  Top 10 Related Keywords
+                </h3>
+                <p className="text-sm text-white/60">
+                  Generating your market analysis...
+                </p>
+              </div>
+              <GlassmorphicCard className="p-6">
+                <div className="space-y-3">
+                  {[...Array(10)].map((_, i) => (
+                    <div key={i} className="h-12 bg-white/10 rounded animate-pulse" />
+                  ))}
+                </div>
+              </GlassmorphicCard>
+            </div>
+          </div>
+        )}
+
+        {!isLoading && !error && !isGeneratingReport && selectedIdea?.report && (
           <div className="space-y-4">
             <div className="text-center pt-8 pb-4">
               <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">

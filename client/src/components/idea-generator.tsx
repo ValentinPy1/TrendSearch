@@ -1,5 +1,6 @@
 import { useForm } from "react-hook-form";
 import { useMutation } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -12,6 +13,7 @@ interface IdeaGeneratorProps {
   onShowHistory: () => void;
   onReportGenerated: (idea: IdeaWithReport) => void;
   currentIdea?: IdeaWithReport | null;
+  onGeneratingChange?: (isGenerating: boolean) => void;
 }
 
 export function IdeaGenerator({
@@ -19,6 +21,7 @@ export function IdeaGenerator({
   onShowHistory,
   onReportGenerated,
   currentIdea,
+  onGeneratingChange,
 }: IdeaGeneratorProps) {
   const { toast } = useToast();
 
@@ -89,6 +92,13 @@ export function IdeaGenerator({
       });
     },
   });
+
+  // Notify parent when generating state changes
+  useEffect(() => {
+    const isGenerating =
+      generateIdeaMutation.isPending || generateReportMutation.isPending;
+    onGeneratingChange?.(isGenerating);
+  }, [generateIdeaMutation.isPending, generateReportMutation.isPending, onGeneratingChange]);
 
   const handleGenerateIdea = () => {
     // Always generate new AI idea (pass null to force AI generation)
