@@ -79,26 +79,50 @@ async function prebuildEmbeddings() {
   console.log(`  Progress: ${keywords.length}/${keywords.length} (100%)`);
   console.log(`✓ Generated ${embeddings.length} embeddings\n`);
 
-  // Save to file
+  // Save to file using streaming approach
   console.log('[4/4] Saving prebuilt vector database...');
   const outputPath = path.join(process.cwd(), 'data', 'embeddings.json');
   
-  const vectorData: PrebuiltVectorData = {
-    keywords,
-    embeddings,
-    version: '1.0.0',
-    createdAt: new Date().toISOString(),
-  };
-
-  fs.writeFileSync(outputPath, JSON.stringify(vectorData));
+  const stream = fs.createWriteStream(outputPath);
+  
+  // Write JSON manually in chunks to avoid memory issues
+  stream.write('{\n');
+  stream.write(`  "version": "1.0.0",\n`);
+  stream.write(`  "createdAt": "${new Date().toISOString()}",\n`);
+  
+  // Write keywords array
+  stream.write('  "keywords": [\n');
+  for (let i = 0; i < keywords.length; i++) {
+    const comma = i < keywords.length - 1 ? ',' : '';
+    stream.write(`    ${JSON.stringify(keywords[i])}${comma}\n`);
+  }
+  stream.write('  ],\n');
+  
+  // Write embeddings array
+  stream.write('  "embeddings": [\n');
+  for (let i = 0; i < embeddings.length; i++) {
+    const comma = i < embeddings.length - 1 ? ',' : '';
+    stream.write(`    ${JSON.stringify(embeddings[i])}${comma}\n`);
+  }
+  stream.write('  ]\n');
+  stream.write('}\n');
+  
+  stream.end();
+  
+  // Wait for stream to finish
+  await new Promise((resolve, reject) => {
+    stream.on('finish', resolve);
+    stream.on('error', reject);
+  });
   
   const fileSizeKB = Math.round(fs.statSync(outputPath).size / 1024);
-  console.log(`✓ Saved to ${outputPath} (${fileSizeKB} KB)\n`);
+  const fileSizeMB = (fileSizeKB / 1024).toFixed(2);
+  console.log(`✓ Saved to ${outputPath} (${fileSizeMB} MB)\n`);
 
   console.log('=== Prebuild Complete ===');
   console.log(`Total keywords: ${keywords.length}`);
   console.log(`Embedding dimensions: ${embeddings[0].length}`);
-  console.log(`File size: ${fileSizeKB} KB`);
+  console.log(`File size: ${fileSizeMB} MB`);
 }
 
 prebuildEmbeddings().catch(error => {
