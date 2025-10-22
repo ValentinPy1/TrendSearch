@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { LogOut, Loader2, HelpCircle } from "lucide-react";
 import type { IdeaWithReport } from "@shared/schema";
+import logoImage from "@assets/image_1761146000585.png";
 
 interface DashboardProps {
   user: { id: string; email: string };
@@ -48,20 +49,30 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     queryKey: ["/api/ideas"],
   });
 
-  // Update selected idea when ideas change (but don't auto-select on initial load)
+  // Update selected idea when ideas change
   useEffect(() => {
-    if (ideas && ideas.length > 0 && selectedIdea) {
-      // Only update if there's already a selected idea
-      const updated = ideas.find((i) => i.id === selectedIdea.id);
-      if (updated) {
-        setSelectedIdea(updated);
-        // Set first keyword if not already set
-        if (
-          updated?.report?.keywords &&
-          updated.report.keywords.length > 0 &&
-          !selectedKeyword
-        ) {
-          setSelectedKeyword(updated.report.keywords[0].keyword);
+    if (ideas && ideas.length > 0) {
+      if (!selectedIdea || !ideas.find((i) => i.id === selectedIdea.id)) {
+        // Select the most recent idea
+        const newIdea = ideas[0];
+        setSelectedIdea(newIdea);
+        // Set first keyword as selected
+        if (newIdea?.report?.keywords && newIdea.report.keywords.length > 0) {
+          setSelectedKeyword(newIdea.report.keywords[0].keyword);
+        }
+      } else {
+        // Update selected idea with latest data
+        const updated = ideas.find((i) => i.id === selectedIdea.id);
+        if (updated) {
+          setSelectedIdea(updated);
+          // Set first keyword if not already set
+          if (
+            updated?.report?.keywords &&
+            updated.report.keywords.length > 0 &&
+            !selectedKeyword
+          ) {
+            setSelectedKeyword(updated.report.keywords[0].keyword);
+          }
         }
       }
     }
@@ -100,7 +111,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     <div className="min-h-screen">
       <header className="border-b border-white/10 backdrop-blur-xl bg-background/80 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">Idea Watcher</h1>
+          <img src={logoImage} alt="Pioneers AI Lab" className="h-8" />
           <div className="flex items-center gap-4">
             <span className="text-sm text-white/60">{user.email}</span>
             <Button
@@ -283,7 +294,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         {/* Call to Action */}
         <div className="text-center py-8">
           <h3 className="text-2xl font-semibold text-white mb-6">
-            Validated an idea ? Let's launch it !
+            Validated an idea ?
+          </h3>
+          <h3 className="text-2xl font-semibold text-white mb-6">
+            Let's find a cofounder and launch it with Pioneers
           </h3>
           <Button
             asChild
