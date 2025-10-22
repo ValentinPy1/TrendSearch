@@ -177,7 +177,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
             <div className="space-y-4">
               <h3 className="text-xl font-semibold text-white/90">
-                Overall KPIs
+                Aggregated KPIs
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 {[...Array(6)].map((_, i) => (

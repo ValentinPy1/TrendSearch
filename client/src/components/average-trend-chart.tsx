@@ -1,8 +1,23 @@
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer } from "recharts";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as ChartTooltip,
+  ResponsiveContainer,
+} from "recharts";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { Keyword } from "@shared/schema";
-import { calculateAverageTrendData, calculateGrowthFromTrend } from "@/lib/trend-calculations";
+import {
+  calculateAverageTrendData,
+  calculateGrowthFromTrend,
+} from "@/lib/trend-calculations";
 import { HelpCircle } from "lucide-react";
 
 interface AverageTrendChartProps {
@@ -26,7 +41,7 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
   const calculateWeightedAverage = (getValue: (k: Keyword) => number) => {
     const totalWeight = keywords.reduce((sum, k) => {
       const scoreStr = k.similarityScore || "0";
-      const matchPct = parseFloat(scoreStr.replace('%', '')) / 100;
+      const matchPct = parseFloat(scoreStr.replace("%", "")) / 100;
       const weight = matchPct * matchPct;
       return sum + weight;
     }, 0);
@@ -35,21 +50,31 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
 
     const weightedSum = keywords.reduce((sum, k) => {
       const scoreStr = k.similarityScore || "0";
-      const matchPct = parseFloat(scoreStr.replace('%', '')) / 100;
+      const matchPct = parseFloat(scoreStr.replace("%", "")) / 100;
       const weight = matchPct * matchPct;
       const value = getValue(k);
       if (isNaN(weight) || isNaN(value)) return sum;
-      return sum + (value * weight);
+      return sum + value * weight;
     }, 0);
 
     return weightedSum / totalWeight;
   };
 
-  const avgGrowthSlope = calculateWeightedAverage(k => parseFloat(k.growthSlope || "0"));
-  const avgGrowthR2 = calculateWeightedAverage(k => parseFloat(k.growthR2 || "0"));
-  const avgGrowthConsistency = calculateWeightedAverage(k => parseFloat(k.growthConsistency || "0"));
-  const avgGrowthStability = calculateWeightedAverage(k => parseFloat(k.growthStability || "0"));
-  const avgSustainedGrowthScore = calculateWeightedAverage(k => parseFloat(k.sustainedGrowthScore || "0"));
+  const avgGrowthSlope = calculateWeightedAverage((k) =>
+    parseFloat(k.growthSlope || "0"),
+  );
+  const avgGrowthR2 = calculateWeightedAverage((k) =>
+    parseFloat(k.growthR2 || "0"),
+  );
+  const avgGrowthConsistency = calculateWeightedAverage((k) =>
+    parseFloat(k.growthConsistency || "0"),
+  );
+  const avgGrowthStability = calculateWeightedAverage((k) =>
+    parseFloat(k.growthStability || "0"),
+  );
+  const avgSustainedGrowthScore = calculateWeightedAverage((k) =>
+    parseFloat(k.sustainedGrowthScore || "0"),
+  );
 
   return (
     <GlassmorphicCard className="p-8">
@@ -57,13 +82,13 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <h3 className="text-xl font-semibold text-white mb-2">
-              Average Search Volume Trend
+              Average Search Volume Trend (from keywords below)
             </h3>
             <p className="text-sm text-white/60">
               Weighted average across all 10 keywords over 12 months
             </p>
           </div>
-          
+
           {/* Sustained Growth Indicators */}
           <div className="flex gap-6 flex-wrap">
             <Tooltip>
@@ -79,7 +104,10 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Linear regression slope showing the rate of volume change over time. Higher values indicate faster growth.</p>
+                <p>
+                  Linear regression slope showing the rate of volume change over
+                  time. Higher values indicate faster growth.
+                </p>
               </TooltipContent>
             </Tooltip>
 
@@ -96,7 +124,10 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Measures how regularly the trend moves in the same direction. Higher values mean fewer reversals in growth direction.</p>
+                <p>
+                  Measures how regularly the trend moves in the same direction.
+                  Higher values mean fewer reversals in growth direction.
+                </p>
               </TooltipContent>
             </Tooltip>
 
@@ -113,7 +144,11 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Inverse of volatility - measures how steady the growth is. Higher values indicate less fluctuation in month-to-month changes.</p>
+                <p>
+                  Inverse of volatility - measures how steady the growth is.
+                  Higher values indicate less fluctuation in month-to-month
+                  changes.
+                </p>
               </TooltipContent>
             </Tooltip>
 
@@ -130,7 +165,11 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>R-squared value (0-1) measuring how well growth fits a linear trend. Values closer to 1 indicate more predictable, linear growth.</p>
+                <p>
+                  R-squared value (0-1) measuring how well growth fits a linear
+                  trend. Values closer to 1 indicate more predictable, linear
+                  growth.
+                </p>
               </TooltipContent>
             </Tooltip>
 
@@ -141,14 +180,15 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
                     <span>Score</span>
                     <HelpCircle className="h-3 w-3" />
                   </div>
-                  <div 
+                  <div
                     className="text-sm font-bold"
                     style={{
-                      color: avgSustainedGrowthScore >= 7 
-                        ? 'hsl(142, 70%, 60%)' 
-                        : avgSustainedGrowthScore >= 4
-                        ? 'hsl(45, 90%, 60%)'
-                        : 'hsl(0, 80%, 65%)'
+                      color:
+                        avgSustainedGrowthScore >= 7
+                          ? "hsl(142, 70%, 60%)"
+                          : avgSustainedGrowthScore >= 4
+                            ? "hsl(45, 90%, 60%)"
+                            : "hsl(0, 80%, 65%)",
                     }}
                   >
                     {avgSustainedGrowthScore.toFixed(2)}
@@ -156,7 +196,10 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Overall growth quality score (0-10) combining all metrics. Green ≥7 (excellent), Yellow ≥4 (moderate), Red &lt;4 (weak).</p>
+                <p>
+                  Overall growth quality score (0-10) combining all metrics.
+                  Green ≥7 (excellent), Yellow ≥4 (moderate), Red &lt;4 (weak).
+                </p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -166,18 +209,35 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={averageTrendData}>
               <defs>
-                <linearGradient id="colorAverageVolume" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(210, 70%, 55%)" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(210, 70%, 55%)" stopOpacity={0} />
+                <linearGradient
+                  id="colorAverageVolume"
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop
+                    offset="5%"
+                    stopColor="hsl(210, 70%, 55%)"
+                    stopOpacity={0.3}
+                  />
+                  <stop
+                    offset="95%"
+                    stopColor="hsl(210, 70%, 55%)"
+                    stopOpacity={0}
+                  />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-              <XAxis 
-                dataKey="month" 
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="rgba(255,255,255,0.1)"
+              />
+              <XAxis
+                dataKey="month"
                 stroke="rgba(255,255,255,0.6)"
                 tick={{ fill: "rgba(255,255,255,0.6)" }}
               />
-              <YAxis 
+              <YAxis
                 stroke="rgba(255,255,255,0.6)"
                 tick={{ fill: "rgba(255,255,255,0.6)" }}
               />

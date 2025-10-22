@@ -107,7 +107,11 @@ export function IdeaGenerator({
     const isGenerating =
       generateIdeaMutation.isPending || generateReportMutation.isPending;
     onGeneratingChange?.(isGenerating);
-  }, [generateIdeaMutation.isPending, generateReportMutation.isPending, onGeneratingChange]);
+  }, [
+    generateIdeaMutation.isPending,
+    generateReportMutation.isPending,
+    onGeneratingChange,
+  ]);
 
   const handleGenerateIdea = () => {
     // Always generate new AI idea (pass null to force AI generation)
@@ -149,15 +153,15 @@ export function IdeaGenerator({
             Idea Watcher
           </h2>
           <p className="text-base text-white/80 leading-relaxed">
-            Generate AI-powered startup ideas or validate your own. Get instant
-            insights from 80,000+ real keywords with search volume, competition,
-            and growth trends.
+            Generate startup ideas or validate your own. Get instant insights
+            from 80,000+ real keywords with search volume, competition, and
+            growth trends.
           </p>
         </div>
 
         <div className="relative">
           <Input
-            placeholder="Write your idea / keyword here or let AI generate one for you clicking the sparkles icon"
+            placeholder="Write your idea brief (short is better) / keyword here or let AI generate one for you clicking the sparkles icon"
             className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-24 rounded-full"
             data-testid="input-idea"
             onKeyDown={handleKeyDown}
