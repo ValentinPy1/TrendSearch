@@ -56,16 +56,66 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
     return null;
   }
 
+  // Calculate 3M and YoY growth from the trend data
+  const calculate3MGrowth = () => {
+    if (averageTrendData.length < 4) return 0;
+    const currentVolume = averageTrendData[averageTrendData.length - 1].volume;
+    const threeMonthsAgo = averageTrendData[averageTrendData.length - 4].volume;
+    if (threeMonthsAgo === 0) return 0;
+    return ((currentVolume - threeMonthsAgo) / threeMonthsAgo) * 100;
+  };
+
+  const calculateYoYGrowth = () => {
+    if (averageTrendData.length < 12) return 0;
+    const currentVolume = averageTrendData[averageTrendData.length - 1].volume;
+    const oneYearAgo = averageTrendData[0].volume;
+    if (oneYearAgo === 0) return 0;
+    return ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
+  };
+
+  const growth3m = calculate3MGrowth();
+  const growthYoy = calculateYoYGrowth();
+
   return (
     <GlassmorphicCard className="p-8">
       <div className="space-y-6">
-        <div>
-          <h3 className="text-xl font-semibold text-white mb-2">
-            Average Search Volume Trend
-          </h3>
-          <p className="text-sm text-white/60">
-            Weighted average across all 10 keywords over 12 months
-          </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-2">
+              Average Search Volume Trend
+            </h3>
+            <p className="text-sm text-white/60">
+              Weighted average across all 10 keywords over 12 months
+            </p>
+          </div>
+          <div className="flex gap-6">
+            <div className="text-right">
+              <div className="text-xs text-white/60 mb-1">3M Growth</div>
+              <div 
+                className="text-lg font-bold"
+                style={{
+                  color: growth3m >= 0 
+                    ? `hsl(142, 70%, ${100 - Math.min(1, growth3m / 200) * 50}%)` 
+                    : `hsl(0, 80%, ${100 - Math.min(1, Math.abs(growth3m) / 100) * 50}%)`
+                }}
+              >
+                {growth3m >= 0 ? '+' : ''}{growth3m.toFixed(1)}%
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-white/60 mb-1">YoY Growth</div>
+              <div 
+                className="text-lg font-bold"
+                style={{
+                  color: growthYoy >= 0 
+                    ? `hsl(142, 70%, ${100 - Math.min(1, growthYoy / 200) * 50}%)` 
+                    : `hsl(0, 80%, ${100 - Math.min(1, Math.abs(growthYoy) / 100) * 50}%)`
+                }}
+              >
+                {growthYoy >= 0 ? '+' : ''}{growthYoy.toFixed(1)}%
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="h-96">
