@@ -233,7 +233,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
       {/* Help Dialog */}
       <Dialog open={showHelp} onOpenChange={setShowHelp}>
-        <DialogContent className="bg-background/70 backdrop-blur-xl border-white/10 max-w-xl text-center">
+        <DialogContent className="bg-transparent backdrop-blur-xl border-white/10 max-w-xl text-center">
           <DialogHeader>
             <DialogTitle className="text-2xl text-white text-center">How to Use Idea Watcher</DialogTitle>
             <DialogDescription className="text-white/60 text-center">
