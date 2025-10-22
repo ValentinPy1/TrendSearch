@@ -96,8 +96,8 @@ class KeywordVectorService {
       const metadata: EmbeddingsMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
       console.log(`[KeywordVectorService] Found ${metadata.total_keywords} keywords in ${metadata.chunks.length} binary chunks`);
       
-      // Load keywords from top-tier CSV
-      const csvPath = path.join(process.cwd(), 'data', 'keywords_top_tier.csv');
+      // Load keywords from CSV (all 80k keywords)
+      const csvPath = path.join(process.cwd(), 'data', 'keywords_all.csv');
       const csvContent = fs.readFileSync(csvPath, 'utf-8');
       this.keywords = parse(csvContent, {
         columns: true,

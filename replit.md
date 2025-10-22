@@ -8,7 +8,7 @@ Pioneer Idea Watcher helps entrepreneurs Find and validate their startup ideas u
 - AI-powered idea generation with GPT-4o-mini using paramV4.json data and microSaaS principles
 - Market research data with exactly 10 semantically-related keywords (vector similarity search)
 - Interactive trend analysis and visualization with gradient-styled metrics
-- Real keyword data from Google Ads CSV (6,443 keywords with prebuilt embeddings)
+- Real keyword data from Google Ads CSV (80,157 keywords with prebuilt embeddings)
 
 ## Architecture
 
@@ -118,7 +118,7 @@ Pioneer Idea Watcher helps entrepreneurs Find and validate their startup ideas u
 - ✅ Dark theme with gradient orbs
 - ✅ Glassmorphic UI design
 - ✅ Real LLM integration (GPT-4o-mini via Replit AI Integrations)
-- ✅ Real keyword data (15,000 high-priority keywords from 80k Google Ads dataset with binary embeddings)
+- ✅ Real keyword data (80,157 keywords from Google Ads dataset with binary embeddings)
 
 ## Environment Variables
 
@@ -148,53 +148,44 @@ Required:
 ## Development Notes
 
 ### Vector Database (Binary Chunk Embeddings)
-The app uses binary chunk embeddings for efficient keyword search with large datasets:
+The app uses binary chunk embeddings for efficient keyword search with the complete 80k keyword dataset:
 
 **Architecture:**
-- **15,000 high-priority keywords:** Precomputed binary embeddings loaded at startup (~22MB)
-- Keywords are scored by: log10(volume) × (1 + sustained_growth × 10)
-- Top 15k keywords provide excellent coverage while keeping memory usage low
+- **80,157 keywords:** Complete Google Ads dataset with precomputed binary embeddings loaded at startup (~118MB)
+- All keywords from the original dataset are available for semantic search
+- Binary chunk format enables fast loading and efficient memory usage
 
 **Files:**
-- `data/keywords_data.csv` - 80,157 real Google Ads keywords with metrics (20MB)
-- `data/keywords_top_tier.csv` - 15,000 high-priority keywords (scored by volume × growth)
-- `data/keywords_long_tail.csv` - 65,157 lower-priority keywords (not currently used)
-- `data/embeddings_chunks/` - 8 binary chunk files (~3MB each, Float32 format)
-- `data/embeddings_metadata.json` - Keyword index and chunk metadata (1.4MB)
-- `scripts/preprocess-keywords.ts` - Score and split keywords into tiers
-- `scripts/build-binary-embeddings.ts` - Generate binary chunk embeddings
+- `data/keywords_all.csv` - 80,157 real Google Ads keywords with metrics (20MB)
+- `data/embeddings_chunks/` - 11 binary chunk files (~12MB each for first 10, 241KB for last, Float32 format)
+- `data/embeddings_metadata.json` - Keyword index and chunk metadata
 - `server/keyword-vector-service.ts` - Loads binary chunks for semantic search
 
 **How It Works:**
-1. **Preprocessing:** Run `npx tsx scripts/preprocess-keywords.ts`
-   - Scores all keywords by: log10(volume) × (1 + sustained_growth × 10)
-   - Splits into top 15k and remaining 65k keywords
-   - Takes ~5 seconds
-
-2. **Build Embeddings:** Run `npx tsx scripts/build-binary-embeddings.ts`
-   - Generates embeddings for top-tier keywords in 2k-keyword chunks
+1. **Embeddings Generation:** Precomputed using Python with sentence-transformers
+   - Uses 'all-MiniLM-L6-v2' model (same as runtime query encoder)
+   - Generates 384-dimensional embeddings for each keyword
+   - Splits into 8k-keyword chunks (11 chunks total)
    - Saves as Float32Array binary files (much faster to load than JSON)
-   - Creates metadata index for fast keyword lookup
-   - Takes ~3-5 minutes for 15k keywords
 
-3. **Runtime:** KeywordVectorService loads binary chunks (~2 seconds)
-   - Loads all 15k keyword embeddings into memory (22MB)
+2. **Runtime:** KeywordVectorService loads binary chunks (~3-4 seconds)
+   - Loads all 80k keyword embeddings into memory (118MB)
    - Initializes sentence transformer for query encoding
    - Finds top 10 semantically similar keywords using cosine similarity
    - Includes sanity checks for CSV/metadata consistency
 
 **Performance:**
-- Cold-start: ~2 seconds (loads 22MB binary chunks)
+- Cold-start: ~3-4 seconds (loads 118MB binary chunks)
 - Subsequent reports: Instant (embeddings cached in memory)
-- Memory usage: ~30MB (efficient binary format)
-- Coverage: 15k highest-priority keywords (volume + growth based scoring)
+- Memory usage: ~130MB (efficient binary format)
+- Coverage: 100% of Google Ads keywords (complete dataset)
 
-**Updating Keywords:**
-If `keywords_data.csv` is updated, regenerate embeddings:
-```bash
-npx tsx scripts/preprocess-keywords.ts
-npx tsx scripts/build-binary-embeddings.ts
-```
+**Dataset:**
+The embeddings were pre-generated externally using Python. If you need to regenerate them:
+1. Use Python with sentence-transformers library
+2. Generate embeddings for all keywords using 'all-MiniLM-L6-v2'
+3. Split into 8k-keyword chunks and save as Float32Array binary files
+4. Update metadata.json with chunk information
 
 ### Database Connection
 - Uses Neon serverless PostgreSQL with WebSocket connection
