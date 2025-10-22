@@ -168,7 +168,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
         {!isLoading && !error && selectedIdea?.report && (
           <div className="space-y-8">
-            <div className="text-center py-8">
+            <div className="text-center pt-8 pb-4">
               <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
                 {selectedIdea.generatedIdea}
               </h2>
