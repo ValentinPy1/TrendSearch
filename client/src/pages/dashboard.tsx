@@ -170,15 +170,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         )}
 
         {/* Call to Action */}
-        <GlassmorphicCard className="p-8 text-center">
-          <h3 className="text-2xl font-semibold text-white mb-3">
+        <div className="text-center py-8">
+          <h3 className="text-2xl font-semibold text-white mb-6">
             Validated an idea? Let's help you launch it.
           </h3>
           <Button
             asChild
-            variant="default"
             size="lg"
-            className="mt-2"
+            className="px-12 py-6 text-lg font-bold bg-gradient-to-r from-secondary via-primary to-white text-white hover-elevate active-elevate-2"
             data-testid="button-launch-cta"
           >
             <a
@@ -186,10 +185,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               target="_blank"
               rel="noopener noreferrer"
             >
-              Visit Pioneer
+              Join the programm
             </a>
           </Button>
-        </GlassmorphicCard>
+        </div>
       </main>
     </div>
   );
