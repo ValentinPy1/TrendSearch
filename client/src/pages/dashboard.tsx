@@ -9,7 +9,7 @@ import { IdeaHistory } from "@/components/idea-history";
 import { Button } from "@/components/ui/button";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 import { LogOut, Loader2, HelpCircle } from "lucide-react";
 import type { IdeaWithReport } from "@shared/schema";
 
@@ -233,35 +233,38 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
       {/* Help Dialog */}
       <Dialog open={showHelp} onOpenChange={setShowHelp}>
-        <DialogContent className="!bg-white/5 backdrop-blur-xl border-white/10 max-w-xl text-center p-8">
-          <DialogHeader>
-            <DialogTitle className="text-2xl text-white text-center">How to Use Idea Watcher</DialogTitle>
-            <DialogDescription className="text-white/60 text-center">
-              Validate startup ideas with real market data
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 text-white/80">
-            <div>
-              <h3 className="text-base font-semibold text-white mb-1">Generate Ideas</h3>
-              <p className="text-sm">Leave input blank for AI-generated ideas, or enter your own to validate</p>
-            </div>
+        <DialogPortal>
+          <DialogOverlay className="bg-black/20" />
+          <DialogContent className="bg-white/5 backdrop-blur-xl border-white/10 max-w-xl text-center p-8">
+            <DialogHeader>
+              <DialogTitle className="text-2xl text-white text-center">How to Use Idea Watcher</DialogTitle>
+              <DialogDescription className="text-white/60 text-center">
+                Validate startup ideas with real market data
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 text-white/80">
+              <div>
+                <h3 className="text-base font-semibold text-white mb-1">Generate Ideas</h3>
+                <p className="text-sm">Leave input blank for AI-generated ideas, or enter your own to validate</p>
+              </div>
 
-            <div>
-              <h3 className="text-base font-semibold text-white mb-1">Analyze Market Data</h3>
-              <p className="text-sm">Click "Generate Report" to get 10 related keywords with metrics from 80K+ Google Ads keywords</p>
-            </div>
+              <div>
+                <h3 className="text-base font-semibold text-white mb-1">Analyze Market Data</h3>
+                <p className="text-sm">Click "Generate Report" to get 10 related keywords with metrics from 80K+ Google Ads keywords</p>
+              </div>
 
-            <div>
-              <h3 className="text-base font-semibold text-white mb-1">View Trends</h3>
-              <p className="text-sm">Click any keyword in the table to see its 12-month trend chart and detailed metrics</p>
-            </div>
+              <div>
+                <h3 className="text-base font-semibold text-white mb-1">View Trends</h3>
+                <p className="text-sm">Click any keyword in the table to see its 12-month trend chart and detailed metrics</p>
+              </div>
 
-            <div>
-              <h3 className="text-base font-semibold text-white mb-1">Manage History</h3>
-              <p className="text-sm">Click "History" to view, revisit, or delete your previous ideas</p>
+              <div>
+                <h3 className="text-base font-semibold text-white mb-1">Manage History</h3>
+                <p className="text-sm">Click "History" to view, revisit, or delete your previous ideas</p>
+              </div>
             </div>
-          </div>
-        </DialogContent>
+          </DialogContent>
+        </DialogPortal>
       </Dialog>
     </div>
   );
