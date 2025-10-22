@@ -118,7 +118,7 @@ Pioneer Idea Watcher helps entrepreneurs Find and validate their startup ideas u
 - ✅ Dark theme with gradient orbs
 - ✅ Glassmorphic UI design
 - ✅ Real LLM integration (GPT-4o-mini via Replit AI Integrations)
-- ✅ Real keyword data (6,443 keywords from Google Ads CSV with vector embeddings)
+- ✅ Real keyword data (15,000 high-priority keywords from 80k Google Ads dataset with binary embeddings)
 
 ## Environment Variables
 
@@ -147,33 +147,53 @@ Required:
 
 ## Development Notes
 
-### Vector Database (Prebuilt Embeddings)
-The app uses a prebuilt vector database for instant keyword matching:
+### Vector Database (Binary Chunk Embeddings)
+The app uses binary chunk embeddings for efficient keyword search with large datasets:
+
+**Architecture:**
+- **15,000 high-priority keywords:** Precomputed binary embeddings loaded at startup (~22MB)
+- Keywords are scored by: log10(volume) × (1 + sustained_growth × 10)
+- Top 15k keywords provide excellent coverage while keeping memory usage low
 
 **Files:**
-- `data/keywords_data.csv` - 6,443 real Google Ads keywords with metrics
-- `data/embeddings.json` - Prebuilt vector embeddings (54 MB, generated once)
-- `scripts/prebuild-embeddings.ts` - Script to regenerate embeddings
-- `server/keyword-vector-service.ts` - Loads prebuilt embeddings for semantic search
+- `data/keywords_data.csv` - 80,157 real Google Ads keywords with metrics (20MB)
+- `data/keywords_top_tier.csv` - 15,000 high-priority keywords (scored by volume × growth)
+- `data/keywords_long_tail.csv` - 65,157 lower-priority keywords (not currently used)
+- `data/embeddings_chunks/` - 8 binary chunk files (~3MB each, Float32 format)
+- `data/embeddings_metadata.json` - Keyword index and chunk metadata (1.4MB)
+- `scripts/preprocess-keywords.ts` - Score and split keywords into tiers
+- `scripts/build-binary-embeddings.ts` - Generate binary chunk embeddings
+- `server/keyword-vector-service.ts` - Loads binary chunks for semantic search
 
 **How It Works:**
-1. **Build Time:** Run `npx tsx scripts/prebuild-embeddings.ts` to generate embeddings
-   - Loads 6,443 keywords from CSV
-   - Generates 384-dimensional embeddings using sentence-transformers/all-MiniLM-L6-v2
-   - Saves to `data/embeddings.json` (takes 30-60 seconds)
-2. **Runtime:** KeywordVectorService loads prebuilt embeddings (~2 seconds)
-   - No cold-start delay for first report generation
-   - Only initializes model for query encoding
+1. **Preprocessing:** Run `npx tsx scripts/preprocess-keywords.ts`
+   - Scores all keywords by: log10(volume) × (1 + sustained_growth × 10)
+   - Splits into top 15k and remaining 65k keywords
+   - Takes ~5 seconds
+
+2. **Build Embeddings:** Run `npx tsx scripts/build-binary-embeddings.ts`
+   - Generates embeddings for top-tier keywords in 2k-keyword chunks
+   - Saves as Float32Array binary files (much faster to load than JSON)
+   - Creates metadata index for fast keyword lookup
+   - Takes ~3-5 minutes for 15k keywords
+
+3. **Runtime:** KeywordVectorService loads binary chunks (~2 seconds)
+   - Loads all 15k keyword embeddings into memory (22MB)
+   - Initializes sentence transformer for query encoding
    - Finds top 10 semantically similar keywords using cosine similarity
+   - Includes sanity checks for CSV/metadata consistency
 
 **Performance:**
-- Cold-start: ~2 seconds (down from 30-60s with runtime generation)
+- Cold-start: ~2 seconds (loads 22MB binary chunks)
 - Subsequent reports: Instant (embeddings cached in memory)
+- Memory usage: ~30MB (efficient binary format)
+- Coverage: 15k highest-priority keywords (volume + growth based scoring)
 
 **Updating Keywords:**
 If `keywords_data.csv` is updated, regenerate embeddings:
 ```bash
-npx tsx scripts/prebuild-embeddings.ts
+npx tsx scripts/preprocess-keywords.ts
+npx tsx scripts/build-binary-embeddings.ts
 ```
 
 ### Database Connection
