@@ -87,7 +87,7 @@ export function IdeaHistory({ ideas, onIdeaSelect }: IdeaHistoryProps) {
               <Button
                 size="icon"
                 variant="ghost"
-                className="text-destructive hover:bg-destructive/10 flex-shrink-0"
+                className="text-white/40 hover:text-white/60 hover:bg-white/5 flex-shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIdeaToDelete(idea.id);
