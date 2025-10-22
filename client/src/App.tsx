@@ -33,6 +33,7 @@ function App() {
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
+    queryClient.clear(); // Clear all cached queries
     setUser(null);
   };
 
