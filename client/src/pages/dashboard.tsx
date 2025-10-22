@@ -8,8 +8,21 @@ import { KeywordMetricsCards } from "@/components/keyword-metrics-cards";
 import { IdeaHistory } from "@/components/idea-history";
 import { Button } from "@/components/ui/button";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+} from "@/components/ui/dialog";
 import { LogOut, Loader2, HelpCircle } from "lucide-react";
 import type { IdeaWithReport } from "@shared/schema";
 
@@ -234,33 +247,55 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       {/* Help Dialog */}
       <Dialog open={showHelp} onOpenChange={setShowHelp}>
         <DialogPortal>
-          <DialogOverlay className="bg-black/20" />
-          <DialogContent className="bg-white/5 backdrop-blur-xl border-white/10 max-w-xl text-center p-8">
+          <DialogOverlay className="!bg-black/20" />
+          <DialogContent 
+            className="!bg-white/5 backdrop-blur-xl border-white/10 max-w-xl p-8"
+            style={{ background: 'rgba(255, 255, 255, 0.05)' }}
+            aria-describedby="help-description"
+          >
             <DialogHeader>
-              <DialogTitle className="text-2xl text-white text-center">How to Use Idea Watcher</DialogTitle>
-              <DialogDescription className="text-white/60 text-center">
+              <DialogTitle className="text-2xl text-white text-left">
+                How to Use Idea Watcher
+              </DialogTitle>
+              <DialogDescription id="help-description" className="text-white/60 text-left">
                 Validate startup ideas with real market data
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 text-white/80">
+            <div className="space-y-4 text-white/80 text-left">
               <div>
-                <h3 className="text-base font-semibold text-white mb-1">Generate Ideas</h3>
-                <p className="text-sm">Leave input blank for AI-generated ideas, or enter your own to validate</p>
+                <h3 className="text-base font-semibold text-white mb-1">
+                  1. Enter or Generate an Idea
+                </h3>
+                <p className="text-sm">
+                  Type your idea or keyword in the text field, or click the sparkle icon ✨ to generate one with AI. Press <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-xs">Enter</kbd> to generate a market report.
+                </p>
               </div>
 
               <div>
-                <h3 className="text-base font-semibold text-white mb-1">Analyze Market Data</h3>
-                <p className="text-sm">Click "Generate Report" to get 10 related keywords with metrics from 80K+ Google Ads keywords</p>
+                <h3 className="text-base font-semibold text-white mb-1">
+                  2. Review the 6 Key Metrics
+                </h3>
+                <p className="text-sm">
+                  <strong>Avg Volume:</strong> Monthly search demand • <strong>Avg Competition:</strong> How crowded the market is • <strong>Avg CPC:</strong> Cost per click for ads • <strong>Avg Top Page Bid:</strong> Top-of-page advertising cost • <strong>Avg 3M Growth:</strong> Short-term trend • <strong>Avg YoY Growth:</strong> Long-term trend
+                </p>
               </div>
 
               <div>
-                <h3 className="text-base font-semibold text-white mb-1">View Trends</h3>
-                <p className="text-sm">Click any keyword in the table to see its 12-month trend chart and detailed metrics</p>
+                <h3 className="text-base font-semibold text-white mb-1">
+                  3. Explore Keyword Trends
+                </h3>
+                <p className="text-sm">
+                  Click any keyword in the table to view its 12-month historical search volume chart and detailed metrics.
+                </p>
               </div>
 
-              <div>
-                <h3 className="text-base font-semibold text-white mb-1">Manage History</h3>
-                <p className="text-sm">Click "History" to view, revisit, or delete your previous ideas</p>
+              <div className="bg-purple-500/10 border border-purple-500/20 rounded-md p-3">
+                <h3 className="text-base font-semibold text-purple-300 mb-1">
+                  💡 Pro Tip
+                </h3>
+                <p className="text-sm text-purple-200/80">
+                  Found a trending keyword? Enter it back into the text field to discover even more related ideas and iterate your way to the perfect niche!
+                </p>
               </div>
             </div>
           </DialogContent>
