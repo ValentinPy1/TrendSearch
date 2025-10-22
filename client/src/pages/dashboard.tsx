@@ -176,8 +176,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           </h3>
           <Button
             asChild
-            size="lg"
-            className="px-12 py-6 text-lg font-bold bg-gradient-to-r from-secondary via-primary to-white text-white hover-elevate active-elevate-2"
+            className="px-8 py-3 text-base font-semibold bg-gradient-radial from-primary/90 via-secondary/80 to-primary/60 text-white border border-white/20 shadow-[0_0_30px_rgba(139,92,246,0.5)] hover:shadow-[0_0_50px_rgba(139,92,246,0.7)] hover:scale-105 transition-all duration-300 backdrop-blur-sm"
             data-testid="button-launch-cta"
           >
             <a

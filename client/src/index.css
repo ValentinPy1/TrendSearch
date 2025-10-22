@@ -236,6 +236,10 @@
  * need to be distinguished from eachother visually.
  */
 @layer utilities {
+  /* Radial gradient utility */
+  .bg-gradient-radial {
+    background-image: radial-gradient(circle at center, var(--tw-gradient-stops));
+  }
 
   /* Hide ugly search cancel button in Chrome until we can style it properly */
   input[type="search"]::-webkit-search-cancel-button {
