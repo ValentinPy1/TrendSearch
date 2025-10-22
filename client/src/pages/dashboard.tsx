@@ -167,7 +167,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         )}
 
         {!isLoading && !error && selectedIdea?.report && (
-          <div className="space-y-8">
+          <div className="space-y-4">
             <div className="text-center pt-8 pb-4">
               <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
                 {selectedIdea.generatedIdea}
@@ -175,7 +175,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-xl font-semibold text-white/90">Overall KPIs</h3>
+              <h3 className="text-xl font-semibold text-white/90">
+                Overall KPIs
+              </h3>
               <MetricsCards keywords={selectedIdea.report.keywords} />
             </div>
 
@@ -261,44 +263,62 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       <Dialog open={showHelp} onOpenChange={setShowHelp}>
         <DialogPortal>
           <DialogOverlay className="!bg-black/20" />
-          <DialogContent 
+          <DialogContent
             className="!bg-white/5 backdrop-blur-xl border-white/10 max-w-xl p-8"
-            style={{ background: 'rgba(255, 255, 255, 0.05)' }}
+            style={{ background: "rgba(255, 255, 255, 0.05)" }}
             aria-describedby="help-description"
           >
             <DialogHeader>
               <DialogTitle className="text-2xl text-white text-left">
                 How to Use Idea Watcher
               </DialogTitle>
-              <DialogDescription id="help-description" className="text-white/60 text-left">
+              <DialogDescription
+                id="help-description"
+                className="text-white/60 text-left"
+              >
                 Validate startup ideas with real market data
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 text-white/80 text-left">
               <div>
                 <h3 className="text-base font-semibold text-white mb-1">
-                  <span className="text-blue-400">1.</span> Enter or Generate an Idea
+                  <span className="text-blue-400">1.</span> Enter or Generate an
+                  Idea
                 </h3>
                 <p className="text-sm">
-                  Type your idea or keyword in the text field, or click the <span className="text-yellow-300">sparkle icon ✨</span> to generate one with AI. Press <kbd className="px-1.5 py-0.5 bg-blue-500/20 border border-blue-400/30 rounded text-xs text-blue-300 font-semibold">Enter</kbd> to generate a market report.
+                  Type your idea or keyword in the text field, or click the{" "}
+                  <span className="text-yellow-300">sparkle icon ✨</span> to
+                  generate one with AI. Press{" "}
+                  <kbd className="px-1.5 py-0.5 bg-blue-500/20 border border-blue-400/30 rounded text-xs text-blue-300 font-semibold">
+                    Enter
+                  </kbd>{" "}
+                  to generate a market report.
                 </p>
               </div>
 
               <div>
                 <h3 className="text-base font-semibold text-white mb-1">
-                  <span className="text-blue-400">2.</span> Review the 6 Key Metrics
+                  <span className="text-blue-400">2.</span> Review the 6 Key
+                  Metrics
                 </h3>
                 <p className="text-sm leading-relaxed">
-                  <strong>Avg Volume:</strong> Monthly search demand • <strong>Avg Competition:</strong> How crowded the market is • <strong>Avg CPC:</strong> Cost per click for ads • <strong>Avg Top Page Bid:</strong> Top-of-page advertising cost • <strong>Avg 3M Growth:</strong> Short-term trend • <strong>Avg YoY Growth:</strong> Long-term trend
+                  <strong>Avg Volume:</strong> Monthly search demand •{" "}
+                  <strong>Avg Competition:</strong> How crowded the market is •{" "}
+                  <strong>Avg CPC:</strong> Cost per click for ads •{" "}
+                  <strong>Avg Top Page Bid:</strong> Top-of-page advertising
+                  cost • <strong>Avg 3M Growth:</strong> Short-term trend •{" "}
+                  <strong>Avg YoY Growth:</strong> Long-term trend
                 </p>
               </div>
 
               <div>
                 <h3 className="text-base font-semibold text-white mb-1">
-                  <span className="text-blue-400">3.</span> Explore Keyword Trends
+                  <span className="text-blue-400">3.</span> Explore Keyword
+                  Trends
                 </h3>
                 <p className="text-sm">
-                  Click any keyword in the table to view its 12-month historical search volume chart and detailed metrics.
+                  Click any keyword in the table to view its 12-month historical
+                  search volume chart and detailed metrics.
                 </p>
               </div>
 
@@ -307,7 +327,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   💡 Pro Tip
                 </h3>
                 <p className="text-sm text-purple-200/80">
-                  Found a trending keyword? Enter it back into the text field to discover even more related ideas and iterate your way to the perfect niche!
+                  Found a trending keyword? Enter it back into the text field to
+                  discover even more related ideas and iterate your way to the
+                  perfect niche!
                 </p>
               </div>
             </div>

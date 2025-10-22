@@ -34,7 +34,31 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
     return weightedSum / totalWeight;
   };
 
-  const avgVolume = Math.round(calculateWeightedAverage(k => k.volume || 0));
+  // Special calculation for volume: average the square roots, then square back
+  const calculateVolumeAverage = () => {
+    if (keywords.length === 0) return 0;
+    
+    const totalWeight = keywords.reduce((sum, k) => {
+      const scoreStr = k.similarityScore || "0";
+      const weight = parseFloat(scoreStr.replace('%', '')) / 100;
+      return sum + weight;
+    }, 0);
+    
+    if (totalWeight === 0) return 0;
+    
+    const weightedSumOfSqrts = keywords.reduce((sum, k) => {
+      const scoreStr = k.similarityScore || "0";
+      const weight = parseFloat(scoreStr.replace('%', '')) / 100;
+      const volume = k.volume || 0;
+      if (isNaN(weight) || isNaN(volume) || volume < 0) return sum;
+      return sum + (Math.sqrt(volume) * weight);
+    }, 0);
+    
+    const avgSqrt = weightedSumOfSqrts / totalWeight;
+    return avgSqrt * avgSqrt; // Square the result
+  };
+
+  const avgVolume = Math.round(calculateVolumeAverage());
   const avgCompetition = Math.round(calculateWeightedAverage(k => k.competition || 0));
   const avgTopPageBid = calculateWeightedAverage(k => parseFloat(k.topPageBid || "0"));
   const avgCpc = calculateWeightedAverage(k => parseFloat(k.cpc || "0"));
