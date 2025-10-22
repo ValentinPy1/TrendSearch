@@ -287,7 +287,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ report, keywords });
     } catch (error) {
-      res.status(500).json({ message: "Failed to generate report" });
+      console.error('[Generate Report Error]:', error);
+      res.status(500).json({ message: "Failed to generate report", error: error instanceof Error ? error.message : String(error) });
     }
   });
 
