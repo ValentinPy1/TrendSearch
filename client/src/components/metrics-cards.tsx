@@ -12,15 +12,21 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
     if (keywords.length === 0) return 0;
     
     const totalWeight = keywords.reduce((sum, k) => {
-      const weight = parseFloat(k.similarityScore || "0");
+      const scoreStr = k.similarityScore || "0";
+      // Remove % sign if present and convert to 0-1 range
+      const weight = parseFloat(scoreStr.replace('%', '')) / 100;
       return sum + weight;
     }, 0);
     
     if (totalWeight === 0) return 0;
     
     const weightedSum = keywords.reduce((sum, k) => {
-      const weight = parseFloat(k.similarityScore || "0");
+      const scoreStr = k.similarityScore || "0";
+      // Remove % sign if present and convert to 0-1 range
+      const weight = parseFloat(scoreStr.replace('%', '')) / 100;
       const value = getValue(k);
+      // Add defensive check for NaN
+      if (isNaN(weight) || isNaN(value)) return sum;
       return sum + (value * weight);
     }, 0);
     

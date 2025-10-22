@@ -18,9 +18,11 @@ Pioneer Idea Watcher helps entrepreneurs Find and validate their startup ideas u
   - `dashboard.tsx` - Main application interface
   
 - **Components:**
-  - `idea-generator.tsx` - Idea input and generation interface
+  - `idea-generator.tsx` - Idea input and generation interface with gradient blue-purple-white title
   - `idea-history.tsx` - View previously generated ideas
-  - `metrics-cards.tsx` - 6 metric cards displaying market data
+  - `metrics-cards.tsx` - 6 metric cards displaying weighted averages (based on keyword match %) positioned above table
+  - `keyword-metrics-cards.tsx` - Individual keyword metrics (displayed below trend chart)
+  - `keywords-table.tsx` - Sortable table of 10 keywords with gradient styling
   - `trend-chart.tsx` - Interactive 12-month trend chart with Recharts
   - `glassmorphic-card.tsx` - Reusable card component with glassmorphic design
   - `gradient-orbs.tsx` - Floating gradient background orbs
@@ -75,22 +77,19 @@ Pioneer Idea Watcher helps entrepreneurs Find and validate their startup ideas u
 - User-provided ideas are preserved exactly; blank input triggers AI generation
 
 ### 2. Market Validation
-Generates report with:
-- Volume (monthly searches)
-- 3-Month Growth (%)
-- Year-over-Year Growth (%)
-- Competition (0-100 scale)
-- Average Top-of-Page Bid ($)
-- CPC - Cost Per Click ($)
-- Growth Score (sustained growth quality metric)
+**Metrics Cards** (positioned above table):
+- 6 cards displaying weighted averages of all 10 keywords
+- Each metric weighted by keyword's match percentage (similarityScore)
+- Metrics: Volume, Competition, Top Page Bid, CPC, 3M Growth, YoY Growth
+- Order matches table column order for consistency
 
 **Keywords Table** displays 8 columns:
 1. Keyword - the search term
 2. Match - similarity score to the idea (percentage with blue gradient 0-100)
 3. Volume - monthly search volume
 4. Competition - competition level (0-100 with red gradient)
-5. CPC - cost per click (purple gradient based on max value)
-6. Top Page Bid - average top-of-page bid (purple gradient based on max value)
+5. Top Page Bid - average top-of-page bid (purple gradient based on max value)
+6. CPC - cost per click (purple gradient based on max value)
 7. 3Mo Trend - 3-month growth percentage
 8. YoY Trend - year-over-year growth percentage
 
