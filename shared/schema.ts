@@ -66,6 +66,11 @@ export const insertUserSchema = createInsertSchema(users).omit({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
+export const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
 export const insertIdeaSchema = createInsertSchema(ideas).omit({
   id: true,
   createdAt: true,
@@ -83,6 +88,7 @@ export const insertKeywordSchema = createInsertSchema(keywords).omit({
 // Select types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type LoginUser = z.infer<typeof loginSchema>;
 
 export type Idea = typeof ideas.$inferSelect;
 export type InsertIdea = z.infer<typeof insertIdeaSchema>;

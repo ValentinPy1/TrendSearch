@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertUserSchema, type InsertUser } from "@shared/schema";
+import { insertUserSchema, loginSchema, type InsertUser, type LoginUser } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +18,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const form = useForm<InsertUser>({
+  const signupForm = useForm<InsertUser>({
     resolver: zodResolver(insertUserSchema),
     defaultValues: {
       firstName: "",
@@ -28,7 +28,15 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     },
   });
 
-  const onSubmit = async (data: InsertUser) => {
+  const loginForm = useForm<LoginUser>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+  });
+
+  const onSubmit = async (data: InsertUser | LoginUser) => {
     setIsLoading(true);
     try {
       const endpoint = isLogin ? "/api/auth/login" : "/api/auth/signup";
@@ -84,8 +92,64 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               </p>
             </div>
 
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              {!isLogin && (
+            {isLogin ? (
+              <form onSubmit={loginForm.handleSubmit(onSubmit)} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-white/90">
+                    Email
+                  </Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    data-testid="input-email"
+                    {...loginForm.register("email")}
+                  />
+                  {loginForm.formState.errors.email && (
+                    <p className="text-sm text-destructive">
+                      {loginForm.formState.errors.email.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-white/90">
+                    Password
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    data-testid="input-password"
+                    {...loginForm.register("password")}
+                  />
+                  {loginForm.formState.errors.password && (
+                    <p className="text-sm text-destructive">
+                      {loginForm.formState.errors.password.message}
+                    </p>
+                  )}
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isLoading}
+                  data-testid="button-submit"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Please wait...
+                    </>
+                  ) : (
+                    "Sign in"
+                  )}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={signupForm.handleSubmit(onSubmit)} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName" className="text-white/90">
@@ -97,11 +161,11 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                       placeholder="John"
                       className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
                       data-testid="input-firstName"
-                      {...form.register("firstName")}
+                      {...signupForm.register("firstName")}
                     />
-                    {form.formState.errors.firstName && (
+                    {signupForm.formState.errors.firstName && (
                       <p className="text-sm text-destructive">
-                        {form.formState.errors.firstName.message}
+                        {signupForm.formState.errors.firstName.message}
                       </p>
                     )}
                   </div>
@@ -116,80 +180,79 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                       placeholder="Doe"
                       className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
                       data-testid="input-lastName"
-                      {...form.register("lastName")}
+                      {...signupForm.register("lastName")}
                     />
-                    {form.formState.errors.lastName && (
+                    {signupForm.formState.errors.lastName && (
                       <p className="text-sm text-destructive">
-                        {form.formState.errors.lastName.message}
+                        {signupForm.formState.errors.lastName.message}
                       </p>
                     )}
                   </div>
                 </div>
-              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-white/90">
-                  Email
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  data-testid="input-email"
-                  {...form.register("email")}
-                />
-                {form.formState.errors.email && (
-                  <p className="text-sm text-destructive">
-                    {form.formState.errors.email.message}
-                  </p>
-                )}
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-white/90">
+                    Email
+                  </Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    data-testid="input-email"
+                    {...signupForm.register("email")}
+                  />
+                  {signupForm.formState.errors.email && (
+                    <p className="text-sm text-destructive">
+                      {signupForm.formState.errors.email.message}
+                    </p>
+                  )}
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-white/90">
-                  Password
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  data-testid="input-password"
-                  {...form.register("password")}
-                />
-                {form.formState.errors.password && (
-                  <p className="text-sm text-destructive">
-                    {form.formState.errors.password.message}
-                  </p>
-                )}
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-white/90">
+                    Password
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    data-testid="input-password"
+                    {...signupForm.register("password")}
+                  />
+                  {signupForm.formState.errors.password && (
+                    <p className="text-sm text-destructive">
+                      {signupForm.formState.errors.password.message}
+                    </p>
+                  )}
+                </div>
 
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading}
-                data-testid="button-submit"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Please wait...
-                  </>
-                ) : isLogin ? (
-                  "Sign in"
-                ) : (
-                  "Create account"
-                )}
-              </Button>
-            </form>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isLoading}
+                  data-testid="button-submit"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Please wait...
+                    </>
+                  ) : (
+                    "Create account"
+                  )}
+                </Button>
+              </form>
+            )}
 
             <div className="text-center">
               <button
                 type="button"
                 onClick={() => {
                   setIsLogin(!isLogin);
-                  form.reset();
+                  signupForm.reset();
+                  loginForm.reset();
                 }}
                 className="text-sm text-primary hover:text-primary/80 transition-colors"
                 data-testid="button-toggle-auth"
