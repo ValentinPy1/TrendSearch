@@ -306,7 +306,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    {">"} Join the AI Lab
+                    {">"} Launch your startup
                   </a>
                 </Button>
               </div>
