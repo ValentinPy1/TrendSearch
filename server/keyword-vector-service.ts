@@ -165,13 +165,23 @@ class KeywordVectorService {
     return dotProduct;
   }
 
-  isExactKeyword(text: string): boolean {
+  async isKeyword(text: string, threshold: number = 0.95): Promise<boolean> {
     if (!this.initialized) {
-      return false;
+      await this.initialize();
     }
     
+    // First check for exact match (fast path)
     const normalizedText = text.toLowerCase().trim();
-    return this.keywords.some(k => k.keyword.toLowerCase() === normalizedText);
+    const exactMatch = this.keywords.some(k => k.keyword.toLowerCase() === normalizedText);
+    if (exactMatch) return true;
+    
+    // Check similarity score (slower but catches near-matches)
+    const results = await this.findSimilarKeywords(text, 1);
+    if (results.length > 0 && results[0].similarityScore >= threshold) {
+      return true;
+    }
+    
+    return false;
   }
 
   async findSimilarKeywords(query: string, topN: number = 10): Promise<KeywordWithScore[]> {

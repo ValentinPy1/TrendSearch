@@ -217,11 +217,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const ideas = await storage.getIdeasByUser(req.session.userId!);
       
-      // Add isKeyword flag to each idea
-      const ideasWithKeywordFlag = ideas.map(idea => ({
-        ...idea,
-        isKeyword: keywordVectorService.isExactKeyword(idea.generatedIdea)
-      }));
+      // Add isKeyword flag to each idea (check if similarity >= 95%)
+      const ideasWithKeywordFlag = await Promise.all(
+        ideas.map(async (idea) => ({
+          ...idea,
+          isKeyword: await keywordVectorService.isKeyword(idea.generatedIdea, 0.95)
+        }))
+      );
       
       res.json(ideasWithKeywordFlag);
     } catch (error) {
