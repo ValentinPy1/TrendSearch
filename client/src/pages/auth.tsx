@@ -21,6 +21,8 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const form = useForm<InsertUser>({
     resolver: zodResolver(insertUserSchema),
     defaultValues: {
+      firstName: "",
+      lastName: "",
       email: "",
       password: "",
     },
@@ -83,6 +85,48 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             </div>
 
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              {!isLogin && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName" className="text-white/90">
+                      First Name
+                    </Label>
+                    <Input
+                      id="firstName"
+                      type="text"
+                      placeholder="John"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      data-testid="input-firstName"
+                      {...form.register("firstName")}
+                    />
+                    {form.formState.errors.firstName && (
+                      <p className="text-sm text-destructive">
+                        {form.formState.errors.firstName.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName" className="text-white/90">
+                      Last Name
+                    </Label>
+                    <Input
+                      id="lastName"
+                      type="text"
+                      placeholder="Doe"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      data-testid="input-lastName"
+                      {...form.register("lastName")}
+                    />
+                    {form.formState.errors.lastName && (
+                      <p className="text-sm text-destructive">
+                        {form.formState.errors.lastName.message}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-white/90">
                   Email

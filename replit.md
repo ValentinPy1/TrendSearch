@@ -40,7 +40,7 @@ Pioneer Idea Watcher helps entrepreneurs Find and validate their startup ideas u
   - `POST /api/generate-report` - Generate market research report
 
 ### Database Schema (Supabase PostgreSQL)
-- **users:** id, email, password, createdAt
+- **users:** id, firstName, lastName, email, password, createdAt
 - **ideas:** id, userId, originalIdea, generatedIdea, createdAt
 - **reports:** id, ideaId, userId, avgVolume, growth3m, growthYoy, competition, avgTopPageBid, avgCpc, createdAt
 - **keywords:** id, reportId, keyword, volume, competition, cpc, topPageBid, growth3m, growthYoy, similarityScore, growthSlope, growthR2, growthConsistency, growthStability, sustainedGrowthScore, monthlyData
@@ -137,7 +137,7 @@ Required:
 
 ## User Journey
 
-1. User signs up/logs in with email/password
+1. User signs up with first name, last name, email, and password (or logs in with email/password)
 2. User enters an existing idea or leaves blank for AI generation
 3. Click "Generate Idea" - GPT-4o-mini generates focused microSaaS idea
 4. Click "Generate Report" - Vector database returns 10 semantically-related keywords with real data
