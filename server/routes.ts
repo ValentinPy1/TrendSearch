@@ -122,12 +122,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const data = insertUserSchema.parse(req.body);
       
+      console.log("Checking for existing user...");
       const existingUser = await storage.getUserByEmail(data.email);
       if (existingUser) {
+        console.log("User already exists");
         return res.status(400).json({ message: "Email already exists" });
       }
 
+      console.log("Hashing password...");
       const hashedPassword = await bcrypt.hash(data.password, 10);
+      
+      console.log("Creating user in database...");
       const user = await storage.createUser({
         firstName: data.firstName,
         lastName: data.lastName,
@@ -135,12 +140,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: hashedPassword,
       });
 
+      console.log("User created successfully:", user.id);
       req.session.userId = user.id;
       res.json({ user: { id: user.id, email: user.email } });
     } catch (error) {
       console.error("Signup error:", error);
       console.error("Error type:", error?.constructor?.name);
-      console.error("Error details:", JSON.stringify(error, null, 2));
+      
+      // Handle database connection errors
+      if (error && typeof error === 'object' && 'type' in error && error.type === 'error') {
+        console.error("Database connection error detected");
+        return res.status(500).json({ 
+          message: "Database connection failed. Please try again."
+        });
+      }
       
       if (error instanceof Error && 'issues' in error) {
         // Zod validation error
@@ -152,9 +165,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      res.status(400).json({ 
-        message: error instanceof Error ? error.message : "Invalid input",
-        details: error instanceof Error ? error.stack : undefined
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Failed to create account. Please try again."
       });
     }
   });
