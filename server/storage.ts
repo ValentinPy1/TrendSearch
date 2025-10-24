@@ -2,7 +2,7 @@ import { eq, desc } from "drizzle-orm";
 import { db } from "./db";
 import { 
   users, ideas, reports, keywords,
-  type User, type UpsertUser,
+  type User, type InsertUser,
   type Idea, type InsertIdea,
   type Report, type InsertReport,
   type Keyword, type InsertKeyword,
@@ -10,12 +10,10 @@ import {
 } from "@shared/schema";
 
 export interface IStorage {
-  // User methods (required for Replit Auth)
+  // User methods
   getUser(id: string): Promise<User | undefined>;
-  upsertUser(user: UpsertUser): Promise<User>;
-  
-  // Legacy methods (to be removed after migration)
   getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
   
   // Idea methods
   getIdea(id: string): Promise<Idea | undefined>;
@@ -38,30 +36,18 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // User methods (required for Replit Auth)
   async getUser(id: string): Promise<User | undefined> {
     const result = await db.select().from(users).where(eq(users.id, id));
     return result[0];
   }
 
-  async upsertUser(userData: UpsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return user;
-  }
-
-  // Legacy methods (to be removed after migration)
   async getUserByEmail(email: string): Promise<User | undefined> {
     const result = await db.select().from(users).where(eq(users.email, email));
+    return result[0];
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const result = await db.insert(users).values(insertUser).returning();
     return result[0];
   }
 
