@@ -1,11 +1,10 @@
+// Based on blueprint:javascript_log_in_with_replit
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import session from "express-session";
 import { storage } from "./storage";
-import { insertUserSchema } from "@shared/schema";
-import bcrypt from "bcryptjs";
 import { keywordVectorService } from "./keyword-vector-service";
 import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 
 async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
   // Use vector similarity search to find most relevant keywords
@@ -80,135 +79,20 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
   };
 }
 
-declare module 'express-session' {
-  interface SessionData {
-    userId?: string;
-  }
-}
-
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Session middleware
-  app.use(
-    session({
-      secret: process.env.SESSION_SECRET || "pioneer-idea-finder-secret-key",
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        secure: process.env.NODE_ENV === "production",
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      },
-    })
-  );
+  // Auth middleware (from Replit Auth blueprint)
+  await setupAuth(app);
 
-  // Auth middleware
-  const requireAuth = (req: any, res: any, next: any) => {
-    if (!req.session.userId) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-    next();
-  };
-
-  // Auth routes
-  app.post("/api/auth/signup", async (req, res) => {
+  // Auth route (from Replit Auth blueprint)
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      console.log("Signup attempt:", { 
-        email: req.body?.email,
-        hasFirstName: !!req.body?.firstName,
-        hasLastName: !!req.body?.lastName,
-        hasPassword: !!req.body?.password,
-        bodyKeys: Object.keys(req.body || {})
-      });
-      
-      const data = insertUserSchema.parse(req.body);
-      
-      console.log("Checking for existing user...");
-      const existingUser = await storage.getUserByEmail(data.email);
-      if (existingUser) {
-        console.log("User already exists");
-        return res.status(400).json({ message: "Email already exists" });
-      }
-
-      console.log("Hashing password...");
-      const hashedPassword = await bcrypt.hash(data.password, 10);
-      
-      console.log("Creating user in database...");
-      const user = await storage.createUser({
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        password: hashedPassword,
-      });
-
-      console.log("User created successfully:", user.id);
-      req.session.userId = user.id;
-      res.json({ user: { id: user.id, email: user.email } });
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
     } catch (error) {
-      console.error("Signup error:", error);
-      console.error("Error type:", error?.constructor?.name);
-      
-      // Handle database connection errors
-      if (error && typeof error === 'object' && 'type' in error && error.type === 'error') {
-        console.error("Database connection error detected");
-        return res.status(500).json({ 
-          message: "Database connection failed. Please try again."
-        });
-      }
-      
-      if (error instanceof Error && 'issues' in error) {
-        // Zod validation error
-        const zodError = error as any;
-        console.error("Zod validation issues:", zodError.issues);
-        return res.status(400).json({ 
-          message: zodError.issues?.[0]?.message || "Validation failed",
-          errors: zodError.issues 
-        });
-      }
-      
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : "Failed to create account. Please try again."
-      });
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
     }
-  });
-
-  app.post("/api/auth/login", async (req, res) => {
-    try {
-      const { email, password } = req.body;
-      
-      const user = await storage.getUserByEmail(email);
-      if (!user) {
-        return res.status(401).json({ message: "Invalid credentials" });
-      }
-
-      const isValid = await bcrypt.compare(password, user.password);
-      if (!isValid) {
-        return res.status(401).json({ message: "Invalid credentials" });
-      }
-
-      req.session.userId = user.id;
-      res.json({ user: { id: user.id, email: user.email } });
-    } catch (error) {
-      res.status(400).json({ message: "Login failed" });
-    }
-  });
-
-  app.get("/api/auth/me", async (req, res) => {
-    if (!req.session.userId) {
-      return res.json({ user: null });
-    }
-
-    const user = await storage.getUser(req.session.userId);
-    if (!user) {
-      return res.json({ user: null });
-    }
-
-    res.json({ user: { id: user.id, email: user.email } });
-  });
-
-  app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy(() => {
-      res.json({ success: true });
-    });
   });
 
   // Health check endpoint for debugging production issues
@@ -231,10 +115,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Idea generation route
-  app.post("/api/generate-idea", requireAuth, async (req, res) => {
+  app.post("/api/generate-idea", isAuthenticated, async (req: any, res) => {
     try {
       const { originalIdea } = req.body;
-      const userId = req.session.userId!; // Use session userId instead of client-provided
+      const userId = req.user.claims.sub; // Get userId from Replit Auth
 
       let generatedIdea: string;
 
@@ -260,9 +144,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get user's ideas
-  app.get("/api/ideas", requireAuth, async (req, res) => {
+  app.get("/api/ideas", isAuthenticated, async (req: any, res) => {
     try {
-      const ideas = await storage.getIdeasByUser(req.session.userId!);
+      const userId = req.user.claims.sub;
+      const ideas = await storage.getIdeasByUser(userId);
       
       // Add isKeyword flag to each idea (check if similarity >= 95%)
       const ideasWithKeywordFlag = await Promise.all(
@@ -279,16 +164,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete an idea
-  app.delete("/api/ideas/:id", requireAuth, async (req, res) => {
+  app.delete("/api/ideas/:id", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userId = req.user.claims.sub;
       const idea = await storage.getIdea(id);
 
       if (!idea) {
         return res.status(404).json({ message: "Idea not found" });
       }
 
-      if (idea.userId !== req.session.userId) {
+      if (idea.userId !== userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
@@ -301,9 +187,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Generate report for an idea
-  app.post("/api/generate-report", requireAuth, async (req, res) => {
+  app.post("/api/generate-report", isAuthenticated, async (req: any, res) => {
     try {
       const { ideaId, keywordCount = 10 } = req.body;
+      const userId = req.user.claims.sub;
 
       // Validate keywordCount
       const validatedCount = Math.max(1, Math.min(100, parseInt(keywordCount) || 10));
@@ -313,7 +200,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Idea not found" });
       }
 
-      if (idea.userId !== req.session.userId) {
+      if (idea.userId !== userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
@@ -333,7 +220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create report
       const report = await storage.createReport({
         ideaId,
-        userId: req.session.userId!,
+        userId,
         avgVolume: aggregates.avgVolume,
         growth3m: aggregates.growth3m,
         growthYoy: aggregates.growthYoy,
