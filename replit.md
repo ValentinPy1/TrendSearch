@@ -1,10 +1,10 @@
-# Pioneer Idea Watcher
+# TrendsSearch
 
 A dark-themed startup idea validation platform with AI-powered idea generation using GPT-4o-mini, market research insights with real keyword data, and interactive trend visualization.
 
 ## Overview
 
-Pioneer Idea Watcher helps entrepreneurs Find and validate their startup ideas using:
+TrendsSearch helps entrepreneurs find and validate their startup ideas using:
 - AI-powered idea generation with GPT-4o-mini using paramV4.json data and microSaaS principles
 - Market research data with exactly 10 semantically-related keywords (vector similarity search)
 - Interactive trend analysis and visualization with gradient-styled metrics

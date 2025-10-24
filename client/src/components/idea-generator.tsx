@@ -150,7 +150,7 @@ export function IdeaGenerator({
       <div className="space-y-8 pt-12">
         <div className="text-center max-w-3xl mx-auto">
           <h2 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent mb-6">
-            Idea Watcher
+            TrendsSearch
           </h2>
           <p className="text-base text-white/80 leading-relaxed">
             Generate startup ideas or validate your own. Get instant insights
