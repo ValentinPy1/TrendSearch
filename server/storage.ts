@@ -30,6 +30,9 @@ export interface IStorage {
   getKeywordsByReportId(reportId: string): Promise<Keyword[]>;
   createKeyword(keyword: InsertKeyword): Promise<Keyword>;
   createKeywords(keywords: InsertKeyword[]): Promise<Keyword[]>;
+  
+  // Health check
+  healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -125,6 +128,20 @@ export class DatabaseStorage implements IStorage {
     if (insertKeywords.length === 0) return [];
     const result = await db.insert(keywords).values(insertKeywords as any).returning();
     return result;
+  }
+
+  async healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }> {
+    try {
+      // Try to query the users table to verify database connectivity and schema
+      await db.select().from(users).limit(1);
+      return { connected: true, tablesExist: true };
+    } catch (error) {
+      console.error("Health check failed:", error);
+      return { 
+        connected: false, 
+        tablesExist: false 
+      };
+    }
   }
 }
 

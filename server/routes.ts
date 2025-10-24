@@ -112,7 +112,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.post("/api/auth/signup", async (req, res) => {
     try {
-      console.log("Signup attempt:", { email: req.body?.email });
+      console.log("Signup attempt:", { 
+        email: req.body?.email,
+        hasFirstName: !!req.body?.firstName,
+        hasLastName: !!req.body?.lastName,
+        hasPassword: !!req.body?.password,
+        bodyKeys: Object.keys(req.body || {})
+      });
+      
       const data = insertUserSchema.parse(req.body);
       
       const existingUser = await storage.getUserByEmail(data.email);
@@ -132,14 +139,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ user: { id: user.id, email: user.email } });
     } catch (error) {
       console.error("Signup error:", error);
+      console.error("Error type:", error?.constructor?.name);
+      console.error("Error details:", JSON.stringify(error, null, 2));
+      
       if (error instanceof Error && 'issues' in error) {
         // Zod validation error
+        const zodError = error as any;
+        console.error("Zod validation issues:", zodError.issues);
         return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: (error as any).issues 
+          message: zodError.issues?.[0]?.message || "Validation failed",
+          errors: zodError.issues 
         });
       }
-      res.status(400).json({ message: "Invalid input" });
+      
+      res.status(400).json({ 
+        message: error instanceof Error ? error.message : "Invalid input",
+        details: error instanceof Error ? error.stack : undefined
+      });
     }
   });
 
@@ -181,6 +197,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     req.session.destroy(() => {
       res.json({ success: true });
     });
+  });
+
+  // Health check endpoint for debugging production issues
+  app.get("/api/health", async (req, res) => {
+    try {
+      const dbCheck = await storage.healthCheck();
+      res.json({
+        status: "ok",
+        database: dbCheck,
+        environment: process.env.NODE_ENV || "development",
+        sessionConfigured: !!req.session,
+        trustProxy: req.app.get("trust proxy")
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Health check failed"
+      });
+    }
   });
 
   // Idea generation route
