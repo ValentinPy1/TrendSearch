@@ -434,6 +434,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Load more keywords for an existing report
+  app.post("/api/reports/:reportId/load-more", requireAuth, async (req, res) => {
+    try {
+      const { reportId } = req.params;
+
+      const report = await storage.getReport(reportId);
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      if (report.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const idea = await storage.getIdea(report.ideaId);
+      if (!idea) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+
+      // Get current keyword count
+      const existingKeywords = await storage.getKeywordsByReportId(reportId);
+      const currentCount = existingKeywords.length;
+
+      // Fetch one more keyword (currentCount + 1 total)
+      const { keywords: keywordData } = await getKeywordsFromVectorDB(
+        idea.generatedIdea,
+        currentCount + 1,
+      );
+
+      // Get the new keyword (last one in the array)
+      const newKeywordData = keywordData[keywordData.length - 1];
+
+      if (!newKeywordData) {
+        return res.status(400).json({ message: "No more keywords available" });
+      }
+
+      // Check if this keyword already exists
+      const alreadyExists = existingKeywords.some(
+        (k) => k.keyword === newKeywordData.keyword,
+      );
+
+      if (alreadyExists) {
+        return res.status(400).json({ message: "No more unique keywords available" });
+      }
+
+      // Create the new keyword
+      const newKeywords = await storage.createKeywords([
+        {
+          reportId: report.id,
+          keyword: newKeywordData.keyword,
+          volume: newKeywordData.volume,
+          competition: newKeywordData.competition,
+          cpc: newKeywordData.cpc,
+          topPageBid: newKeywordData.topPageBid,
+          growth3m: newKeywordData.growth3m,
+          growthYoy: newKeywordData.growthYoy,
+          similarityScore: newKeywordData.similarityScore,
+          growthSlope: newKeywordData.growthSlope,
+          growthR2: newKeywordData.growthR2,
+          growthConsistency: newKeywordData.growthConsistency,
+          growthStability: newKeywordData.growthStability,
+          sustainedGrowthScore: newKeywordData.sustainedGrowthScore,
+          monthlyData: newKeywordData.monthlyData,
+        },
+      ]);
+
+      res.json({ keyword: newKeywords[0] });
+    } catch (error) {
+      console.error("[Load More Keywords Error]:", error);
+      res.status(500).json({
+        message: "Failed to load more keywords",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

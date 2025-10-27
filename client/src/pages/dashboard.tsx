@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { IdeaGenerator } from "@/components/idea-generator";
 import { MetricsCards } from "@/components/metrics-cards";
 import { AverageTrendChart } from "@/components/average-trend-chart";
@@ -48,6 +49,20 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     refetch,
   } = useQuery<IdeaWithReport[]>({
     queryKey: ["/api/ideas"],
+  });
+
+  const loadMoreKeywordsMutation = useMutation({
+    mutationFn: async (reportId: string) => {
+      const response = await apiRequest(
+        "POST",
+        `/api/reports/${reportId}/load-more`,
+        {}
+      );
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
+    },
   });
 
   // Update selected idea with latest data (but don't auto-select on initial load)
@@ -241,7 +256,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               <div className="pt-16 space-y-4">
                 <div>
                   <h3 className="text-xl font-semibold text-white/90 mb-2">
-                    Top 10 Related Keywords
+                    Top {selectedIdea.report.keywords.length} Related Keywords
                   </h3>
                   <p className="text-sm text-white/60">
                     Click a keyword to view its trend analysis
@@ -252,6 +267,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   selectedKeyword={selectedKeyword}
                   onKeywordSelect={setSelectedKeyword}
                   onSearchKeyword={setSearchKeyword}
+                  onLoadMore={() => selectedIdea.report && loadMoreKeywordsMutation.mutate(selectedIdea.report.id)}
+                  isLoadingMore={loadMoreKeywordsMutation.isPending}
                 />
               </div>
 

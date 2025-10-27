@@ -26,6 +26,8 @@ interface KeywordsTableProps {
   selectedKeyword: string | null;
   onKeywordSelect: (keyword: string) => void;
   onSearchKeyword?: (keyword: string) => void;
+  onLoadMore?: () => void;
+  isLoadingMore?: boolean;
 }
 
 export function KeywordsTable({
@@ -33,6 +35,8 @@ export function KeywordsTable({
   selectedKeyword,
   onKeywordSelect,
   onSearchKeyword,
+  onLoadMore,
+  isLoadingMore = false,
 }: KeywordsTableProps) {
   const { toast } = useToast();
   const [sortField, setSortField] = useState<SortField | null>(null);
@@ -440,6 +444,31 @@ export function KeywordsTable({
                   </tr>
                 );
               })}
+              {onLoadMore && (
+                <tr className="border-t border-white/10">
+                  <td colSpan={8} className="py-4 px-4">
+                    <Button
+                      variant="ghost"
+                      onClick={onLoadMore}
+                      disabled={isLoadingMore}
+                      className="w-full text-white/60 hover:text-white transition-colors"
+                      data-testid="button-load-more-keyword"
+                    >
+                      {isLoadingMore ? (
+                        <span className="flex items-center gap-2">
+                          <div className="h-4 w-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                          Loading keyword...
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-2">
+                          <span className="text-lg">+</span>
+                          Load one more keyword
+                        </span>
+                      )}
+                    </Button>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
       </div>
