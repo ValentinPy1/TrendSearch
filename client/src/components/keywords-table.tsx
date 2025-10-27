@@ -13,6 +13,7 @@ import type { Keyword } from "@shared/schema";
 type SortField =
   | "keyword"
   | "similarityScore"
+  | "opportunityScore"
   | "volume"
   | "competition"
   | "cpc"
@@ -47,6 +48,7 @@ export function KeywordsTable({
   const columnInfo = {
     keyword: "Search terms related to your idea",
     similarityScore: "How closely this keyword matches your idea",
+    opportunityScore: "Comprehensive 0-100 score based on market size, growth, competition, and ad economics",
     volume: "Average monthly searches for this keyword",
     competition: "Level of advertiser competition (0-100 scale)",
     cpc: "Average cost per click in advertising",
@@ -88,6 +90,10 @@ export function KeywordsTable({
         case "similarityScore":
           aVal = parseFloat(a.similarityScore || "0");
           bVal = parseFloat(b.similarityScore || "0");
+          break;
+        case "opportunityScore":
+          aVal = a.opportunityScore || 0;
+          bVal = b.opportunityScore || 0;
           break;
         case "volume":
           aVal = a.volume || 0;
@@ -179,6 +185,27 @@ export function KeywordsTable({
     }
   };
 
+  const getOpportunityGradientText = (score: number) => {
+    // 0-100 range: low (red) to medium (yellow) to high (green)
+    if (score < 50) {
+      // 0-50: red to yellow
+      const normalizedValue = score / 50;
+      const hue = normalizedValue * 60; // 0 (red) to 60 (yellow)
+      const lightness = 60 - normalizedValue * 10; // 60% to 50%
+      return {
+        color: `hsl(${hue}, 80%, ${lightness}%)`,
+      };
+    } else {
+      // 50-100: yellow to green
+      const normalizedValue = (score - 50) / 50;
+      const hue = 60 + normalizedValue * 82; // 60 (yellow) to 142 (green)
+      const lightness = 60 - normalizedValue * 10; // 60% to 50%
+      return {
+        color: `hsl(${hue}, 80%, ${lightness}%)`,
+      };
+    }
+  };
+
   return (
     <GlassmorphicCard className="p-8">
       <div className="overflow-x-auto">
@@ -216,6 +243,23 @@ export function KeywordsTable({
                     </TooltipTrigger>
                     <TooltipContent>
                       <p>{columnInfo.similarityScore}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </th>
+                <th
+                  className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort("opportunityScore")}
+                  data-testid="header-opportunity"
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-center">
+                        Opportunity
+                        <SortIcon field="opportunityScore" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.opportunityScore}</p>
                     </TooltipContent>
                   </Tooltip>
                 </th>
@@ -408,6 +452,14 @@ export function KeywordsTable({
                         style={getBlueGradientText(matchPercentage)}
                       >
                         {matchPercentage.toFixed(0)}%
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-sm text-center">
+                      <span
+                        className="font-medium"
+                        style={getOpportunityGradientText(keyword.opportunityScore || 0)}
+                      >
+                        {keyword.opportunityScore || 0}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-white text-right">

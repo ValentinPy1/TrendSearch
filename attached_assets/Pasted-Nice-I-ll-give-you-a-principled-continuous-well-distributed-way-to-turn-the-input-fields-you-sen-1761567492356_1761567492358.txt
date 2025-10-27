@@ -1,0 +1,1253 @@
+Nice — I’ll give you a principled, continuous, well-distributed way to turn the input fields you sent into a set of meaningful aggregated metrics and one single Opportunity Index ∈ [0,100].
+I’ll:
+
+define how to normalize each input continuously (no hard truncation),
+
+show the aggregate component scores, their intuition, and weights,
+
+compute a worked example with your numbers, and
+
+give calibration + diagnostic suggestions so the index behaves well across many ideas.
+
+1) Overview / design goals (short)
+
+Continuous & monotonic mappings from raw value → 0..1 (we use smooth transforms so no abrupt clipping).
+
+Robust to extremes: use log transforms where values span orders of magnitude.
+
+Interpretable components: each component has clear meaning (Market Size, Growth, Competition, Quality/stability, CPC attractiveness, Ad efficiency).
+
+Final index: weighted sum of components, scaled to 0–100.
+
+Calibrate on your full dataset (recommended): use dataset percentiles (e.g. p5/p95 or median/IQR) to set scaling parameters — otherwise defaults below will work decently.
+
+2) Component definitions (raw → normalized ∈ (0,1) continuous)
+
+Notation: 
+𝑥
+x = raw value, 
+𝑠
+(
+𝑥
+)
+s(x) = normalized score in (0,1). For log transforms we use 
+log
+⁡
+10
+(
+𝑥
++
+1
+)
+log
+10
+	​
+
+(x+1) (safe for zeros).
+
+A. Market Size (MS) — captures absolute traffic scale (higher → better)
+
+𝑠
+𝑀
+𝑆
+(
+𝑉
+)
+  
+=
+  
+𝜎
+(
+𝛼
+𝑀
+𝑆
+⋅
+(
+log
+⁡
+10
+(
+𝑉
++
+1
+)
+−
+𝜇
+𝑀
+𝑆
+)
+)
+s
+MS
+	​
+
+(V)=σ(α
+MS
+	​
+
+⋅(log
+10
+	​
+
+(V+1)−μ
+MS
+	​
+
+))
+
+where 
+𝜎
+(
+𝑧
+)
+=
+1
+/
+(
+1
++
+𝑒
+−
+𝑧
+)
+σ(z)=1/(1+e
+−z
+) is the logistic, and 
+𝜇
+𝑀
+𝑆
+μ
+MS
+	​
+
+ and 
+𝛼
+𝑀
+𝑆
+α
+MS
+	​
+
+ are dataset-dependent center & slope.
+Practical default: set 
+𝜇
+𝑀
+𝑆
+=
+log
+⁡
+10
+(
+medianRef
+)
+μ
+MS
+	​
+
+=log
+10
+	​
+
+(medianRef) with medianRef≈100, and choose 
+𝛼
+𝑀
+𝑆
+=
+2
+α
+MS
+	​
+
+=2 (controls spread). This maps log10 volume around 100 nicely into (0,1).
+
+(If you prefer simpler linear log-mapping: 
+𝑠
+=
+log
+⁡
+10
+(
+𝑉
++
+1
+)
+−
+log
+⁡
+10
+(
+𝑝
+5
+)
+log
+⁡
+10
+(
+𝑝
+95
+)
+−
+log
+⁡
+10
+(
+𝑝
+5
+)
+s=
+log
+10
+	​
+
+(p95)−log
+10
+	​
+
+(p5)
+log
+10
+	​
+
+(V+1)−log
+10
+	​
+
+(p5)
+	​
+
+, but I recommend logistic for no hard clipping.)
+
+B. Growth Momentum (GM) — recent + YoY growth indicate rising interest
+Combine percentage growths by log1p, average, then logistic:
+
+𝑔
+=
+ln
+⁡
+(
+1
++
+𝑔
+3
+𝑚
+)
++
+ln
+⁡
+(
+1
++
+𝑔
+𝑦
+𝑜
+𝑦
+)
+2
+𝑠
+𝐺
+𝑀
+=
+𝜎
+(
+𝛼
+𝐺
+⋅
+(
+𝑔
+−
+𝜇
+𝐺
+)
+)
+g=
+2
+ln(1+g
+3m
+	​
+
+)+ln(1+g
+yoy
+	​
+
+)
+	​
+
+s
+GM
+	​
+
+=σ(α
+G
+	​
+
+⋅(g−μ
+G
+	​
+
+))
+
+Defaults: 
+𝜇
+𝐺
+=
+ln
+⁡
+(
+1
++
+0.05
+)
+μ
+G
+	​
+
+=ln(1+0.05) (5% baseline), 
+𝛼
+𝐺
+=
+6
+α
+G
+	​
+
+=6 (steeper so growth matters).
+
+C. Stability / Quality (SQ) — consistency, stability, R² (higher → better)
+Combine normalized subfields (all already 0..1 in your data):
+
+𝑠
+𝑆
+𝑄
+=
+𝑤
+𝐶
+⋅
+Consistency
++
+𝑤
+𝑆
+⋅
+Stability
++
+𝑤
+𝑅
+⋅
+R
+2
+s
+SQ
+	​
+
+=w
+C
+	​
+
+⋅Consistency+w
+S
+	​
+
+⋅Stability+w
+R
+	​
+
+⋅R
+2
+
+with 
+𝑤
+𝐶
++
+𝑤
+𝑆
++
+𝑤
+𝑅
+=
+1
+w
+C
+	​
+
++w
+S
+	​
+
++w
+R
+	​
+
+=1. Suggested: 
+𝑤
+𝐶
+=
+0.3
+,
+𝑤
+𝑆
+=
+0.5
+,
+𝑤
+𝑅
+=
+0.2
+w
+C
+	​
+
+=0.3,w
+S
+	​
+
+=0.5,w
+R
+	​
+
+=0.2.
+
+This produces a continuous score in [0,1] (no transform needed if the inputs are already in 0..1 — if not, rescale similarly).
+
+D. Competition / Market Saturation (CMP) — lower competition is better
+If Competition is 0–100 (higher = harder), convert to opportunity score:
+
+𝑠
+𝐶
+𝑀
+𝑃
+=
+1
+−
+Competition
+100
+s
+CMP
+	​
+
+=1−
+100
+Competition
+	​
+
+
+Optionally smooth with logistic if you want nonlinearity.
+
+E. CPC Attractiveness (CPCa) — how attractive the ad economics look
+Two signals: raw CPC (lower may be better if you want cheap acquisition) and top-page bid (higher top bid indicates stronger advertiser value). We combine by:
+
+𝑑
+=
+log
+⁡
+10
+(
+1
++
+TopBid
+)
+−
+log
+⁡
+10
+(
+1
++
+CPC
+)
+d=log
+10
+	​
+
+(1+TopBid)−log
+10
+	​
+
+(1+CPC)
+
+so positive 
+𝑑
+d means advertisers bid higher than average CPC. Then map with logistic:
+
+𝑠
+𝐶
+𝑃
+𝐶
+𝑎
+=
+𝜎
+(
+𝛼
+𝑐
+⋅
+(
+𝑑
+−
+𝜇
+𝑐
+)
+)
+s
+CPCa
+	​
+
+=σ(α
+c
+	​
+
+⋅(d−μ
+c
+	​
+
+))
+
+Defaults: 
+𝜇
+𝑐
+=
+0
+,
+ 
+𝛼
+𝑐
+=
+8
+μ
+c
+	​
+
+=0, α
+c
+	​
+
+=8. This is continuous and rewards positive spreads.
+
+(If you instead want “low CPC is good”, you can invert the sign or combine both ideas into a blended metric.)
+
+F. Ad Efficiency (AE) — simple relative margin: fraction of top-bid not soaked up by CPC:
+
+𝑠
+𝐴
+𝐸
+=
+TopBid
+−
+CPC
+TopBid
++
+𝜖
+s
+AE
+	​
+
+=
+TopBid+ϵ
+TopBid−CPC
+	​
+
+
+This is continuous, bounded (roughly −∞..1 but practically −1..1); clamp via logistic or map into [0,1] with 
+𝜎
+σ.
+
+3) Compose the Opportunity Index
+
+Compute a weighted sum of the normalized components, then scale to 0–100:
+
+OpportunityRaw
+=
+∑
+𝑖
+𝑤
+𝑖
+ 
+𝑠
+𝑖
+,
+∑
+𝑖
+𝑤
+𝑖
+=
+1
+OpportunityRaw=
+i
+∑
+	​
+
+w
+i
+	​
+
+s
+i
+	​
+
+,
+i
+∑
+	​
+
+w
+i
+	​
+
+=1
+OpportunityIndex
+=
+100
+⋅
+OpportunityRaw
+OpportunityIndex=100⋅OpportunityRaw
+
+Suggested weights (balanced for idea evaluation, not campaign costing):
+
+Market Size 
+𝑤
+𝑀
+𝑆
+=
+0.25
+w
+MS
+	​
+
+=0.25
+
+Growth Momentum 
+𝑤
+𝐺
+𝑀
+=
+0.20
+w
+GM
+	​
+
+=0.20
+
+Stability/Quality 
+𝑤
+𝑆
+𝑄
+=
+0.15
+w
+SQ
+	​
+
+=0.15
+
+Competition 
+𝑤
+𝐶
+𝑀
+𝑃
+=
+0.15
+w
+CMP
+	​
+
+=0.15
+
+CPC Attractiveness 
+𝑤
+𝐶
+𝑃
+𝐶
+𝑎
+=
+0.15
+w
+CPCa
+	​
+
+=0.15
+
+Ad Efficiency 
+𝑤
+𝐴
+𝐸
+=
+0.10
+w
+AE
+	​
+
+=0.10
+
+(These sum to 1.0; you can re-weight for your priorities — growth-first, low-spend, etc.)
+
+4) Worked example (using your numbers)
+
+Inputs you gave:
+
+Avg Volume 
+𝑉
+=
+11,011
+V=11,011
+
+Competition 
+=
+34
+=34 (0–100)
+
+Avg CPC = $6.25
+
+Avg Top Page Bid = $7.33
+
+Avg 3M Growth = +12.4% ⇒ 
+𝑔
+3
+𝑚
+=
+0.124
+g
+3m
+	​
+
+=0.124
+
+Avg YoY Growth = +17.6% ⇒ 
+𝑔
+𝑦
+𝑜
+𝑦
+=
+0.176
+g
+yoy
+	​
+
+=0.176
+
+Slope = 165.67 (used indirectly; we used R², Consistency, Stability instead)
+
+Consistency = 0.49 (assume already 0..1)
+
+Stability = 0.82 (assume 0..1)
+
+R² = 0.45 (assume 0..1)
+
+I’ll use the simpler, transparent default transforms I proposed (log10 + logistic with chosen default centers). Steps below are approximate numeric evaluations:
+
+A. Market Size
+log10(V+1) = log10(11012) ≈ 4.041. Using default center at log10(100)=2 and slope α=2:
+
+𝑧
+𝑀
+𝑆
+=
+2
+⋅
+(
+4.041
+−
+2
+)
+=
+4.082
+,
+𝑠
+𝑀
+𝑆
+=
+𝜎
+(
+4.082
+)
+≈
+0.983
+z
+MS
+	​
+
+=2⋅(4.041−2)=4.082,s
+MS
+	​
+
+=σ(4.082)≈0.983
+
+(High market size relative to the default median 100 — expected.)
+
+B. Growth Momentum
+
+ln
+⁡
+(
+1
++
+𝑔
+3
+𝑚
+)
+≈
+ln
+⁡
+(
+1.124
+)
+=
+0.117
+ln(1+g
+3m
+	​
+
+)≈ln(1.124)=0.117
+
+ln
+⁡
+(
+1
++
+𝑔
+𝑦
+𝑜
+𝑦
+)
+≈
+ln
+⁡
+(
+1.176
+)
+=
+0.162
+ln(1+g
+yoy
+	​
+
+)≈ln(1.176)=0.162
+avg 
+𝑔
+=
+0.1395
+g=0.1395. Center μ_G = ln(1.05)=0.049; α_G=6:
+
+𝑧
+𝐺
+=
+6
+(
+0.1395
+−
+0.049
+)
+=
+0.537
+,
+𝑠
+𝐺
+𝑀
+=
+𝜎
+(
+0.537
+)
+≈
+0.631
+z
+G
+	​
+
+=6(0.1395−0.049)=0.537,s
+GM
+	​
+
+=σ(0.537)≈0.631
+
+C. Stability/Quality
+Weights 
+𝑤
+𝐶
+=
+0.3
+,
+𝑤
+𝑆
+=
+0.5
+,
+𝑤
+𝑅
+=
+0.2
+w
+C
+	​
+
+=0.3,w
+S
+	​
+
+=0.5,w
+R
+	​
+
+=0.2:
+
+𝑠
+𝑆
+𝑄
+=
+0.3
+⋅
+0.49
++
+0.5
+⋅
+0.82
++
+0.2
+⋅
+0.45
+=
+0.147
++
+0.41
++
+0.09
+=
+0.647
+s
+SQ
+	​
+
+=0.3⋅0.49+0.5⋅0.82+0.2⋅0.45=0.147+0.41+0.09=0.647
+
+D. Competition (inverse)
+
+𝑠
+𝐶
+𝑀
+𝑃
+=
+1
+−
+34
+/
+100
+=
+0.66
+s
+CMP
+	​
+
+=1−34/100=0.66
+
+E. CPC Attractiveness (spread d)
+
+𝑑
+=
+log
+⁡
+10
+(
+1
++
+7.33
+)
+−
+log
+⁡
+10
+(
+1
++
+6.25
+)
+=
+log
+⁡
+10
+(
+8.33
+)
+−
+log
+⁡
+10
+(
+7.25
+)
+≈
+0.920
+−
+0.860
+=
+0.060
+d=log
+10
+	​
+
+(1+7.33)−log
+10
+	​
+
+(1+6.25)=log
+10
+	​
+
+(8.33)−log
+10
+	​
+
+(7.25)≈0.920−0.860=0.060
+
+use μ_c=0, α_c=8:
+
+𝑠
+𝐶
+𝑃
+𝐶
+𝑎
+=
+𝜎
+(
+8
+⋅
+0.06
+)
+≈
+𝜎
+(
+0.48
+)
+≈
+0.617
+s
+CPCa
+	​
+
+=σ(8⋅0.06)≈σ(0.48)≈0.617
+
+(So top bid > cpc a bit — small positive signal.)
+
+F. Ad Efficiency
+
+𝑠
+𝐴
+𝐸
+=
+7.33
+−
+6.25
+7.33
++
+10
+−
+6
+≈
+1.08
+/
+7.33
+≈
+0.147
+s
+AE
+	​
+
+=
+7.33+10
+−6
+7.33−6.25
+	​
+
+≈1.08/7.33≈0.147
+
+We can map it with logistic to avoid compressing the other components, but we’ll keep the raw fraction and rescale by logistic with α=8, μ=0.0:
+
+𝑠
+𝐴
+𝐸
+_
+𝑠
+𝑖
+𝑔
+=
+𝜎
+(
+8
+⋅
+(
+0.147
+−
+0
+)
+)
+=
+𝜎
+(
+1.176
+)
+≈
+0.764
+s
+AE_sig
+	​
+
+=σ(8⋅(0.147−0))=σ(1.176)≈0.764
+
+Compose with suggested weights
+Using the weights from section 3:
+
+𝑂
+𝑝
+𝑝
+𝑜
+𝑟
+𝑡
+𝑢
+𝑛
+𝑖
+𝑡
+𝑦
+𝑅
+𝑎
+𝑤
+	
+=
+0.25
+⋅
+𝑠
+𝑀
+𝑆
++
+0.20
+⋅
+𝑠
+𝐺
+𝑀
++
+0.15
+⋅
+𝑠
+𝑆
+𝑄
+
+
+	
++
+0.15
+⋅
+𝑠
+𝐶
+𝑀
+𝑃
++
+0.15
+⋅
+𝑠
+𝐶
+𝑃
+𝐶
+𝑎
++
+0.10
+⋅
+𝑠
+𝐴
+𝐸
+_
+𝑠
+𝑖
+𝑔
+
+
+	
+=
+0.25
+(
+0.983
+)
++
+0.20
+(
+0.631
+)
++
+0.15
+(
+0.647
+)
+
+
+	
++
+0.15
+(
+0.66
+)
++
+0.15
+(
+0.617
+)
++
+0.10
+(
+0.764
+)
+
+
+	
+≈
+0.246
++
+0.1262
++
+0.0971
++
+0.099
++
+0.0926
++
+0.0764
+
+
+	
+≈
+0.7373
+OpportunityRaw
+	​
+
+=0.25⋅s
+MS
+	​
+
++0.20⋅s
+GM
+	​
+
++0.15⋅s
+SQ
+	​
+
++0.15⋅s
+CMP
+	​
+
++0.15⋅s
+CPCa
+	​
+
++0.10⋅s
+AE_sig
+	​
+
+=0.25(0.983)+0.20(0.631)+0.15(0.647)
++0.15(0.66)+0.15(0.617)+0.10(0.764)
+≈0.246+0.1262+0.0971+0.099+0.0926+0.0764
+≈0.7373
+	​
+
+OpportunityIndex
+=
+100
+×
+0.7373
+≈
+73.7
+OpportunityIndex=100×0.7373≈73.7
+
+Interpretation: with the defaults chosen, this idea scores ~74/100 — driven by strong market size and decent growth/quality, while competition and CPC signals are neutral-to-positive.

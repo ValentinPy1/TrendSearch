@@ -6,6 +6,7 @@ import { insertUserSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { keywordVectorService } from "./keyword-vector-service";
 import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
+import { calculateOpportunityScore } from "./opportunity-score";
 
 async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
   // Use vector similarity search to find most relevant keywords
@@ -403,24 +404,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         avgCpc: aggregates.avgCpc,
       });
 
-      // Create keywords
-      const keywordsToInsert = keywordData.map((kw) => ({
-        reportId: report.id,
-        keyword: kw.keyword,
-        volume: kw.volume,
-        competition: kw.competition,
-        cpc: kw.cpc,
-        topPageBid: kw.topPageBid,
-        growth3m: kw.growth3m,
-        growthYoy: kw.growthYoy,
-        similarityScore: kw.similarityScore,
-        growthSlope: kw.growthSlope,
-        growthR2: kw.growthR2,
-        growthConsistency: kw.growthConsistency,
-        growthStability: kw.growthStability,
-        sustainedGrowthScore: kw.sustainedGrowthScore,
-        monthlyData: kw.monthlyData,
-      }));
+      // Create keywords with opportunity scores
+      const keywordsToInsert = keywordData.map((kw) => {
+        // Calculate opportunity score for each keyword
+        const { opportunityScore } = calculateOpportunityScore({
+          volume: kw.volume || 0,
+          competition: kw.competition || 0,
+          cpc: parseFloat(kw.cpc?.toString() || "0"),
+          topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+          growth3m: parseFloat(kw.growth3m?.toString() || "0"),
+          growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+          growthConsistency: parseFloat(kw.growthConsistency?.toString() || "0"),
+          growthStability: parseFloat(kw.growthStability?.toString() || "0"),
+          growthR2: parseFloat(kw.growthR2?.toString() || "0"),
+        });
+        
+        return {
+          reportId: report.id,
+          keyword: kw.keyword,
+          volume: kw.volume,
+          competition: kw.competition,
+          cpc: kw.cpc,
+          topPageBid: kw.topPageBid,
+          growth3m: kw.growth3m,
+          growthYoy: kw.growthYoy,
+          similarityScore: kw.similarityScore,
+          growthSlope: kw.growthSlope,
+          growthR2: kw.growthR2,
+          growthConsistency: kw.growthConsistency,
+          growthStability: kw.growthStability,
+          sustainedGrowthScore: kw.sustainedGrowthScore,
+          opportunityScore,
+          monthlyData: kw.monthlyData,
+        };
+      });
 
       const keywords = await storage.createKeywords(keywordsToInsert);
 
@@ -481,24 +498,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No more unique keywords available" });
       }
 
-      // Create the new keywords
-      const keywordsToInsert = uniqueNewKeywords.map((kw) => ({
-        reportId: report.id,
-        keyword: kw.keyword,
-        volume: kw.volume,
-        competition: kw.competition,
-        cpc: kw.cpc,
-        topPageBid: kw.topPageBid,
-        growth3m: kw.growth3m,
-        growthYoy: kw.growthYoy,
-        similarityScore: kw.similarityScore,
-        growthSlope: kw.growthSlope,
-        growthR2: kw.growthR2,
-        growthConsistency: kw.growthConsistency,
-        growthStability: kw.growthStability,
-        sustainedGrowthScore: kw.sustainedGrowthScore,
-        monthlyData: kw.monthlyData,
-      }));
+      // Create the new keywords with opportunity scores
+      const keywordsToInsert = uniqueNewKeywords.map((kw) => {
+        // Calculate opportunity score for each keyword
+        const { opportunityScore } = calculateOpportunityScore({
+          volume: kw.volume || 0,
+          competition: kw.competition || 0,
+          cpc: parseFloat(kw.cpc?.toString() || "0"),
+          topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+          growth3m: parseFloat(kw.growth3m?.toString() || "0"),
+          growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+          growthConsistency: parseFloat(kw.growthConsistency?.toString() || "0"),
+          growthStability: parseFloat(kw.growthStability?.toString() || "0"),
+          growthR2: parseFloat(kw.growthR2?.toString() || "0"),
+        });
+        
+        return {
+          reportId: report.id,
+          keyword: kw.keyword,
+          volume: kw.volume,
+          competition: kw.competition,
+          cpc: kw.cpc,
+          topPageBid: kw.topPageBid,
+          growth3m: kw.growth3m,
+          growthYoy: kw.growthYoy,
+          similarityScore: kw.similarityScore,
+          growthSlope: kw.growthSlope,
+          growthR2: kw.growthR2,
+          growthConsistency: kw.growthConsistency,
+          growthStability: kw.growthStability,
+          sustainedGrowthScore: kw.sustainedGrowthScore,
+          opportunityScore,
+          monthlyData: kw.monthlyData,
+        };
+      });
 
       const newKeywords = await storage.createKeywords(keywordsToInsert);
 

@@ -76,29 +76,45 @@ Trends Search helps entrepreneurs find and validate their startup ideas using:
 - GPT-4o-mini generates ultra-concise microSaaS idea (typically 4-8 words)
 - User-provided ideas are preserved exactly; blank input triggers AI generation
 
-### 2. Market Validation
+### 2. Opportunity Score
+**Comprehensive 0-100 Metric:**
+Each keyword receives an Opportunity Score calculated from six weighted components:
+- **Market Size (25%):** Based on search volume with log10 + sigmoid transform
+- **Growth Momentum (20%):** Combines 3-month and YoY growth trends
+- **Stability/Quality (15%):** Weighted average of growth consistency, stability, and R²
+- **Competition (15%):** Inverted competition score (lower competition = higher score)
+- **CPC Attractiveness (15%):** Spread between Top Page Bid and CPC
+- **Ad Efficiency (10%):** Margin analysis between TopBid and CPC
+
+**Display:**
+- Sortable column in keywords table
+- Color-coded gradient: Red (0-33) → Yellow (34-66) → Green (67-100)
+- Helps identify high-potential keywords at a glance
+
+### 3. Market Validation
 **Metrics Cards** (positioned above table):
 - 6 cards displaying weighted averages of all 10 keywords
 - Each metric weighted by keyword's match percentage (similarityScore)
 - Metrics: Avg Volume, Avg Competition, Avg CPC, Avg Top Page Bid, Avg 3M Growth, Avg YoY Growth
 - Order matches table column order for consistency
 
-**Keywords Table** displays 8 columns:
-1. Keyword - the search term with hover actions (copy, search, delete)
+**Keywords Table** displays 9 columns:
+1. Keyword - the search term with hover actions (trash to hide, copy, search with auto-scroll)
 2. Match - similarity score to the idea (percentage with blue gradient 0-100)
-3. Volume - monthly search volume
-4. Competition - competition level (0-100 with red gradient)
-5. CPC - cost per click (purple gradient based on max value)
-6. Top Page Bid - average top-of-page bid (purple gradient based on max value)
-7. 3Mo Trend - 3-month growth percentage
-8. YoY Trend - year-over-year growth percentage
+3. Opportunity - comprehensive 0-100 score (red→yellow→green gradient based on market size, growth, competition, and CPC economics)
+4. Volume - monthly search volume
+5. Competition - competition level (0-100 with red gradient)
+6. CPC - cost per click (purple gradient based on max value)
+7. Top Page Bid - average top-of-page bid (purple gradient based on max value)
+8. 3Mo Trend - 3-month growth percentage
+9. YoY Trend - year-over-year growth percentage
 
 **Keyword Actions** (visible on hover):
+- **Trash icon (red, left side):** Hides keyword from table and excludes from aggregates (frontend-only, doesn't delete from database)
 - **Copy icon:** Copies keyword to clipboard
 - **Search icon:** Adds keyword to search input and scrolls to focus the search bar
-- **Trash icon (red):** Hides keyword from table and excludes from aggregates (frontend-only, doesn't delete from database)
 
-### 3. Trend Analysis
+### 4. Trend Analysis
 - Interactive line chart showing 12 months of search volume
 - Dropdown to select from the 10 keywords
 - Recharts library with gradient styling
@@ -119,7 +135,10 @@ Trends Search helps entrepreneurs find and validate their startup ideas using:
 - ✅ Red gradient for Competition (0-100)
 - ✅ Purple gradient for CPC and Top Page Bid (scaled to max value)
 - ✅ Optimized keyword loading (preload 20, show 10, expand by 5)
+- ✅ Opportunity Score calculation (0-100 comprehensive metric)
+- ✅ Red→Yellow→Green gradient for opportunity scores
 - ✅ Keyword filtering with trash icon (frontend-only exclusion from view and aggregates)
+- ✅ Search icon with auto-scroll to search bar
 - ✅ Trend chart visualization
 - ✅ Dark theme with gradient orbs
 - ✅ Glassmorphic UI design
