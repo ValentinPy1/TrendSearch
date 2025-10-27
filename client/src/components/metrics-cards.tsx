@@ -1,8 +1,7 @@
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { TrendingUp, TrendingDown, Search, Target, DollarSign, MousePointerClick } from "lucide-react";
+import { Trophy, TrendingUp, Zap, DollarSign, Coins } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Keyword } from "@shared/schema";
-import { calculateAverageTrendData, calculateGrowthFromTrend } from "@/lib/trend-calculations";
 
 interface MetricsCardsProps {
   keywords: Keyword[];
@@ -66,35 +65,37 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
     return avgSqrt * avgSqrt; // Square the result
   };
 
-  const avgVolume = Math.round(calculateVolumeAverage());
-  const avgCompetition = Math.round(calculateWeightedAverage(k => k.competition || 0));
-  const avgTopPageBid = calculateWeightedAverage(k => parseFloat(k.topPageBid || "0"));
-  const avgCpc = calculateWeightedAverage(k => parseFloat(k.cpc || "0"));
-  
-  // Calculate 3M and YoY growth from the average trend data
-  const averageTrendData = calculateAverageTrendData(keywords);
-  const { growth3m: avg3mGrowth, growthYoy: avgYoyGrowth } = calculateGrowthFromTrend(averageTrendData);
+  const avgOpportunityScore = calculateWeightedAverage(k => parseFloat(k.opportunityScore || "0"));
+  const avgTrendStrength = calculateWeightedAverage(k => parseFloat(k.trendStrength || "0"));
+  const avgBidEfficiency = calculateWeightedAverage(k => parseFloat(k.bidEfficiency || "0"));
+  const avgTAC = calculateWeightedAverage(k => parseFloat(k.tac || "0"));
+  const avgSAC = calculateWeightedAverage(k => parseFloat(k.sac || "0"));
 
-  // Calculate max values for purple gradients
-  const maxCpc = Math.max(...keywords.map(k => parseFloat(k.cpc || "0")), 1);
-  const maxTopPageBid = Math.max(...keywords.map(k => parseFloat(k.topPageBid || "0")), 1);
+  // Calculate max values for gradients
+  const maxOpportunityScore = Math.max(...keywords.map(k => parseFloat(k.opportunityScore || "0")), 1);
+  const maxTrendStrength = Math.max(...keywords.map(k => parseFloat(k.trendStrength || "0")), 1);
+  const maxBidEfficiency = Math.max(...keywords.map(k => parseFloat(k.bidEfficiency || "0")), 1);
+  const maxTAC = Math.max(...keywords.map(k => parseFloat(k.tac || "0")), 1);
+  const maxSAC = Math.max(...keywords.map(k => parseFloat(k.sac || "0")), 1);
 
-  const getTrendGradientText = (value: number) => {
-    if (value >= 0) {
-      const normalizedValue = Math.min(1, value / 200);
-      const lightness = 100 - (normalizedValue * 50);
-      return { color: `hsl(142, 70%, ${lightness}%)` };
-    } else {
-      const normalizedValue = Math.min(1, Math.abs(value) / 100);
-      const lightness = 100 - (normalizedValue * 50);
-      return { color: `hsl(0, 80%, ${lightness}%)` };
-    }
+  const getOpportunityGradientText = (value: number, max: number) => {
+    const normalizedValue = Math.min(1, (value / max));
+    const hue = 142 * normalizedValue; // 0 (red) to 142 (green)
+    const saturation = 70;
+    const lightness = 100 - (normalizedValue * 40);
+    return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
   };
 
-  const getRedGradientText = (value: number) => {
-    const normalizedValue = Math.min(1, Math.max(0, value / 100));
+  const getGreenGradientText = (value: number, max: number) => {
+    const normalizedValue = Math.min(1, (value / max));
     const lightness = 100 - (normalizedValue * 40);
-    return { color: `hsl(0, 80%, ${lightness}%)` };
+    return { color: `hsl(142, 70%, ${lightness}%)` };
+  };
+
+  const getBlueGradientText = (value: number, max: number) => {
+    const normalizedValue = Math.min(1, (value / max));
+    const lightness = 100 - (normalizedValue * 40);
+    return { color: `hsl(210, 70%, ${lightness}%)` };
   };
 
   const getPurpleGradientText = (value: number, max: number) => {
@@ -105,57 +106,49 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
 
   const metrics = [
     {
-      label: "Avg Volume",
-      value: avgVolume.toLocaleString(),
-      subtitle: "monthly searches",
-      icon: Search,
-      style: { color: 'rgb(255, 255, 255)' },
-      info: "Weighted average monthly searches across all 10 keywords",
+      label: "Avg Opportunity",
+      value: avgOpportunityScore.toFixed(1),
+      subtitle: "comprehensive score",
+      icon: Trophy,
+      style: getOpportunityGradientText(avgOpportunityScore, maxOpportunityScore),
+      info: "Weighted average opportunity score - log(SAC) × Trend Strength × Bid Efficiency across all keywords",
     },
     {
-      label: "Avg Competition",
-      value: avgCompetition,
-      subtitle: "market saturation",
-      icon: Target,
-      style: getRedGradientText(avgCompetition),
-      info: "Weighted average advertiser competition (0-100 scale)",
+      label: "Avg Trend Strength",
+      value: avgTrendStrength.toFixed(2),
+      subtitle: "growth momentum",
+      icon: TrendingUp,
+      style: getGreenGradientText(avgTrendStrength, maxTrendStrength),
+      info: "Weighted average trend strength - YoY Growth / Volatility showing consistent growth patterns",
     },
     {
-      label: "Avg CPC",
-      value: `$${avgCpc.toFixed(2)}`,
-      subtitle: "cost per click",
-      icon: MousePointerClick,
-      style: getPurpleGradientText(avgCpc, maxCpc),
-      info: "Weighted average cost per click in advertising",
+      label: "Avg Bid Efficiency",
+      value: avgBidEfficiency.toFixed(2),
+      subtitle: "advertiser margin",
+      icon: Zap,
+      style: getBlueGradientText(avgBidEfficiency, maxBidEfficiency),
+      info: "Weighted average bid efficiency - Top Page Bid / CPC showing advertiser premium for top placement",
     },
     {
-      label: "Avg Top Page Bid",
-      value: `$${avgTopPageBid.toFixed(2)}`,
-      subtitle: "advertiser bid",
+      label: "Avg TAC",
+      value: `$${Math.round(avgTAC).toLocaleString()}`,
+      subtitle: "total ad cost",
       icon: DollarSign,
-      style: getPurpleGradientText(avgTopPageBid, maxTopPageBid),
-      info: "Weighted average bid to appear at top of search results",
+      style: getPurpleGradientText(avgTAC, maxTAC),
+      info: "Weighted average Total Advertiser Cost - Volume × CPC estimated monthly ad spend",
     },
     {
-      label: "Avg 3M Growth",
-      value: `${avg3mGrowth >= 0 ? '+' : ''}${avg3mGrowth.toFixed(1)}%`,
-      subtitle: "3-month trend",
-      icon: avg3mGrowth >= 0 ? TrendingUp : TrendingDown,
-      style: getTrendGradientText(avg3mGrowth),
-      info: "Weighted average search volume change over last 3 months",
-    },
-    {
-      label: "Avg YoY Growth",
-      value: `${avgYoyGrowth >= 0 ? '+' : ''}${avgYoyGrowth.toFixed(1)}%`,
-      subtitle: "year over year",
-      icon: avgYoyGrowth >= 0 ? TrendingUp : TrendingDown,
-      style: getTrendGradientText(avgYoyGrowth),
-      info: "Weighted average search volume change compared to last year",
+      label: "Avg SAC",
+      value: `$${Math.round(avgSAC).toLocaleString()}`,
+      subtitle: "seller ad cost",
+      icon: Coins,
+      style: getPurpleGradientText(avgSAC, maxSAC),
+      info: "Weighted average Seller Advertiser Cost - TAC × (1 - Competition/100) effective market size",
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
       {metrics.map((metric) => {
         const Icon = metric.icon;
         return (
