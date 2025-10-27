@@ -175,35 +175,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               <div className="h-12 bg-white/10 rounded-lg animate-pulse max-w-2xl mx-auto" />
             </div>
 
-            <div className="space-y-4">
-              <h3 className="text-xl font-semibold text-white/90">
-                Aggregated KPIs
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                {[...Array(6)].map((_, i) => (
-                  <GlassmorphicCard key={i} className="p-6">
-                    <div className="space-y-3">
-                      <div className="h-4 bg-white/10 rounded animate-pulse w-24" />
-                      <div className="h-8 bg-white/10 rounded animate-pulse w-20" />
-                      <div className="h-3 bg-white/10 rounded animate-pulse w-16" />
-                    </div>
-                  </GlassmorphicCard>
-                ))}
-              </div>
-            </div>
-
-            <div className="pt-8">
-              <GlassmorphicCard className="p-8">
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <div className="h-6 bg-white/10 rounded animate-pulse w-64" />
-                    <div className="h-4 bg-white/10 rounded animate-pulse w-96" />
-                  </div>
-                  <div className="h-96 bg-white/5 rounded animate-pulse" />
-                </div>
-              </GlassmorphicCard>
-            </div>
-
             <div className="pt-16 space-y-4">
               <div>
                 <h3 className="text-xl font-semibold text-white/90 mb-2">
@@ -224,6 +195,35 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 </div>
               </GlassmorphicCard>
             </div>
+
+            <div className="pt-8">
+              <GlassmorphicCard className="p-8">
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <div className="h-6 bg-white/10 rounded animate-pulse w-64" />
+                    <div className="h-4 bg-white/10 rounded animate-pulse w-96" />
+                  </div>
+                  <div className="h-96 bg-white/5 rounded animate-pulse" />
+                </div>
+              </GlassmorphicCard>
+            </div>
+
+            <div className="pt-16 space-y-4">
+              <h3 className="text-xl font-semibold text-white/90">
+                Aggregated KPIs
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <GlassmorphicCard key={i} className="p-6">
+                    <div className="space-y-3">
+                      <div className="h-4 bg-white/10 rounded animate-pulse w-24" />
+                      <div className="h-8 bg-white/10 rounded animate-pulse w-20" />
+                      <div className="h-3 bg-white/10 rounded animate-pulse w-16" />
+                    </div>
+                  </GlassmorphicCard>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -236,17 +236,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
                   {selectedIdea.generatedIdea}
                 </h2>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-xl font-semibold text-white/90">
-                  Aggregated KPIs
-                </h3>
-                <MetricsCards keywords={selectedIdea.report.keywords} />
-              </div>
-
-              <div>
-                <AverageTrendChart keywords={selectedIdea.report.keywords} />
               </div>
 
               <div className="pt-16 space-y-4">
@@ -288,6 +277,17 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     />
                   </div>
                 )}
+
+              <div className="pt-16 space-y-4">
+                <h3 className="text-xl font-semibold text-white/90">
+                  Aggregated KPIs
+                </h3>
+                <MetricsCards keywords={selectedIdea.report.keywords} />
+              </div>
+
+              <div>
+                <AverageTrendChart keywords={selectedIdea.report.keywords} />
+              </div>
 
               {/* Call to Action */}
               <div className="text-center py-8">
