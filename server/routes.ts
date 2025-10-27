@@ -29,13 +29,13 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
   
   const keywords = similarKeywords.map(kw => {
     // Convert monthly data from CSV format to our format with correct month labels
-    // Recharts displays data in reverse order, so reverse here to show chronologically
+    // Recharts displays data in the order provided, so keep chronological order
     const monthlyData = monthMapping.map(({ key, label }) => {
       return {
         month: label,
         volume: Math.floor(kw[key as keyof typeof kw] as number || kw.search_volume || 0)
       };
-    }).reverse();
+    });
 
     return {
       keyword: kw.keyword,
