@@ -49,7 +49,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <TooltipProvider>
+        <TooltipProvider delayDuration={0}>
           <div className="min-h-screen bg-background">
             <GradientOrbs />
             <div className="relative z-10">

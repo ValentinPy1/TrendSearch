@@ -40,10 +40,10 @@ export function AverageTrendChart({ keywords }: AverageTrendChartProps) {
       <div className="space-y-6">
         <div>
           <h3 className="text-xl font-semibold text-white mb-2">
-            Average Search Volume Trend (from keywords below)
+            Average Search Volume Trend (from keywords above)
           </h3>
           <p className="text-sm text-white/60">
-            Weighted average across all 10 keywords over 12 months
+            Weighted average across all keywords
           </p>
         </div>
 

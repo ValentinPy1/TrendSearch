@@ -42,7 +42,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState<string | null>(null);
   const [displayedKeywordCount, setDisplayedKeywordCount] = useState(10);
-  const [excludedKeywordIds, setExcludedKeywordIds] = useState<Set<string>>(new Set());
+  const [excludedKeywordIds, setExcludedKeywordIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   const {
     data: ideas,
@@ -58,7 +60,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       const response = await apiRequest(
         "POST",
         `/api/reports/${reportId}/load-more`,
-        {}
+        {},
       );
       return response;
     },
@@ -69,22 +71,26 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
   const handleDeleteKeyword = (keywordId: string) => {
     // Remove keyword from view (frontend-only, doesn't delete from database)
-    setExcludedKeywordIds(prev => new Set([...Array.from(prev), keywordId]));
-    
+    setExcludedKeywordIds((prev) => new Set([...Array.from(prev), keywordId]));
+
     // If the deleted keyword was selected, select the first non-excluded keyword
     if (selectedIdea?.report?.keywords) {
       // Create new excluded set for immediate use (state update is async)
-      const newExcludedIds = new Set([...Array.from(excludedKeywordIds), keywordId]);
-      
+      const newExcludedIds = new Set([
+        ...Array.from(excludedKeywordIds),
+        keywordId,
+      ]);
+
       const remainingVisibleKeywords = selectedIdea.report.keywords.filter(
-        k => !newExcludedIds.has(k.id)
+        (k) => !newExcludedIds.has(k.id),
       );
-      
+
       if (selectedKeyword) {
-        const currentKeywordExcluded = selectedIdea.report.keywords.find(
-          k => k.keyword === selectedKeyword
-        )?.id === keywordId;
-        
+        const currentKeywordExcluded =
+          selectedIdea.report.keywords.find(
+            (k) => k.keyword === selectedKeyword,
+          )?.id === keywordId;
+
         if (currentKeywordExcluded && remainingVisibleKeywords.length > 0) {
           setSelectedKeyword(remainingVisibleKeywords[0].keyword);
         } else if (currentKeywordExcluded) {
@@ -96,13 +102,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
   const handleLoadMore = () => {
     if (!selectedIdea?.report) return;
-    
+
     const totalKeywords = selectedIdea.report.keywords.length;
     const newDisplayCount = displayedKeywordCount + 5;
-    
+
     // Show 5 more keywords immediately
     setDisplayedKeywordCount(newDisplayCount);
-    
+
     // If we're within 5 of running out, preload 5 more in background
     if (newDisplayCount >= totalKeywords - 5) {
       loadMoreKeywordsMutation.mutate(selectedIdea.report.id);
@@ -293,108 +299,118 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         {!isLoading &&
           !error &&
           !isGeneratingReport &&
-          selectedIdea?.report && (() => {
+          selectedIdea?.report &&
+          (() => {
             // Slice first based on displayedKeywordCount, THEN filter out excluded
             // This prevents backfilling from preloaded keywords when hiding
-            const preFilteredKeywords = selectedIdea.report.keywords.slice(0, displayedKeywordCount);
-            const displayedKeywords = preFilteredKeywords.filter(
-              k => !excludedKeywordIds.has(k.id)
+            const preFilteredKeywords = selectedIdea.report.keywords.slice(
+              0,
+              displayedKeywordCount,
             );
-            
+            const displayedKeywords = preFilteredKeywords.filter(
+              (k) => !excludedKeywordIds.has(k.id),
+            );
+
             // Check if there are more keywords to show (not counting excluded ones)
             const allVisibleKeywords = selectedIdea.report.keywords.filter(
-              k => !excludedKeywordIds.has(k.id)
+              (k) => !excludedKeywordIds.has(k.id),
             );
-            const hasMoreToShow = displayedKeywordCount < allVisibleKeywords.length;
-            
+            const hasMoreToShow =
+              displayedKeywordCount < allVisibleKeywords.length;
+
             return (
-            <div className="space-y-4">
-              <div className="text-center pt-8 pb-4">
-                <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
-                  {selectedIdea.generatedIdea}
-                </h2>
-              </div>
-
-              <div className="pt-16 space-y-4">
-                <div>
-                  <h3 className="text-xl font-semibold text-white/90 mb-2">
-                    Top {displayedKeywords.length} Related Keywords
-                  </h3>
-                  <p className="text-sm text-white/60">
-                    Click a keyword to view its trend analysis
-                  </p>
+              <div className="space-y-4">
+                <div className="text-center pt-8 pb-4">
+                  <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
+                    {selectedIdea.generatedIdea}
+                  </h2>
                 </div>
-                <KeywordsTable
-                  keywords={displayedKeywords}
-                  selectedKeyword={selectedKeyword}
-                  onKeywordSelect={setSelectedKeyword}
-                  onSearchKeyword={setSearchKeyword}
-                  onDeleteKeyword={handleDeleteKeyword}
-                  onLoadMore={hasMoreToShow || allVisibleKeywords.length < 100 ? handleLoadMore : undefined}
-                  isLoadingMore={loadMoreKeywordsMutation.isPending}
-                  reportId={selectedIdea.report.id}
-                />
-              </div>
 
-              {selectedKeyword &&
-                displayedKeywords.find(
-                  (k) => k.keyword === selectedKeyword,
-                ) && (
-                  <div className="grid grid-cols-1 lg:grid-cols-[1fr_175px] gap-4">
-                    <TrendChart
-                      key={`chart-${selectedKeyword}`}
-                      keywords={displayedKeywords}
-                      reportId={selectedIdea.report.id}
-                      selectedKeyword={selectedKeyword}
-                    />
-                    <KeywordMetricsCards
-                      key={`metrics-${selectedKeyword}`}
-                      keyword={
-                        displayedKeywords.find(
-                          (k) => k.keyword === selectedKeyword,
-                        )!
-                      }
-                      allKeywords={displayedKeywords}
-                    />
+                <div className="pt-16 space-y-4">
+                  <div>
+                    <h3 className="text-xl font-semibold text-white/90 mb-2">
+                      Top {displayedKeywords.length} Related Keywords
+                    </h3>
+                    <p className="text-sm text-white/60">
+                      Click a keyword to view its trend analysis
+                    </p>
                   </div>
-                )}
+                  <KeywordsTable
+                    keywords={displayedKeywords}
+                    selectedKeyword={selectedKeyword}
+                    onKeywordSelect={setSelectedKeyword}
+                    onSearchKeyword={setSearchKeyword}
+                    onDeleteKeyword={handleDeleteKeyword}
+                    onLoadMore={
+                      hasMoreToShow || allVisibleKeywords.length < 100
+                        ? handleLoadMore
+                        : undefined
+                    }
+                    isLoadingMore={loadMoreKeywordsMutation.isPending}
+                    reportId={selectedIdea.report.id}
+                  />
+                </div>
 
-              <div className="pt-16 space-y-4">
-                <h3 className="text-xl font-semibold text-white/90">
-                  Aggregated KPIs
-                </h3>
-                <MetricsCards keywords={displayedKeywords} />
-              </div>
+                {selectedKeyword &&
+                  displayedKeywords.find(
+                    (k) => k.keyword === selectedKeyword,
+                  ) && (
+                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_175px] gap-4">
+                      <TrendChart
+                        key={`chart-${selectedKeyword}`}
+                        keywords={displayedKeywords}
+                        reportId={selectedIdea.report.id}
+                        selectedKeyword={selectedKeyword}
+                      />
+                      <KeywordMetricsCards
+                        key={`metrics-${selectedKeyword}`}
+                        keyword={
+                          displayedKeywords.find(
+                            (k) => k.keyword === selectedKeyword,
+                          )!
+                        }
+                        allKeywords={displayedKeywords}
+                      />
+                    </div>
+                  )}
 
-              <div>
-                <AverageTrendChart keywords={displayedKeywords} />
-              </div>
+                <div className="pt-16 space-y-4">
+                  <h3 className="text-xl font-semibold text-white/90">
+                    Aggregated KPIs
+                  </h3>
+                  <MetricsCards keywords={displayedKeywords} />
+                </div>
 
-              {/* Call to Action */}
-              <div className="text-center py-8">
-                <h3 className="text-2xl font-semibold mb-6 bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent">
-                  Found an opportunity?<br />
-                  Let's find a cofounder and launch with Pioneers
-                </h3>
-                <Button
-                  asChild
-                  className="px-8 py-3 text-base font-semibold text-white border border-white/20 shadow-[0_0_30px_rgba(139,92,246,0.5)] hover:shadow-[0_0_50px_rgba(139,92,246,0.7)] hover:scale-105 transition-all duration-300"
-                  style={{
-                    background:
-                      "radial-gradient(ellipse 120% 120% at 50% -20%, rgba(139, 92, 246, 0.95), rgba(59, 130, 246, 0.85) 60%, rgba(99, 102, 241, 0.75))",
-                  }}
-                  data-testid="button-launch-cta"
-                >
-                  <a
-                    href="https://thepioneer.vc/"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                <div>
+                  <AverageTrendChart keywords={displayedKeywords} />
+                </div>
+
+                {/* Call to Action */}
+                <div className="text-center py-8">
+                  <h3 className="text-2xl font-semibold mb-6 bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent">
+                    Found an opportunity?
+                    <br />
+                    Find a cofounder and launch with Pioneers
+                  </h3>
+                  <Button
+                    asChild
+                    className="px-8 py-3 text-base font-semibold text-white border border-white/20 shadow-[0_0_30px_rgba(139,92,246,0.5)] hover:shadow-[0_0_50px_rgba(139,92,246,0.7)] hover:scale-105 transition-all duration-300"
+                    style={{
+                      background:
+                        "radial-gradient(ellipse 120% 120% at 50% -20%, rgba(139, 92, 246, 0.95), rgba(59, 130, 246, 0.85) 60%, rgba(99, 102, 241, 0.75))",
+                    }}
+                    data-testid="button-launch-cta"
                   >
-                    {">"} Launch your startup
-                  </a>
-                </Button>
+                    <a
+                      href="https://thepioneer.vc/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {">"} Launch your startup
+                    </a>
+                  </Button>
+                </div>
               </div>
-            </div>
             );
           })()}
       </main>
@@ -468,8 +484,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   <span className="text-blue-400">3.</span> Spot Trend Patterns
                 </h3>
                 <p className="text-sm">
-                  Click keywords to visualize 12-month search trends and identify
-                  growing opportunities with strong momentum and low competition.
+                  Click keywords to visualize 12-month search trends and
+                  identify growing opportunities with strong momentum and low
+                  competition.
                 </p>
               </div>
 
