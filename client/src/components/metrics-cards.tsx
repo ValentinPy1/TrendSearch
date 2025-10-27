@@ -66,6 +66,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
   };
 
   const avgGrowthYoy = calculateWeightedAverage(k => parseFloat(k.growthYoy || "0"));
+  const avgGrowth3m = calculateWeightedAverage(k => parseFloat(k.growth3m || "0"));
   const avgVolume = calculateVolumeAverage();
   const avgCompetition = calculateWeightedAverage(k => k.competition || 0);
   const avgCpc = calculateWeightedAverage(k => parseFloat(k.cpc || "0"));
@@ -126,6 +127,14 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
       info: "Weighted average year-over-year growth - shows overall market trend momentum",
     },
     {
+      label: "Avg 3Mo Growth",
+      value: `${avgGrowth3m >= 0 ? "+" : ""}${avgGrowth3m.toFixed(1)}%`,
+      subtitle: "quarterly trend",
+      icon: TrendingUp,
+      style: getTrendGradientText(avgGrowth3m),
+      info: "Weighted average 3-month growth - shows recent market momentum",
+    },
+    {
       label: "Avg Volume",
       value: Math.round(avgVolume).toLocaleString(),
       subtitle: "monthly searches",
@@ -160,7 +169,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
       {metrics.map((metric) => {
         const Icon = metric.icon;
         return (

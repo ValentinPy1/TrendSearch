@@ -318,6 +318,23 @@ export function KeywordsTable({
                 </th>
                 <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort("topPageBid")}
+                  data-testid="header-top-page-bid"
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        Top Page Bid
+                        <SortIcon field="topPageBid" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.topPageBid}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </th>
+                <th
+                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort("growth3m")}
                   data-testid="header-growth-3m"
                 >
@@ -347,23 +364,6 @@ export function KeywordsTable({
                     </TooltipTrigger>
                     <TooltipContent>
                       <p>{columnInfo.growthYoy}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
-                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("topPageBid")}
-                  data-testid="header-top-page-bid"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        Top Page Bid
-                        <SortIcon field="topPageBid" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.topPageBid}</p>
                     </TooltipContent>
                   </Tooltip>
                 </th>
@@ -479,6 +479,14 @@ export function KeywordsTable({
                     <td className="py-4 px-4 text-sm text-right">
                       <span
                         className="font-medium"
+                        style={getPurpleGradientText(topPageBid, maxTopPageBid)}
+                      >
+                        ${topPageBid.toFixed(2)}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-sm text-right">
+                      <span
+                        className="font-medium"
                         style={getTrendGradientText(growth3m)}
                       >
                         {growth3m >= 0 ? "+" : ""}
@@ -492,14 +500,6 @@ export function KeywordsTable({
                       >
                         {growthYoy >= 0 ? "+" : ""}
                         {growthYoy.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-right">
-                      <span
-                        className="font-medium"
-                        style={getPurpleGradientText(topPageBid, maxTopPageBid)}
-                      >
-                        ${topPageBid.toFixed(2)}
                       </span>
                     </td>
                   </tr>
