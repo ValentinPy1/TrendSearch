@@ -42,6 +42,27 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
       };
     });
 
+    // Calculate growth from chronologically ordered monthlyData
+    // 3M Growth: Compare last month (Sep) to 3 months ago (Jun)
+    let growth3m = 0;
+    if (monthlyData.length >= 4) {
+      const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep (index 11)
+      const threeMonthsAgo = monthlyData[monthlyData.length - 4].volume; // Jun (index 8)
+      if (threeMonthsAgo !== 0) {
+        growth3m = ((currentVolume - threeMonthsAgo) / threeMonthsAgo) * 100;
+      }
+    }
+
+    // YoY Growth: Compare last month (Sep) to first month (Oct)
+    let growthYoy = 0;
+    if (monthlyData.length >= 12) {
+      const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep (index 11)
+      const oneYearAgo = monthlyData[0].volume; // Oct (index 0)
+      if (oneYearAgo !== 0) {
+        growthYoy = ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
+      }
+    }
+
     return {
       keyword: kw.keyword,
       volume: Math.floor(kw.search_volume || 0),
@@ -52,8 +73,8 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
         kw.low_top_of_page_bid ||
         0
       ).toFixed(2),
-      growth3m: (kw["3month_trend_%"] || 0).toFixed(2),
-      growthYoy: (kw["yoy_trend_%"] || 0).toFixed(2),
+      growth3m: growth3m.toFixed(2),
+      growthYoy: growthYoy.toFixed(2),
       similarityScore: kw.similarityScore.toFixed(4),
       growthSlope: (kw.growth_slope || 0).toFixed(2),
       growthR2: (kw.growth_r2 || 0).toFixed(4),
