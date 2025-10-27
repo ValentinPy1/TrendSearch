@@ -1,5 +1,5 @@
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { TrendingUp, TrendingDown, Search, Target, DollarSign, MousePointerClick } from "lucide-react";
+import { Trophy, TrendingUp, Zap, DollarSign, Coins } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Keyword } from "@shared/schema";
 
@@ -9,32 +9,37 @@ interface KeywordMetricsCardsProps {
 }
 
 export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCardsProps) {
-  const growth3m = parseFloat(keyword.growth3m || "0");
-  const growthYoy = parseFloat(keyword.growthYoy || "0");
-  const competition = keyword.competition || 0;
-  const cpc = parseFloat(keyword.cpc || "0");
-  const topPageBid = parseFloat(keyword.topPageBid || "0");
+  const opportunityScore = parseFloat(keyword.opportunityScore || "0");
+  const trendStrength = parseFloat(keyword.trendStrength || "0");
+  const bidEfficiency = parseFloat(keyword.bidEfficiency || "0");
+  const tac = parseFloat(keyword.tac || "0");
+  const sac = parseFloat(keyword.sac || "0");
 
-  // Calculate max values for purple gradients
-  const maxCpc = Math.max(...allKeywords.map(k => parseFloat(k.cpc || "0")));
-  const maxTopPageBid = Math.max(...allKeywords.map(k => parseFloat(k.topPageBid || "0")));
+  // Calculate max values for gradients
+  const maxOpportunityScore = Math.max(...allKeywords.map(k => parseFloat(k.opportunityScore || "0")));
+  const maxTrendStrength = Math.max(...allKeywords.map(k => parseFloat(k.trendStrength || "0")));
+  const maxBidEfficiency = Math.max(...allKeywords.map(k => parseFloat(k.bidEfficiency || "0")));
+  const maxTAC = Math.max(...allKeywords.map(k => parseFloat(k.tac || "0")));
+  const maxSAC = Math.max(...allKeywords.map(k => parseFloat(k.sac || "0")));
 
-  const getTrendGradientText = (value: number) => {
-    if (value >= 0) {
-      const normalizedValue = Math.min(1, value / 200);
-      const lightness = 100 - (normalizedValue * 50);
-      return { color: `hsl(142, 70%, ${lightness}%)` };
-    } else {
-      const normalizedValue = Math.min(1, Math.abs(value) / 100);
-      const lightness = 100 - (normalizedValue * 50);
-      return { color: `hsl(0, 80%, ${lightness}%)` };
-    }
+  const getOpportunityGradientText = (value: number, max: number) => {
+    const normalizedValue = Math.min(1, (value / max));
+    const hue = 142 * normalizedValue; // 0 (red) to 142 (green)
+    const saturation = 70;
+    const lightness = 100 - (normalizedValue * 40);
+    return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
   };
 
-  const getRedGradientText = (value: number) => {
-    const normalizedValue = Math.min(1, Math.max(0, value / 100));
+  const getGreenGradientText = (value: number, max: number) => {
+    const normalizedValue = Math.min(1, (value / max));
     const lightness = 100 - (normalizedValue * 40);
-    return { color: `hsl(0, 80%, ${lightness}%)` };
+    return { color: `hsl(142, 70%, ${lightness}%)` };
+  };
+
+  const getBlueGradientText = (value: number, max: number) => {
+    const normalizedValue = Math.min(1, (value / max));
+    const lightness = 100 - (normalizedValue * 40);
+    return { color: `hsl(210, 70%, ${lightness}%)` };
   };
 
   const getPurpleGradientText = (value: number, max: number) => {
@@ -45,44 +50,44 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
 
   const metrics = [
     {
-      label: "YoY Growth",
-      value: `${growthYoy >= 0 ? '+' : ''}${growthYoy.toFixed(1)}%`,
-      subtitle: "year over year",
-      icon: growthYoy >= 0 ? TrendingUp : TrendingDown,
-      style: getTrendGradientText(growthYoy),
-      info: "Search volume change compared to last year",
+      label: "Opportunity",
+      value: opportunityScore.toFixed(1),
+      subtitle: "comprehensive score",
+      icon: Trophy,
+      style: getOpportunityGradientText(opportunityScore, maxOpportunityScore),
+      info: "log(SAC) × Trend Strength × Bid Efficiency - comprehensive opportunity metric combining market size, growth momentum, and advertising efficiency",
     },
     {
-      label: "Volume",
-      value: keyword.volume?.toLocaleString() || "0",
-      subtitle: "monthly searches",
-      icon: Search,
-      style: { color: 'rgb(255, 255, 255)' },
-      info: "Average monthly searches for this keyword",
+      label: "Trend Strength",
+      value: trendStrength.toFixed(2),
+      subtitle: "growth momentum",
+      icon: TrendingUp,
+      style: getGreenGradientText(trendStrength, maxTrendStrength),
+      info: "YoY Growth / Volatility - measures consistent growth strength with higher values indicating stable upward trends",
     },
     {
-      label: "Competition",
-      value: competition,
-      subtitle: "market saturation",
-      icon: Target,
-      style: getRedGradientText(competition),
-      info: "Level of advertiser competition (0-100 scale)",
+      label: "Bid Efficiency",
+      value: bidEfficiency.toFixed(2),
+      subtitle: "advertiser margin",
+      icon: Zap,
+      style: getBlueGradientText(bidEfficiency, maxBidEfficiency),
+      info: "Top Page Bid / CPC - ratio showing the premium advertisers pay for top placement versus average click costs",
     },
     {
-      label: "CPC",
-      value: `$${cpc.toFixed(2)}`,
-      subtitle: "cost per click",
-      icon: MousePointerClick,
-      style: getPurpleGradientText(cpc, maxCpc),
-      info: "Average cost per click in advertising",
-    },
-    {
-      label: "Top Page Bid",
-      value: `$${topPageBid.toFixed(2)}`,
-      subtitle: "advertiser bid",
+      label: "TAC",
+      value: `$${tac.toLocaleString()}`,
+      subtitle: "total ad cost",
       icon: DollarSign,
-      style: getPurpleGradientText(topPageBid, maxTopPageBid),
-      info: "Estimated bid to appear at top of search results",
+      style: getPurpleGradientText(tac, maxTAC),
+      info: "Total Advertiser Cost = Volume × CPC - estimated monthly ad spend across all advertisers",
+    },
+    {
+      label: "SAC",
+      value: `$${sac.toLocaleString()}`,
+      subtitle: "seller ad cost",
+      icon: Coins,
+      style: getPurpleGradientText(sac, maxSAC),
+      info: "Seller Advertiser Cost = TAC × (1 - Competition/100) - effective market size accounting for competition",
     },
   ];
 
