@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
 import { ArrowUpDown, ArrowUp, ArrowDown, Copy, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ interface KeywordsTableProps {
   onDeleteKeyword?: (keywordId: string) => void;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
+  reportId?: string;
 }
 
 export function KeywordsTable({
@@ -40,10 +41,39 @@ export function KeywordsTable({
   onDeleteKeyword,
   onLoadMore,
   isLoadingMore = false,
+  reportId,
 }: KeywordsTableProps) {
   const { toast } = useToast();
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const previousKeywordCountRef = useRef(keywords.length);
+  const previousReportIdRef = useRef(reportId);
+
+  // Reset sort when new keywords are added to the SAME report (not on idea switch)
+  useEffect(() => {
+    const currentCount = keywords.length;
+    const previousCount = previousKeywordCountRef.current;
+    const currentReportId = reportId;
+    const previousReportId = previousReportIdRef.current;
+    
+    // If reportId changed, we're switching ideas - reset baseline but don't clear sort
+    if (currentReportId !== previousReportId) {
+      previousKeywordCountRef.current = currentCount;
+      previousReportIdRef.current = currentReportId;
+      return;
+    }
+    
+    // Only reset sort if:
+    // 1. We're in the same report (reportId unchanged)
+    // 2. AND keywords increased (new ones loaded via "Show 5 more")
+    if (currentCount > previousCount) {
+      setSortField(null);
+      setSortDirection(null);
+    }
+    
+    // Update count ref
+    previousKeywordCountRef.current = currentCount;
+  }, [keywords.length, reportId]);
 
   const columnInfo = {
     keyword: "Search terms related to your idea",

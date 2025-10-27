@@ -332,6 +332,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   onDeleteKeyword={handleDeleteKeyword}
                   onLoadMore={hasMoreToShow || allVisibleKeywords.length < 100 ? handleLoadMore : undefined}
                   isLoadingMore={loadMoreKeywordsMutation.isPending}
+                  reportId={selectedIdea.report.id}
                 />
               </div>
 
