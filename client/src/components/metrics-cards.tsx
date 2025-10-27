@@ -1,5 +1,5 @@
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { Trophy, TrendingUp, Zap, DollarSign, Coins } from "lucide-react";
+import { TrendingUp, BarChart3, Users, DollarSign, Zap } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Keyword } from "@shared/schema";
 
@@ -65,37 +65,49 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
     return avgSqrt * avgSqrt; // Square the result
   };
 
-  const avgOpportunityScore = calculateWeightedAverage(k => parseFloat(k.opportunityScore || "0"));
-  const avgTrendStrength = calculateWeightedAverage(k => parseFloat(k.trendStrength || "0"));
-  const avgBidEfficiency = calculateWeightedAverage(k => parseFloat(k.bidEfficiency || "0"));
-  const avgTAC = calculateWeightedAverage(k => parseFloat(k.tac || "0"));
-  const avgSAC = calculateWeightedAverage(k => parseFloat(k.sac || "0"));
+  const avgGrowthYoy = calculateWeightedAverage(k => parseFloat(k.growthYoy || "0"));
+  const avgVolume = calculateVolumeAverage();
+  const avgCompetition = calculateWeightedAverage(k => k.competition || 0);
+  const avgCpc = calculateWeightedAverage(k => parseFloat(k.cpc || "0"));
+  const avgTopPageBid = calculateWeightedAverage(k => parseFloat(k.topPageBid || "0"));
 
   // Calculate max values for gradients
-  const maxOpportunityScore = Math.max(...keywords.map(k => parseFloat(k.opportunityScore || "0")), 1);
-  const maxTrendStrength = Math.max(...keywords.map(k => parseFloat(k.trendStrength || "0")), 1);
-  const maxBidEfficiency = Math.max(...keywords.map(k => parseFloat(k.bidEfficiency || "0")), 1);
-  const maxTAC = Math.max(...keywords.map(k => parseFloat(k.tac || "0")), 1);
-  const maxSAC = Math.max(...keywords.map(k => parseFloat(k.sac || "0")), 1);
+  const maxVolume = Math.max(...keywords.map(k => k.volume || 0), 1);
+  const maxCpc = Math.max(...keywords.map(k => parseFloat(k.cpc || "0")), 1);
+  const maxTopPageBid = Math.max(...keywords.map(k => parseFloat(k.topPageBid || "0")), 1);
 
-  const getOpportunityGradientText = (value: number, max: number) => {
-    const normalizedValue = Math.min(1, (value / max));
-    const hue = 142 * normalizedValue; // 0 (red) to 142 (green)
-    const saturation = 70;
-    const lightness = 100 - (normalizedValue * 40);
-    return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
+  const getTrendGradientText = (value: number) => {
+    // White at 0%, full green at +200%, full red at -100%
+    if (value >= 0) {
+      // Positive: white to green (0% to +200%)
+      const normalizedValue = Math.min(1, value / 200);
+      const lightness = 100 - normalizedValue * 50; // 100% (white) to 50% (green)
+      return {
+        color: `hsl(142, 70%, ${lightness}%)`,
+      };
+    } else {
+      // Negative: white to red (0% to -100%)
+      const normalizedValue = Math.min(1, Math.abs(value) / 100);
+      const lightness = 100 - normalizedValue * 50; // 100% (white) to 50% (red)
+      return {
+        color: `hsl(0, 80%, ${lightness}%)`,
+      };
+    }
   };
 
-  const getGreenGradientText = (value: number, max: number) => {
+  const getWhiteGradientText = (value: number, max: number) => {
     const normalizedValue = Math.min(1, (value / max));
     const lightness = 100 - (normalizedValue * 40);
-    return { color: `hsl(142, 70%, ${lightness}%)` };
+    return { color: `hsl(0, 0%, ${lightness}%)` };
   };
 
-  const getBlueGradientText = (value: number, max: number) => {
-    const normalizedValue = Math.min(1, (value / max));
-    const lightness = 100 - (normalizedValue * 40);
-    return { color: `hsl(210, 70%, ${lightness}%)` };
+  const getRedGradientText = (value: number) => {
+    // 0-100 range to white-to-red gradient
+    const normalizedValue = Math.min(1, Math.max(0, value / 100));
+    const lightness = 100 - normalizedValue * 40; // 100% (white) to 60% (red)
+    return {
+      color: `hsl(0, 80%, ${lightness}%)`,
+    };
   };
 
   const getPurpleGradientText = (value: number, max: number) => {
@@ -106,44 +118,44 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
 
   const metrics = [
     {
-      label: "Avg Opportunity",
-      value: avgOpportunityScore.toFixed(1),
-      subtitle: "comprehensive score",
-      icon: Trophy,
-      style: getOpportunityGradientText(avgOpportunityScore, maxOpportunityScore),
-      info: "Weighted average opportunity score - log(SAC) × Trend Strength × Bid Efficiency across all keywords",
-    },
-    {
-      label: "Avg Trend Strength",
-      value: avgTrendStrength.toFixed(2),
-      subtitle: "growth momentum",
+      label: "Avg YoY Growth",
+      value: `${avgGrowthYoy >= 0 ? "+" : ""}${avgGrowthYoy.toFixed(1)}%`,
+      subtitle: "annual trend",
       icon: TrendingUp,
-      style: getGreenGradientText(avgTrendStrength, maxTrendStrength),
-      info: "Weighted average trend strength - (1 + YoY Growth/100) / (1 + Volatility) showing consistent growth patterns",
+      style: getTrendGradientText(avgGrowthYoy),
+      info: "Weighted average year-over-year growth - shows overall market trend momentum",
     },
     {
-      label: "Avg Bid Efficiency",
-      value: avgBidEfficiency.toFixed(2),
-      subtitle: "advertiser margin",
-      icon: Zap,
-      style: getBlueGradientText(avgBidEfficiency, maxBidEfficiency),
-      info: "Weighted average bid efficiency - Top Page Bid / CPC showing advertiser premium for top placement",
+      label: "Avg Volume",
+      value: Math.round(avgVolume).toLocaleString(),
+      subtitle: "monthly searches",
+      icon: BarChart3,
+      style: getWhiteGradientText(avgVolume, maxVolume),
+      info: "Weighted average monthly search volume - indicates overall market size",
     },
     {
-      label: "Avg TAC",
-      value: `$${Math.round(avgTAC).toLocaleString()}`,
-      subtitle: "total ad cost",
+      label: "Avg Competition",
+      value: avgCompetition.toFixed(0),
+      subtitle: "advertiser density",
+      icon: Users,
+      style: getRedGradientText(avgCompetition),
+      info: "Weighted average competition level (0-100) - overall advertiser saturation",
+    },
+    {
+      label: "Avg CPC",
+      value: `$${avgCpc.toFixed(2)}`,
+      subtitle: "avg click cost",
       icon: DollarSign,
-      style: getPurpleGradientText(avgTAC, maxTAC),
-      info: "Weighted average Total Advertiser Cost - Volume × CPC estimated monthly ad spend",
+      style: getPurpleGradientText(avgCpc, maxCpc),
+      info: "Weighted average cost per click - typical advertising cost across keywords",
     },
     {
-      label: "Avg SAC",
-      value: `$${Math.round(avgSAC).toLocaleString()}`,
-      subtitle: "seller ad cost",
-      icon: Coins,
-      style: getPurpleGradientText(avgSAC, maxSAC),
-      info: "Weighted average Seller Advertiser Cost - TAC × (1 - Competition/100) effective market size",
+      label: "Avg Top Page Bid",
+      value: `$${avgTopPageBid.toFixed(2)}`,
+      subtitle: "top placement cost",
+      icon: Zap,
+      style: getPurpleGradientText(avgTopPageBid, maxTopPageBid),
+      info: "Weighted average top page bid - premium placement cost across keywords",
     },
   ];
 
