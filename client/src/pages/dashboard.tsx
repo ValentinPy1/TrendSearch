@@ -75,8 +75,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       );
       return response;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
+    onSuccess: async () => {
+      // Refetch ideas data
+      await refetch();
     },
   });
 
@@ -99,13 +100,32 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     }
   };
 
-  // Update selected idea with latest data (but don't auto-select on initial load)
+  // Update selected idea with latest data
   useEffect(() => {
     if (ideas && ideas.length > 0 && selectedIdea) {
-      // Only update if there's already a selected idea
       const updated = ideas.find((i) => i.id === selectedIdea.id);
       if (updated) {
-        setSelectedIdea(updated);
+        // Check if keyword count changed (indicates a deletion happened)
+        const currentKeywordCount = selectedIdea.report?.keywords?.length || 0;
+        const updatedKeywordCount = updated.report?.keywords?.length || 0;
+        
+        if (updatedKeywordCount !== currentKeywordCount || !selectedIdea.report) {
+          setSelectedIdea(updated);
+          
+          // Check if currently selected keyword still exists after deletion
+          if (selectedKeyword && updated?.report?.keywords) {
+            const keywordStillExists = updated.report.keywords.some(
+              (k) => k.keyword === selectedKeyword
+            );
+            // If deleted keyword was selected, select the first available keyword
+            if (!keywordStillExists && updated.report.keywords.length > 0) {
+              setSelectedKeyword(updated.report.keywords[0].keyword);
+            } else if (!keywordStillExists) {
+              setSelectedKeyword(null);
+            }
+          }
+        }
+        
         // Set first keyword if not already set
         if (
           updated?.report?.keywords &&
@@ -113,6 +133,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           !selectedKeyword
         ) {
           setSelectedKeyword(updated.report.keywords[0].keyword);
+          setSelectedIdea(updated);
         }
       }
     }
