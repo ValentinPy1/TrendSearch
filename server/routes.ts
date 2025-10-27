@@ -51,6 +51,7 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
       if (threeMonthsAgo !== 0) {
         growth3m = ((currentVolume - threeMonthsAgo) / threeMonthsAgo) * 100;
       }
+      console.log(`[Trend Calc] ${kw.keyword}: 3M Growth: ${currentVolume} (Sep) vs ${threeMonthsAgo} (Jun) = ${growth3m.toFixed(2)}%`);
     }
 
     // YoY Growth: Compare last month (Sep) to first month (Oct)
@@ -61,6 +62,7 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
       if (oneYearAgo !== 0) {
         growthYoy = ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
       }
+      console.log(`[Trend Calc] ${kw.keyword}: YoY Growth: ${currentVolume} (Sep) vs ${oneYearAgo} (Oct) = ${growthYoy.toFixed(2)}%`);
     }
 
     return {
