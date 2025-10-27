@@ -73,16 +73,20 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     
     // If the deleted keyword was selected, select the first non-excluded keyword
     if (selectedIdea?.report?.keywords) {
-      const visibleKeywords = selectedIdea.report.keywords.filter(
-        k => k.id !== keywordId && !excludedKeywordIds.has(k.id)
+      // Create new excluded set for immediate use (state update is async)
+      const newExcludedIds = new Set([...Array.from(excludedKeywordIds), keywordId]);
+      
+      const remainingVisibleKeywords = selectedIdea.report.keywords.filter(
+        k => !newExcludedIds.has(k.id)
       );
+      
       if (selectedKeyword) {
         const currentKeywordExcluded = selectedIdea.report.keywords.find(
           k => k.keyword === selectedKeyword
         )?.id === keywordId;
         
-        if (currentKeywordExcluded && visibleKeywords.length > 0) {
-          setSelectedKeyword(visibleKeywords[0].keyword);
+        if (currentKeywordExcluded && remainingVisibleKeywords.length > 0) {
+          setSelectedKeyword(remainingVisibleKeywords[0].keyword);
         } else if (currentKeywordExcluded) {
           setSelectedKeyword(null);
         }
@@ -290,12 +294,18 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           !error &&
           !isGeneratingReport &&
           selectedIdea?.report && (() => {
-            // Filter out excluded keywords first
-            const visibleKeywords = selectedIdea.report.keywords.filter(
+            // Slice first based on displayedKeywordCount, THEN filter out excluded
+            // This prevents backfilling from preloaded keywords when hiding
+            const preFilteredKeywords = selectedIdea.report.keywords.slice(0, displayedKeywordCount);
+            const displayedKeywords = preFilteredKeywords.filter(
               k => !excludedKeywordIds.has(k.id)
             );
-            const displayedKeywords = visibleKeywords.slice(0, displayedKeywordCount);
-            const hasMoreToShow = displayedKeywordCount < visibleKeywords.length;
+            
+            // Check if there are more keywords to show (not counting excluded ones)
+            const allVisibleKeywords = selectedIdea.report.keywords.filter(
+              k => !excludedKeywordIds.has(k.id)
+            );
+            const hasMoreToShow = displayedKeywordCount < allVisibleKeywords.length;
             
             return (
             <div className="space-y-4">
@@ -320,7 +330,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   onKeywordSelect={setSelectedKeyword}
                   onSearchKeyword={setSearchKeyword}
                   onDeleteKeyword={handleDeleteKeyword}
-                  onLoadMore={hasMoreToShow || visibleKeywords.length < 100 ? handleLoadMore : undefined}
+                  onLoadMore={hasMoreToShow || allVisibleKeywords.length < 100 ? handleLoadMore : undefined}
                   isLoadingMore={loadMoreKeywordsMutation.isPending}
                 />
               </div>
