@@ -353,6 +353,18 @@ export function KeywordsTable({
                   >
                     <td className="py-4 px-4 text-sm text-white font-medium">
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteKeyword?.(keyword.id);
+                          }}
+                          data-testid={`button-delete-${index}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
                         <span>{keyword.keyword}</span>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Button
@@ -386,18 +398,6 @@ export function KeywordsTable({
                             data-testid={`button-search-${index}`}
                           >
                             <Search className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-red-400 hover:text-red-300"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteKeyword?.(keyword.id);
-                            }}
-                            data-testid={`button-delete-${index}`}
-                          >
-                            <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
                       </div>
