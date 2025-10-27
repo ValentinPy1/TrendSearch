@@ -16,8 +16,6 @@ type SortField =
   | "volume"
   | "competition"
   | "cpc"
-  | "topPageBid"
-  | "volatility"
   | "growthYoy"
   | "opportunityScore";
 type SortDirection = "asc" | "desc" | null;
@@ -84,8 +82,6 @@ export function KeywordsTable({
     volume: "Average monthly searches for this keyword",
     competition: "Level of advertiser competition (0-100 scale)",
     cpc: "Average cost per click in advertising",
-    topPageBid: "Estimated bid to appear at top of search results",
-    volatility: "Average relative deviation from exponential growth trend - measures keyword stability",
     growthYoy: "Search volume change compared to last year",
     opportunityScore: "log(SAC) × Trend Strength × Bid Efficiency - comprehensive opportunity metric",
   };
@@ -149,14 +145,6 @@ export function KeywordsTable({
         case "cpc":
           aVal = parseFloat(a.cpc || "0");
           bVal = parseFloat(b.cpc || "0");
-          break;
-        case "topPageBid":
-          aVal = parseFloat(a.topPageBid || "0");
-          bVal = parseFloat(b.topPageBid || "0");
-          break;
-        case "volatility":
-          aVal = parseFloat(a.volatility || "0");
-          bVal = parseFloat(b.volatility || "0");
           break;
         case "growthYoy":
           aVal = parseFloat(a.growthYoy || "0");
@@ -345,40 +333,6 @@ export function KeywordsTable({
                 </th>
                 <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("topPageBid")}
-                  data-testid="header-top-page-bid"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        Top Page Bid
-                        <SortIcon field="topPageBid" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.topPageBid}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
-                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("volatility")}
-                  data-testid="header-volatility"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        Volatility
-                        <SortIcon field="volatility" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.volatility}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
-                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort("growthYoy")}
                   data-testid="header-growth-yoy"
                 >
@@ -415,20 +369,15 @@ export function KeywordsTable({
             </thead>
             <tbody>
               {sortedKeywords.map((keyword, index) => {
-                const volatility = parseFloat(keyword.volatility || "0");
                 const growthYoy = parseFloat(keyword.growthYoy || "0");
                 const opportunityScore = parseFloat(keyword.opportunityScore || "0");
                 const matchPercentage =
                   parseFloat(keyword.similarityScore || "0") * 100;
                 const competition = keyword.competition || 0;
                 const cpc = parseFloat(keyword.cpc || "0");
-                const topPageBid = parseFloat(keyword.topPageBid || "0");
 
                 const maxCpc = Math.max(
                   ...sortedKeywords.map((k) => parseFloat(k.cpc || "0")),
-                );
-                const maxTopPageBid = Math.max(
-                  ...sortedKeywords.map((k) => parseFloat(k.topPageBid || "0")),
                 );
 
                 return (
@@ -523,19 +472,6 @@ export function KeywordsTable({
                     <td className="py-4 px-4 text-sm text-right">
                       <span
                         className="font-medium"
-                        style={getPurpleGradientText(topPageBid, maxTopPageBid)}
-                      >
-                        ${topPageBid.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-right">
-                      <span className="font-medium text-white/70">
-                        {(volatility * 100).toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-right">
-                      <span
-                        className="font-medium"
                         style={getTrendGradientText(growthYoy)}
                       >
                         {growthYoy >= 0 ? "+" : ""}
@@ -555,7 +491,7 @@ export function KeywordsTable({
               })}
               {onLoadMore && (
                 <tr className="border-t border-white/10">
-                  <td colSpan={9} className="py-4 px-4">
+                  <td colSpan={7} className="py-4 px-4">
                     <Button
                       variant="ghost"
                       onClick={onLoadMore}

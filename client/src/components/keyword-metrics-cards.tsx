@@ -13,21 +13,34 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
   const trendStrength = parseFloat(keyword.trendStrength || "0");
   const bidEfficiency = parseFloat(keyword.bidEfficiency || "0");
   const tac = parseFloat(keyword.tac || "0");
-  const sac = parseFloat(keyword.sac || "0");
+  const topPageBid = parseFloat(keyword.topPageBid || "0");
 
   // Calculate max values for gradients
-  const maxOpportunityScore = Math.max(...allKeywords.map(k => parseFloat(k.opportunityScore || "0")));
   const maxTrendStrength = Math.max(...allKeywords.map(k => parseFloat(k.trendStrength || "0")));
   const maxBidEfficiency = Math.max(...allKeywords.map(k => parseFloat(k.bidEfficiency || "0")));
   const maxTAC = Math.max(...allKeywords.map(k => parseFloat(k.tac || "0")));
-  const maxSAC = Math.max(...allKeywords.map(k => parseFloat(k.sac || "0")));
+  const maxTopPageBid = Math.max(...allKeywords.map(k => parseFloat(k.topPageBid || "0")));
 
-  const getOpportunityGradientText = (value: number, max: number) => {
-    const normalizedValue = Math.min(1, (value / max));
-    const hue = 142 * normalizedValue; // 0 (red) to 142 (green)
-    const saturation = 70;
-    const lightness = 100 - (normalizedValue * 40);
-    return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
+  const getOpportunityGradientText = (score: number) => {
+    // 0-100 range: low (red) to medium (yellow) to high (green)
+    // Matches the gradient used in the keywords table
+    if (score < 50) {
+      // 0-50: red to yellow
+      const normalizedValue = score / 50;
+      const hue = normalizedValue * 60; // 0 (red) to 60 (yellow)
+      const lightness = 60 - normalizedValue * 10; // 60% to 50%
+      return {
+        color: `hsl(${hue}, 80%, ${lightness}%)`,
+      };
+    } else {
+      // 50-100: yellow to green
+      const normalizedValue = (score - 50) / 50;
+      const hue = 60 + normalizedValue * 82; // 60 (yellow) to 142 (green)
+      const lightness = 60 - normalizedValue * 10; // 60% to 50%
+      return {
+        color: `hsl(${hue}, 80%, ${lightness}%)`,
+      };
+    }
   };
 
   const getGreenGradientText = (value: number, max: number) => {
@@ -54,7 +67,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       value: opportunityScore.toFixed(1),
       subtitle: "comprehensive score",
       icon: Trophy,
-      style: getOpportunityGradientText(opportunityScore, maxOpportunityScore),
+      style: getOpportunityGradientText(opportunityScore),
       info: "log(SAC) × Trend Strength × Bid Efficiency - comprehensive opportunity metric combining market size, growth momentum, and advertising efficiency",
     },
     {
@@ -64,6 +77,14 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       icon: TrendingUp,
       style: getGreenGradientText(trendStrength, maxTrendStrength),
       info: "(1 + YoY Growth/100) / Volatility - transforms growth into 0 to +∞ range, then divides by volatility. Higher values = stable upward trends",
+    },
+    {
+      label: "Top Page Bid",
+      value: `$${topPageBid.toFixed(2)}`,
+      subtitle: "top placement cost",
+      icon: DollarSign,
+      style: getPurpleGradientText(topPageBid, maxTopPageBid),
+      info: "Estimated bid to appear at top of search results - higher bids indicate more competitive keywords",
     },
     {
       label: "Bid Efficiency",
@@ -77,17 +98,9 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       label: "TAC",
       value: `$${tac.toLocaleString()}`,
       subtitle: "total ad cost",
-      icon: DollarSign,
+      icon: Coins,
       style: getPurpleGradientText(tac, maxTAC),
       info: "Total Advertiser Cost = Volume × CPC - estimated monthly ad spend across all advertisers",
-    },
-    {
-      label: "SAC",
-      value: `$${sac.toLocaleString()}`,
-      subtitle: "seller ad cost",
-      icon: Coins,
-      style: getPurpleGradientText(sac, maxSAC),
-      info: "Seller Advertiser Cost = TAC × (1 - Competition/100) - effective market size accounting for competition",
     },
   ];
 
