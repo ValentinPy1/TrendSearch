@@ -98,16 +98,15 @@ Each keyword receives an Opportunity Score calculated from six weighted componen
 - Metrics: Avg Volume, Avg Competition, Avg CPC, Avg Top Page Bid, Avg 3M Growth, Avg YoY Growth
 - Order matches table column order for consistency
 
-**Keywords Table** displays 9 columns:
+**Keywords Table** displays 8 columns:
 1. Keyword - the search term with hover actions (trash to hide, copy, search with auto-scroll)
 2. Match - similarity score to the idea (percentage with blue gradient 0-100)
-3. Opportunity - comprehensive 0-100 score (red→yellow→green gradient based on market size, growth, competition, and CPC economics)
-4. Volume - monthly search volume
-5. Competition - competition level (0-100 with red gradient)
-6. CPC - cost per click (purple gradient based on max value)
-7. Top Page Bid - average top-of-page bid (purple gradient based on max value)
-8. 3Mo Trend - 3-month growth percentage
-9. YoY Trend - year-over-year growth percentage
+3. Volume - monthly search volume
+4. Competition - competition level (0-100 with red gradient)
+5. CPC - cost per click (purple gradient based on max value)
+6. Top Page Bid - average top-of-page bid (purple gradient based on max value)
+7. 3Mo Trend - 3-month growth percentage
+8. YoY Trend - year-over-year growth percentage
 
 **Keyword Actions** (visible on hover):
 - **Trash icon (red, left side):** Hides keyword from table and excludes from aggregates (frontend-only, doesn't delete from database)
@@ -135,8 +134,7 @@ Each keyword receives an Opportunity Score calculated from six weighted componen
 - ✅ Red gradient for Competition (0-100)
 - ✅ Purple gradient for CPC and Top Page Bid (scaled to max value)
 - ✅ Optimized keyword loading (preload 20, show 10, expand by 5)
-- ✅ Opportunity Score calculation (0-100 comprehensive metric)
-- ✅ Red→Yellow→Green gradient for opportunity scores
+- ✅ Opportunity Score calculation (0-100 comprehensive metric - backend only, UI hidden)
 - ✅ Keyword filtering with trash icon (frontend-only exclusion from view and aggregates)
 - ✅ Search icon with auto-scroll to search bar
 - ✅ Trend chart visualization

@@ -247,23 +247,6 @@ export function KeywordsTable({
                   </Tooltip>
                 </th>
                 <th
-                  className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("opportunityScore")}
-                  data-testid="header-opportunity"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-center">
-                        Opportunity
-                        <SortIcon field="opportunityScore" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.opportunityScore}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort("volume")}
                   data-testid="header-volume"
@@ -452,14 +435,6 @@ export function KeywordsTable({
                         style={getBlueGradientText(matchPercentage)}
                       >
                         {matchPercentage.toFixed(0)}%
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-center">
-                      <span
-                        className="font-medium"
-                        style={getOpportunityGradientText(keyword.opportunityScore || 0)}
-                      >
-                        {keyword.opportunityScore || 0}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-white text-right">
