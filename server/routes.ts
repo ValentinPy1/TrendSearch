@@ -360,12 +360,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Generate report for an idea
   app.post("/api/generate-report", requireAuth, async (req, res) => {
     try {
-      const { ideaId, keywordCount = 10 } = req.body;
+      const { ideaId, keywordCount = 20 } = req.body;
 
-      // Validate keywordCount
+      // Validate keywordCount (preload 20 keywords by default)
       const validatedCount = Math.max(
         1,
-        Math.min(100, parseInt(keywordCount) || 10),
+        Math.min(100, parseInt(keywordCount) || 20),
       );
 
       const idea = await storage.getIdea(ideaId);
@@ -434,7 +434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Load more keywords for an existing report
+  // Load more keywords for an existing report (5 at a time)
   app.post("/api/reports/:reportId/load-more", requireAuth, async (req, res) => {
     try {
       const { reportId } = req.params;
@@ -457,50 +457,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existingKeywords = await storage.getKeywordsByReportId(reportId);
       const currentCount = existingKeywords.length;
 
-      // Fetch one more keyword (currentCount + 1 total)
+      // Fetch 5 more keywords
+      const newCount = currentCount + 5;
       const { keywords: keywordData } = await getKeywordsFromVectorDB(
         idea.generatedIdea,
-        currentCount + 1,
+        newCount,
       );
 
-      // Get the new keyword (last one in the array)
-      const newKeywordData = keywordData[keywordData.length - 1];
+      // Get the last 5 keywords
+      const newKeywordsData = keywordData.slice(currentCount);
 
-      if (!newKeywordData) {
+      if (newKeywordsData.length === 0) {
         return res.status(400).json({ message: "No more keywords available" });
       }
 
-      // Check if this keyword already exists
-      const alreadyExists = existingKeywords.some(
-        (k) => k.keyword === newKeywordData.keyword,
+      // Filter out any duplicates
+      const existingKeywordSet = new Set(existingKeywords.map((k) => k.keyword));
+      const uniqueNewKeywords = newKeywordsData.filter(
+        (kw) => !existingKeywordSet.has(kw.keyword),
       );
 
-      if (alreadyExists) {
+      if (uniqueNewKeywords.length === 0) {
         return res.status(400).json({ message: "No more unique keywords available" });
       }
 
-      // Create the new keyword
-      const newKeywords = await storage.createKeywords([
-        {
-          reportId: report.id,
-          keyword: newKeywordData.keyword,
-          volume: newKeywordData.volume,
-          competition: newKeywordData.competition,
-          cpc: newKeywordData.cpc,
-          topPageBid: newKeywordData.topPageBid,
-          growth3m: newKeywordData.growth3m,
-          growthYoy: newKeywordData.growthYoy,
-          similarityScore: newKeywordData.similarityScore,
-          growthSlope: newKeywordData.growthSlope,
-          growthR2: newKeywordData.growthR2,
-          growthConsistency: newKeywordData.growthConsistency,
-          growthStability: newKeywordData.growthStability,
-          sustainedGrowthScore: newKeywordData.sustainedGrowthScore,
-          monthlyData: newKeywordData.monthlyData,
-        },
-      ]);
+      // Create the new keywords
+      const keywordsToInsert = uniqueNewKeywords.map((kw) => ({
+        reportId: report.id,
+        keyword: kw.keyword,
+        volume: kw.volume,
+        competition: kw.competition,
+        cpc: kw.cpc,
+        topPageBid: kw.topPageBid,
+        growth3m: kw.growth3m,
+        growthYoy: kw.growthYoy,
+        similarityScore: kw.similarityScore,
+        growthSlope: kw.growthSlope,
+        growthR2: kw.growthR2,
+        growthConsistency: kw.growthConsistency,
+        growthStability: kw.growthStability,
+        sustainedGrowthScore: kw.sustainedGrowthScore,
+        monthlyData: kw.monthlyData,
+      }));
 
-      res.json({ keyword: newKeywords[0] });
+      const newKeywords = await storage.createKeywords(keywordsToInsert);
+
+      res.json({ keywords: newKeywords });
     } catch (error) {
       console.error("[Load More Keywords Error]:", error);
       res.status(500).json({

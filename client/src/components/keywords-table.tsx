@@ -457,12 +457,12 @@ export function KeywordsTable({
                       {isLoadingMore ? (
                         <span className="flex items-center gap-2">
                           <div className="h-4 w-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
-                          Loading keyword...
+                          Loading keywords...
                         </span>
                       ) : (
                         <span className="flex items-center gap-2">
                           <span className="text-lg">+</span>
-                          Load one more keyword
+                          Show 5 more keywords
                         </span>
                       )}
                     </Button>

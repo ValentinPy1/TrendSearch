@@ -41,6 +41,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState<string | null>(null);
+  const [displayedKeywordCount, setDisplayedKeywordCount] = useState(10);
 
   const {
     data: ideas,
@@ -65,6 +66,21 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     },
   });
 
+  const handleLoadMore = () => {
+    if (!selectedIdea?.report) return;
+    
+    const totalKeywords = selectedIdea.report.keywords.length;
+    const newDisplayCount = displayedKeywordCount + 5;
+    
+    // Show 5 more keywords immediately
+    setDisplayedKeywordCount(newDisplayCount);
+    
+    // If we're within 5 of running out, preload 5 more in background
+    if (newDisplayCount >= totalKeywords - 5) {
+      loadMoreKeywordsMutation.mutate(selectedIdea.report.id);
+    }
+  };
+
   // Update selected idea with latest data (but don't auto-select on initial load)
   useEffect(() => {
     if (ideas && ideas.length > 0 && selectedIdea) {
@@ -86,6 +102,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
   const handleIdeaGenerated = (newIdea: IdeaWithReport) => {
     setSelectedIdea(newIdea);
+    setDisplayedKeywordCount(10); // Reset to show 10 initially
     if (newIdea?.report?.keywords && newIdea.report.keywords.length > 0) {
       setSelectedKeyword(newIdea.report.keywords[0].keyword);
     }
@@ -94,6 +111,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
   const handleIdeaSelect = (idea: IdeaWithReport) => {
     setSelectedIdea(idea);
+    setDisplayedKeywordCount(10); // Reset to show 10 initially
     if (idea?.report?.keywords && idea.report.keywords.length > 0) {
       setSelectedKeyword(idea.report.keywords[0].keyword);
     } else {
@@ -245,7 +263,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         {!isLoading &&
           !error &&
           !isGeneratingReport &&
-          selectedIdea?.report && (
+          selectedIdea?.report && (() => {
+            const displayedKeywords = selectedIdea.report.keywords.slice(0, displayedKeywordCount);
+            const hasMoreToShow = displayedKeywordCount < selectedIdea.report.keywords.length;
+            
+            return (
             <div className="space-y-4">
               <div className="text-center pt-8 pb-4">
                 <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
@@ -256,41 +278,41 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               <div className="pt-16 space-y-4">
                 <div>
                   <h3 className="text-xl font-semibold text-white/90 mb-2">
-                    Top {selectedIdea.report.keywords.length} Related Keywords
+                    Top {displayedKeywords.length} Related Keywords
                   </h3>
                   <p className="text-sm text-white/60">
                     Click a keyword to view its trend analysis
                   </p>
                 </div>
                 <KeywordsTable
-                  keywords={selectedIdea.report.keywords}
+                  keywords={displayedKeywords}
                   selectedKeyword={selectedKeyword}
                   onKeywordSelect={setSelectedKeyword}
                   onSearchKeyword={setSearchKeyword}
-                  onLoadMore={() => selectedIdea.report && loadMoreKeywordsMutation.mutate(selectedIdea.report.id)}
+                  onLoadMore={hasMoreToShow || selectedIdea.report.keywords.length < 100 ? handleLoadMore : undefined}
                   isLoadingMore={loadMoreKeywordsMutation.isPending}
                 />
               </div>
 
               {selectedKeyword &&
-                selectedIdea.report.keywords.find(
+                displayedKeywords.find(
                   (k) => k.keyword === selectedKeyword,
                 ) && (
                   <div className="grid grid-cols-1 lg:grid-cols-[1fr_175px] gap-4">
                     <TrendChart
                       key={`chart-${selectedKeyword}`}
-                      keywords={selectedIdea.report.keywords}
+                      keywords={displayedKeywords}
                       reportId={selectedIdea.report.id}
                       selectedKeyword={selectedKeyword}
                     />
                     <KeywordMetricsCards
                       key={`metrics-${selectedKeyword}`}
                       keyword={
-                        selectedIdea.report.keywords.find(
+                        displayedKeywords.find(
                           (k) => k.keyword === selectedKeyword,
                         )!
                       }
-                      allKeywords={selectedIdea.report.keywords}
+                      allKeywords={displayedKeywords}
                     />
                   </div>
                 )}
@@ -299,11 +321,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 <h3 className="text-xl font-semibold text-white/90">
                   Aggregated KPIs
                 </h3>
-                <MetricsCards keywords={selectedIdea.report.keywords} />
+                <MetricsCards keywords={displayedKeywords} />
               </div>
 
               <div>
-                <AverageTrendChart keywords={selectedIdea.report.keywords} />
+                <AverageTrendChart keywords={displayedKeywords} />
               </div>
 
               {/* Call to Action */}
@@ -331,7 +353,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 </Button>
               </div>
             </div>
-          )}
+            );
+          })()}
       </main>
 
       {/* History Sidebar */}
