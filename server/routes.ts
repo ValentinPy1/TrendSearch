@@ -512,6 +512,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete a keyword
+  app.delete("/api/keywords/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Get the keyword to verify ownership
+      const keyword = await storage.getKeyword(id);
+      if (!keyword) {
+        return res.status(404).json({ message: "Keyword not found" });
+      }
+
+      // Get the report to verify user owns it
+      const report = await storage.getReport(keyword.reportId);
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      if (report.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Delete the keyword
+      await storage.deleteKeyword(id);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[Delete Keyword Error]:", error);
+      res.status(500).json({
+        message: "Failed to delete keyword",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

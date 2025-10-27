@@ -28,8 +28,10 @@ export interface IStorage {
   
   // Keyword methods
   getKeywordsByReportId(reportId: string): Promise<Keyword[]>;
+  getKeyword(id: string): Promise<Keyword | undefined>;
   createKeyword(keyword: InsertKeyword): Promise<Keyword>;
   createKeywords(keywords: InsertKeyword[]): Promise<Keyword[]>;
+  deleteKeyword(id: string): Promise<void>;
   
   // Health check
   healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }>;
@@ -119,6 +121,11 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(keywords).where(eq(keywords.reportId, reportId));
   }
 
+  async getKeyword(id: string): Promise<Keyword | undefined> {
+    const result = await db.select().from(keywords).where(eq(keywords.id, id));
+    return result[0];
+  }
+
   async createKeyword(insertKeyword: InsertKeyword): Promise<Keyword> {
     const result = await db.insert(keywords).values(insertKeyword as any).returning();
     return result[0];
@@ -128,6 +135,10 @@ export class DatabaseStorage implements IStorage {
     if (insertKeywords.length === 0) return [];
     const result = await db.insert(keywords).values(insertKeywords as any).returning();
     return result;
+  }
+
+  async deleteKeyword(id: string): Promise<void> {
+    await db.delete(keywords).where(eq(keywords.id, id));
   }
 
   async healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }> {
