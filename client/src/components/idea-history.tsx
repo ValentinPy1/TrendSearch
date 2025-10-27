@@ -94,27 +94,17 @@ export function IdeaHistory({ ideas, onIdeaSelect }: IdeaHistoryProps) {
               </Button>
             </div>
             <div className="absolute bottom-3 right-3 flex gap-1">
-              {(idea as any).isKeyword ? (
-                <Badge 
-                  variant="secondary"
-                  className="bg-green-500/20 text-green-300 border-green-500/30 text-xs"
-                  data-testid={`badge-keyword-${idea.id}`}
-                >
-                  Keyword
-                </Badge>
-              ) : (
-                <Badge 
-                  variant="secondary"
-                  className={`text-xs ${
-                    idea.originalIdea 
-                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' 
-                      : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                  }`}
-                  data-testid={`badge-${idea.originalIdea ? 'original' : 'generated'}-${idea.id}`}
-                >
-                  {idea.originalIdea ? 'Original' : 'Generated'}
-                </Badge>
-              )}
+              <Badge 
+                variant="secondary"
+                className={`text-xs ${
+                  idea.originalIdea 
+                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' 
+                    : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                }`}
+                data-testid={`badge-${idea.originalIdea ? 'original' : 'generated'}-${idea.id}`}
+              >
+                {idea.originalIdea ? 'Original' : 'Generated'}
+              </Badge>
             </div>
           </div>
         ))}

@@ -319,18 +319,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const ideas = await storage.getIdeasByUser(req.session.userId!);
 
-      // Add isKeyword flag to each idea (check if similarity >= 95%)
-      const ideasWithKeywordFlag = await Promise.all(
-        ideas.map(async (idea) => ({
-          ...idea,
-          isKeyword: await keywordVectorService.isKeyword(
-            idea.generatedIdea,
-            0.95,
-          ),
-        })),
-      );
-
-      res.json(ideasWithKeywordFlag);
+      // OPTIMIZATION: Removed expensive isKeyword check that was adding 12+ seconds
+      // The isKeyword badge is not critical for initial page load
+      // If needed, this can be computed lazily or cached in the database
+      res.json(ideas);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ideas" });
     }
