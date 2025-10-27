@@ -72,7 +72,7 @@ export function IdeaGenerator({
     mutationFn: async (ideaId: string) => {
       const res = await apiRequest("POST", "/api/generate-report", {
         ideaId,
-        keywordCount: 10,
+        keywordCount: 20, // Preload 20 keywords (show 10, expand by 5)
       });
       return res.json();
     },
