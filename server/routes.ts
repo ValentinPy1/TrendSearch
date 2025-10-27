@@ -9,31 +9,36 @@ import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
 
 async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
   // Use vector similarity search to find most relevant keywords
-  const similarKeywords = await keywordVectorService.findSimilarKeywords(idea, topN);
-  
+  const similarKeywords = await keywordVectorService.findSimilarKeywords(
+    idea,
+    topN,
+  );
+
   // Map CSV columns (2024_10 through 2025_09) to correct month labels in chronological order
   const monthMapping = [
-    { key: '2024_10', label: 'Oct' },
-    { key: '2024_11', label: 'Nov' },
-    { key: '2024_12', label: 'Dec' },
-    { key: '2025_01', label: 'Jan' },
-    { key: '2025_02', label: 'Feb' },
-    { key: '2025_03', label: 'Mar' },
-    { key: '2025_04', label: 'Apr' },
-    { key: '2025_05', label: 'May' },
-    { key: '2025_06', label: 'Jun' },
-    { key: '2025_07', label: 'Jul' },
-    { key: '2025_08', label: 'Aug' },
-    { key: '2025_09', label: 'Sep' },
-  ];
-  
-  const keywords = similarKeywords.map(kw => {
+    { key: "2024_10", label: "Oct" },
+    { key: "2024_11", label: "Nov" },
+    { key: "2024_12", label: "Dec" },
+    { key: "2025_01", label: "Jan" },
+    { key: "2025_02", label: "Feb" },
+    { key: "2025_03", label: "Mar" },
+    { key: "2025_04", label: "Apr" },
+    { key: "2025_05", label: "May" },
+    { key: "2025_06", label: "Jun" },
+    { key: "2025_07", label: "Jul" },
+    { key: "2025_08", label: "Aug" },
+    { key: "2025_09", label: "Sep" },
+  ].reverse();
+
+  const keywords = similarKeywords.map((kw) => {
     // Convert monthly data from CSV format to our format with correct month labels
     // Recharts displays data in the order provided, so keep chronological order
     const monthlyData = monthMapping.map(({ key, label }) => {
       return {
         month: label,
-        volume: Math.floor(kw[key as keyof typeof kw] as number || kw.search_volume || 0)
+        volume: Math.floor(
+          (kw[key as keyof typeof kw] as number) || kw.search_volume || 0,
+        ),
       };
     });
 
@@ -42,31 +47,50 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
       volume: Math.floor(kw.search_volume || 0),
       competition: Math.floor(kw.competition || 0),
       cpc: (kw.cpc || 0).toFixed(2),
-      topPageBid: (kw.high_top_of_page_bid || kw.low_top_of_page_bid || 0).toFixed(2),
-      growth3m: (kw['3month_trend_%'] || 0).toFixed(2),
-      growthYoy: (kw['yoy_trend_%'] || 0).toFixed(2),
+      topPageBid: (
+        kw.high_top_of_page_bid ||
+        kw.low_top_of_page_bid ||
+        0
+      ).toFixed(2),
+      growth3m: (kw["3month_trend_%"] || 0).toFixed(2),
+      growthYoy: (kw["yoy_trend_%"] || 0).toFixed(2),
       similarityScore: kw.similarityScore.toFixed(4),
       growthSlope: (kw.growth_slope || 0).toFixed(2),
       growthR2: (kw.growth_r2 || 0).toFixed(4),
       growthConsistency: (kw.growth_consistency || 0).toFixed(4),
       growthStability: (kw.growth_stability || 0).toFixed(4),
       sustainedGrowthScore: (kw.sustained_growth_score || 0).toFixed(4),
-      monthlyData
+      monthlyData,
     };
   });
 
   // Calculate aggregate metrics from actual data
-  const avgVolume = Math.floor(keywords.reduce((sum, k) => sum + k.volume, 0) / keywords.length);
-  const growth3m = (keywords.reduce((sum, k) => sum + parseFloat(k.growth3m), 0) / keywords.length).toFixed(2);
-  const growthYoy = (keywords.reduce((sum, k) => sum + parseFloat(k.growthYoy), 0) / keywords.length).toFixed(2);
-  const avgCompetition = Math.floor(keywords.reduce((sum, k) => sum + k.competition, 0) / keywords.length);
-  const avgTopPageBid = (keywords.reduce((sum, k) => sum + parseFloat(k.topPageBid), 0) / keywords.length).toFixed(2);
-  const avgCpc = (keywords.reduce((sum, k) => sum + parseFloat(k.cpc), 0) / keywords.length).toFixed(2);
+  const avgVolume = Math.floor(
+    keywords.reduce((sum, k) => sum + k.volume, 0) / keywords.length,
+  );
+  const growth3m = (
+    keywords.reduce((sum, k) => sum + parseFloat(k.growth3m), 0) /
+    keywords.length
+  ).toFixed(2);
+  const growthYoy = (
+    keywords.reduce((sum, k) => sum + parseFloat(k.growthYoy), 0) /
+    keywords.length
+  ).toFixed(2);
+  const avgCompetition = Math.floor(
+    keywords.reduce((sum, k) => sum + k.competition, 0) / keywords.length,
+  );
+  const avgTopPageBid = (
+    keywords.reduce((sum, k) => sum + parseFloat(k.topPageBid), 0) /
+    keywords.length
+  ).toFixed(2);
+  const avgCpc = (
+    keywords.reduce((sum, k) => sum + parseFloat(k.cpc), 0) / keywords.length
+  ).toFixed(2);
 
   // Map competition to text for compatibility
-  let competitionText = 'medium';
-  if (avgCompetition < 33) competitionText = 'low';
-  if (avgCompetition >= 66) competitionText = 'high';
+  let competitionText = "medium";
+  if (avgCompetition < 33) competitionText = "low";
+  if (avgCompetition >= 66) competitionText = "high";
 
   return {
     keywords,
@@ -76,12 +100,12 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
       growthYoy,
       competition: competitionText,
       avgTopPageBid,
-      avgCpc
-    }
+      avgCpc,
+    },
   };
 }
 
-declare module 'express-session' {
+declare module "express-session" {
   interface SessionData {
     userId?: string;
   }
@@ -99,7 +123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
       },
-    })
+    }),
   );
 
   // Auth middleware
@@ -113,16 +137,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.post("/api/auth/signup", async (req, res) => {
     try {
-      console.log("Signup attempt:", { 
+      console.log("Signup attempt:", {
         email: req.body?.email,
         hasFirstName: !!req.body?.firstName,
         hasLastName: !!req.body?.lastName,
         hasPassword: !!req.body?.password,
-        bodyKeys: Object.keys(req.body || {})
+        bodyKeys: Object.keys(req.body || {}),
       });
-      
+
       const data = insertUserSchema.parse(req.body);
-      
+
       console.log("Checking for existing user...");
       const existingUser = await storage.getUserByEmail(data.email);
       if (existingUser) {
@@ -132,7 +156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("Hashing password...");
       const hashedPassword = await bcrypt.hash(data.password, 10);
-      
+
       console.log("Creating user in database...");
       const user = await storage.createUser({
         firstName: data.firstName,
@@ -147,27 +171,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Signup error:", error);
       console.error("Error type:", error?.constructor?.name);
-      
+
       // Handle database connection errors
-      if (error && typeof error === 'object' && 'type' in error && error.type === 'error') {
+      if (
+        error &&
+        typeof error === "object" &&
+        "type" in error &&
+        error.type === "error"
+      ) {
         console.error("Database connection error detected");
-        return res.status(500).json({ 
-          message: "Database connection failed. Please try again."
+        return res.status(500).json({
+          message: "Database connection failed. Please try again.",
         });
       }
-      
-      if (error instanceof Error && 'issues' in error) {
+
+      if (error instanceof Error && "issues" in error) {
         // Zod validation error
         const zodError = error as any;
         console.error("Zod validation issues:", zodError.issues);
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: zodError.issues?.[0]?.message || "Validation failed",
-          errors: zodError.issues 
+          errors: zodError.issues,
         });
       }
-      
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : "Failed to create account. Please try again."
+
+      res.status(500).json({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to create account. Please try again.",
       });
     }
   });
@@ -175,7 +207,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { email, password } = req.body;
-      
+
       const user = await storage.getUserByEmail(email);
       if (!user) {
         return res.status(401).json({ message: "Invalid credentials" });
@@ -221,12 +253,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         database: dbCheck,
         environment: process.env.NODE_ENV || "development",
         sessionConfigured: !!req.session,
-        trustProxy: req.app.get("trust proxy")
+        trustProxy: req.app.get("trust proxy"),
       });
     } catch (error) {
       res.status(500).json({
         status: "error",
-        message: error instanceof Error ? error.message : "Health check failed"
+        message: error instanceof Error ? error.message : "Health check failed",
       });
     }
   });
@@ -264,15 +296,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/ideas", requireAuth, async (req, res) => {
     try {
       const ideas = await storage.getIdeasByUser(req.session.userId!);
-      
+
       // Add isKeyword flag to each idea (check if similarity >= 95%)
       const ideasWithKeywordFlag = await Promise.all(
         ideas.map(async (idea) => ({
           ...idea,
-          isKeyword: await keywordVectorService.isKeyword(idea.generatedIdea, 0.95)
-        }))
+          isKeyword: await keywordVectorService.isKeyword(
+            idea.generatedIdea,
+            0.95,
+          ),
+        })),
       );
-      
+
       res.json(ideasWithKeywordFlag);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ideas" });
@@ -307,7 +342,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { ideaId, keywordCount = 10 } = req.body;
 
       // Validate keywordCount
-      const validatedCount = Math.max(1, Math.min(100, parseInt(keywordCount) || 10));
+      const validatedCount = Math.max(
+        1,
+        Math.min(100, parseInt(keywordCount) || 10),
+      );
 
       const idea = await storage.getIdea(ideaId);
       if (!idea) {
@@ -324,12 +362,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const keywords = await storage.getKeywordsByReportId(existingReport.id);
         return res.json({
           report: existingReport,
-          keywords
+          keywords,
         });
       }
 
       // Get real keyword data from vector database
-      const { keywords: keywordData, aggregates } = await getKeywordsFromVectorDB(idea.generatedIdea, validatedCount);
+      const { keywords: keywordData, aggregates } =
+        await getKeywordsFromVectorDB(idea.generatedIdea, validatedCount);
 
       // Create report
       const report = await storage.createReport({
@@ -344,7 +383,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Create keywords
-      const keywordsToInsert = keywordData.map(kw => ({
+      const keywordsToInsert = keywordData.map((kw) => ({
         reportId: report.id,
         keyword: kw.keyword,
         volume: kw.volume,
@@ -361,13 +400,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sustainedGrowthScore: kw.sustainedGrowthScore,
         monthlyData: kw.monthlyData,
       }));
-      
+
       const keywords = await storage.createKeywords(keywordsToInsert);
 
       res.json({ report, keywords });
     } catch (error) {
-      console.error('[Generate Report Error]:', error);
-      res.status(500).json({ message: "Failed to generate report", error: error instanceof Error ? error.message : String(error) });
+      console.error("[Generate Report Error]:", error);
+      res.status(500).json({
+        message: "Failed to generate report",
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   });
 
