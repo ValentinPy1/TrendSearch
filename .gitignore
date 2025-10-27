@@ -4,3 +4,13 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Vector database files (too large for GitHub)
+data/embeddings.json
+data/embeddings_metadata.json
+data/preprocessing_metadata.json
+attached_assets/*.pkl
+attached_assets/*.npy
+attached_assets/metadata_*.json
+attached_assets/embeddings_*.npy
+attached_assets/vector_database_*.pkl
