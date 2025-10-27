@@ -25,10 +25,11 @@ The application follows a client-server architecture with a React-based frontend
 - **Authentication:** Session-based authentication using `express-session` with bcrypt for password hashing.
 - **Idea Generation:** AI-powered using GPT-4o-mini, selecting `user_type` and `problem_nature` from `paramV4.json` and guided by `microsaas-principles.txt` to generate ultra-concise microSaaS ideas (5-8 words).
 - **Market Validation:** Semantic keyword search using precomputed binary embeddings (sentence-transformers) of 80,157 Google Ads keywords.
-- **Opportunity Score:** Calculated per keyword as `log(SAC) × Trend Strength × Bid Efficiency`, where SAC (Seller Advertiser Cost), Trend Strength ((1 + YoY Growth/100) / Volatility), and Bid Efficiency (Top Page Bid / CPC) are derived metrics.
+- **Opportunity Score:** Calculated per keyword as `log(SAC) × Trend Strength × Bid Efficiency`, where SAC (Seller Advertiser Cost), Trend Strength (Growth / (1 + Volatility)), and Bid Efficiency (Top Page Bid / CPC) are derived metrics.
 - **Data Display:**
     - **Metrics Cards:** 5 cards display weighted averages (by similarityScore) of Opportunity, Trend Strength, Bid Efficiency, TAC, and SAC.
-    - **Keywords Table:** Sortable table showing 9 columns: Keyword, Match, Volume, Competition, CPC, Top Page Bid, Volatility, YoY Trend, and Opportunity. Includes hover actions (hide, copy, search).
+    - **Keywords Table:** Sortable table showing 7 columns: Keyword, Match, Volume, Competition, CPC, YoY Trend, and Opportunity. Includes hover actions (hide, copy, search).
+    - **Keyword Metrics:** 5 cards next to trend chart displaying: Opportunity, Trend Strength, Top Page Bid, Bid Efficiency, and TAC.
 - **Security:** Passwords hashed with bcrypt, session-based authentication with httpOnly cookies, and server-side user ID derivation. Protected routes use `requireAuth` middleware.
 
 ### Database Schema (Supabase PostgreSQL)
