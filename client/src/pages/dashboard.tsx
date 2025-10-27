@@ -66,6 +66,24 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     },
   });
 
+  const deleteKeywordMutation = useMutation({
+    mutationFn: async (keywordId: string) => {
+      const response = await apiRequest(
+        "DELETE",
+        `/api/keywords/${keywordId}`,
+        {}
+      );
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
+    },
+  });
+
+  const handleDeleteKeyword = (keywordId: string) => {
+    deleteKeywordMutation.mutate(keywordId);
+  };
+
   const handleLoadMore = () => {
     if (!selectedIdea?.report) return;
     
@@ -289,6 +307,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   selectedKeyword={selectedKeyword}
                   onKeywordSelect={setSelectedKeyword}
                   onSearchKeyword={setSearchKeyword}
+                  onDeleteKeyword={handleDeleteKeyword}
                   onLoadMore={hasMoreToShow || selectedIdea.report.keywords.length < 100 ? handleLoadMore : undefined}
                   isLoadingMore={loadMoreKeywordsMutation.isPending}
                 />

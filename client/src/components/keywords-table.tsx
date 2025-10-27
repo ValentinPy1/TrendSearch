@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { ArrowUpDown, ArrowUp, ArrowDown, Copy, Search } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Copy, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -26,6 +26,7 @@ interface KeywordsTableProps {
   selectedKeyword: string | null;
   onKeywordSelect: (keyword: string) => void;
   onSearchKeyword?: (keyword: string) => void;
+  onDeleteKeyword?: (keywordId: string) => void;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
 }
@@ -35,6 +36,7 @@ export function KeywordsTable({
   selectedKeyword,
   onKeywordSelect,
   onSearchKeyword,
+  onDeleteKeyword,
   onLoadMore,
   isLoadingMore = false,
 }: KeywordsTableProps) {
@@ -384,6 +386,18 @@ export function KeywordsTable({
                             data-testid={`button-search-${index}`}
                           >
                             <Search className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-red-400 hover:text-red-300"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteKeyword?.(keyword.id);
+                            }}
+                            data-testid={`button-delete-${index}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
                       </div>
