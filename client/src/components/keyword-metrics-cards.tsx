@@ -63,7 +63,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       subtitle: "growth momentum",
       icon: TrendingUp,
       style: getGreenGradientText(trendStrength, maxTrendStrength),
-      info: "YoY Growth / Volatility - measures consistent growth strength with higher values indicating stable upward trends",
+      info: "(1 + YoY Growth/100) / Volatility - transforms growth into 0 to +∞ range, then divides by volatility. Higher values = stable upward trends",
     },
     {
       label: "Bid Efficiency",

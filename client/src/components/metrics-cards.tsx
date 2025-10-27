@@ -119,7 +119,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
       subtitle: "growth momentum",
       icon: TrendingUp,
       style: getGreenGradientText(avgTrendStrength, maxTrendStrength),
-      info: "Weighted average trend strength - YoY Growth / Volatility showing consistent growth patterns",
+      info: "Weighted average trend strength - (1 + YoY Growth/100) / Volatility showing consistent growth patterns",
     },
     {
       label: "Avg Bid Efficiency",

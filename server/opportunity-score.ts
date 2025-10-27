@@ -3,7 +3,7 @@
  * 
  * Calculates opportunity metrics based on:
  * - Volatility: Average relative deviation from exponential trend
- * - Trend Strength: YoY growth / Volatility
+ * - Trend Strength: (1 + YoY growth/100) / Volatility (transforms -100% to +∞ into 0 to +∞)
  * - Bid Efficiency: Top Page Bid / CPC
  * - TAC: Total Advertiser Cost = Volume * CPC
  * - SAC: Search Advertiser Cost = TAC * (1 - Competition/100)
@@ -75,7 +75,10 @@ function calculateVolatility(monthlyData: { month: string; volume: number }[]): 
 }
 
 /**
- * Calculate Trend Strength = YoY Growth / Volatility
+ * Calculate Trend Strength = (1 + YoY Growth/100) / Volatility
+ * Transforms growth from -100% to +infinity into 0 to +infinity
+ * Examples: -100% → 0, -50% → 0.5, 0% → 1, +100% → 2
+ * Clamps at 0 for extreme negative growth (< -100%)
  */
 function calculateTrendStrength(growthYoy: number, volatility: number): number {
   // Avoid division by zero
@@ -83,10 +86,11 @@ function calculateTrendStrength(growthYoy: number, volatility: number): number {
     return 0;
   }
 
-  // Convert YoY growth percentage to decimal
-  const growthDecimal = growthYoy / 100;
+  // Transform growth: -100% becomes 0, 0% becomes 1, +100% becomes 2
+  // Clamp at 0 to handle extreme negative growth (< -100%)
+  const transformedGrowth = Math.max(0, 1 + (growthYoy / 100));
 
-  const trendStrength = growthDecimal / volatility;
+  const trendStrength = transformedGrowth / volatility;
   return trendStrength;
 }
 

@@ -25,7 +25,7 @@ The application follows a client-server architecture with a React-based frontend
 - **Authentication:** Session-based authentication using `express-session` with bcrypt for password hashing.
 - **Idea Generation:** AI-powered using GPT-4o-mini, selecting `user_type` and `problem_nature` from `paramV4.json` and guided by `microsaas-principles.txt` to generate ultra-concise microSaaS ideas (5-8 words).
 - **Market Validation:** Semantic keyword search using precomputed binary embeddings (sentence-transformers) of 80,157 Google Ads keywords.
-- **Opportunity Score:** Calculated per keyword as `log(SAC) × Trend Strength × Bid Efficiency`, where SAC (Seller Advertiser Cost), Trend Strength (YoY Growth / Volatility), and Bid Efficiency (Top Page Bid / CPC) are derived metrics.
+- **Opportunity Score:** Calculated per keyword as `log(SAC) × Trend Strength × Bid Efficiency`, where SAC (Seller Advertiser Cost), Trend Strength ((1 + YoY Growth/100) / Volatility), and Bid Efficiency (Top Page Bid / CPC) are derived metrics.
 - **Data Display:**
     - **Metrics Cards:** 5 cards display weighted averages (by similarityScore) of Opportunity, Trend Strength, Bid Efficiency, TAC, and SAC.
     - **Keywords Table:** Sortable table showing 9 columns: Keyword, Match, Volume, Competition, CPC, Top Page Bid, Volatility, YoY Trend, and Opportunity. Includes hover actions (hide, copy, search).
