@@ -34,7 +34,7 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
         month: label,
         volume: Math.floor(kw[key as keyof typeof kw] as number || kw.search_volume || 0)
       };
-    }).reverse();
+    });
 
     return {
       keyword: kw.keyword,
