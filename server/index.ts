@@ -6,6 +6,7 @@ if (process.env.NODE_ENV === "development") {
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { keywordVectorService } from "./keyword-vector-service";
 
 const app = express();
 
@@ -49,6 +50,16 @@ app.use((req, res, next) => {
 
 (async () => {
   const server = await registerRoutes(app);
+
+  // Initialize KeywordVectorService at startup to avoid blocking requests later
+  console.log('[Server] Initializing KeywordVectorService...');
+  try {
+    await keywordVectorService.initialize();
+    console.log('[Server] KeywordVectorService ready!');
+  } catch (error) {
+    console.error('[Server] Failed to initialize KeywordVectorService:', error);
+    console.error('[Server] Report generation will not work until service is initialized');
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
