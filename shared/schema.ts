@@ -51,8 +51,14 @@ export const keywords = pgTable("keywords", {
   growthConsistency: decimal("growth_consistency", { precision: 10, scale: 4 }),
   growthStability: decimal("growth_stability", { precision: 10, scale: 4 }),
   sustainedGrowthScore: decimal("sustained_growth_score", { precision: 10, scale: 4 }),
-  // Opportunity Score (0-100 comprehensive metric)
-  opportunityScore: integer("opportunity_score"),
+  // New derived metrics
+  volatility: decimal("volatility", { precision: 10, scale: 4 }),
+  trendStrength: decimal("trend_strength", { precision: 10, scale: 4 }),
+  bidEfficiency: decimal("bid_efficiency", { precision: 10, scale: 4 }),
+  tac: decimal("tac", { precision: 15, scale: 2 }),
+  sac: decimal("sac", { precision: 15, scale: 2 }),
+  // Opportunity Score (comprehensive metric using new formula)
+  opportunityScore: decimal("opportunity_score", { precision: 10, scale: 4 }),
   // Monthly search volume data (12 months)
   monthlyData: jsonb("monthly_data").$type<{ month: string; volume: number }[]>(),
 });
