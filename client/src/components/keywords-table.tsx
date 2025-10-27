@@ -46,34 +46,37 @@ export function KeywordsTable({
   const { toast } = useToast();
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-  const previousKeywordCountRef = useRef(keywords.length);
-  const previousReportIdRef = useRef(reportId);
+  const [keywordIdsAtSort, setKeywordIdsAtSort] = useState<Set<string>>(new Set());
+  const previousKeywordCountRef = useRef(0);
 
-  // Reset sort when new keywords are added to the SAME report (not on idea switch)
+  // Update keywordIdsAtSort when keywords change (idea switch or initial load)
+  // but NOT when loading more keywords for the same idea
   useEffect(() => {
     const currentCount = keywords.length;
     const previousCount = previousKeywordCountRef.current;
-    const currentReportId = reportId;
-    const previousReportId = previousReportIdRef.current;
     
-    // If reportId changed, we're switching ideas - reset baseline but don't clear sort
-    if (currentReportId !== previousReportId) {
-      previousKeywordCountRef.current = currentCount;
-      previousReportIdRef.current = currentReportId;
-      return;
+    // If sort is active and keywords changed in a way other than appending
+    // (i.e., different set of IDs), update keywordIdsAtSort
+    if (sortField && sortDirection) {
+      const currentIds = new Set(keywords.map(k => k.id));
+      const hasNewKeywords = keywords.some(k => !keywordIdsAtSort.has(k.id));
+      const hasMissingKeywords = Array.from(keywordIdsAtSort).some(id => 
+        !keywords.find(k => k.id === id)
+      );
+      
+      // If keywords were replaced (idea switch) or removed (filtering), update the set
+      // But if keywords only increased (load more), don't update
+      if (hasMissingKeywords) {
+        setKeywordIdsAtSort(currentIds);
+      } else if (hasNewKeywords && currentCount <= previousCount) {
+        // Keywords changed but count didn't increase = replacement, not append
+        setKeywordIdsAtSort(currentIds);
+      }
     }
     
-    // Only reset sort if:
-    // 1. We're in the same report (reportId unchanged)
-    // 2. AND keywords increased (new ones loaded via "Show 5 more")
-    if (currentCount > previousCount) {
-      setSortField(null);
-      setSortDirection(null);
-    }
-    
-    // Update count ref
     previousKeywordCountRef.current = currentCount;
-  }, [keywords.length, reportId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keywords, sortField, sortDirection]);
 
   const columnInfo = {
     keyword: "Search terms related to your idea",
@@ -94,12 +97,17 @@ export function KeywordsTable({
       } else if (sortDirection === "desc") {
         setSortDirection(null);
         setSortField(null);
+        setKeywordIdsAtSort(new Set());
       } else {
         setSortDirection("asc");
+        // Capture current keyword IDs when applying sort
+        setKeywordIdsAtSort(new Set(keywords.map(k => k.id)));
       }
     } else {
       setSortField(field);
       setSortDirection("asc");
+      // Capture current keyword IDs when applying sort
+      setKeywordIdsAtSort(new Set(keywords.map(k => k.id)));
     }
   };
 
@@ -108,7 +116,12 @@ export function KeywordsTable({
       return keywords;
     }
 
-    return [...keywords].sort((a, b) => {
+    // Separate keywords into those present at sort time and new ones
+    const keywordsAtSort = keywords.filter(k => keywordIdsAtSort.has(k.id));
+    const newKeywords = keywords.filter(k => !keywordIdsAtSort.has(k.id));
+
+    // Sort only the keywords that were present when sort was applied
+    const sorted = [...keywordsAtSort].sort((a, b) => {
       let aVal: any;
       let bVal: any;
 
@@ -157,7 +170,10 @@ export function KeywordsTable({
         return aVal < bVal ? 1 : -1;
       }
     });
-  }, [keywords, sortField, sortDirection]);
+
+    // Append new keywords to the end
+    return [...sorted, ...newKeywords];
+  }, [keywords, sortField, sortDirection, keywordIdsAtSort]);
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
