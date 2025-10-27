@@ -1,175 +1,146 @@
 /**
- * Opportunity Score Calculator
+ * Opportunity Score Calculator (New Formula)
  * 
- * Calculates a comprehensive 0-100 opportunity index based on:
- * - Market Size (volume)
- * - Growth Momentum (3m + YoY)
- * - Stability/Quality (consistency, stability, R²)
- * - Competition (inverse)
- * - CPC Attractiveness (TopBid vs CPC spread)
- * - Ad Efficiency (margin between TopBid and CPC)
+ * Calculates opportunity metrics based on:
+ * - Volatility: Average relative deviation from exponential trend
+ * - Trend Strength: YoY growth / Volatility
+ * - Bid Efficiency: Top Page Bid / CPC
+ * - TAC: Total Advertiser Cost = Volume * CPC
+ * - SAC: Search Advertiser Cost = TAC * (1 - Competition/100)
+ * - Opportunity Score: log(SAC) * Trend Strength * Bid Efficiency
  */
 
-// Logistic function (sigmoid)
-function sigmoid(z: number): number {
-  return 1 / (1 + Math.exp(-z));
-}
-
-interface OpportunityScoreInputs {
+export interface OpportunityScoreInputs {
   volume: number;
   competition: number;
   cpc: number;
   topPageBid: number;
-  growth3m: number;
   growthYoy: number;
-  growthConsistency: number;
-  growthStability: number;
-  growthR2: number;
+  monthlyData: { month: string; volume: number }[];
 }
 
-interface ComponentScores {
-  marketSize: number;
-  growthMomentum: number;
-  stabilityQuality: number;
-  competition: number;
-  cpcAttractiveness: number;
-  adEfficiency: number;
-}
-
-/**
- * Calculate normalized Market Size score (0-1)
- * Uses log10 transform + logistic to handle wide value ranges
- */
-function calculateMarketSize(volume: number): number {
-  const logVolume = Math.log10(volume + 1);
-  const muMS = Math.log10(100); // Center at median reference ~100
-  const alphaMS = 2; // Slope control
-  const z = alphaMS * (logVolume - muMS);
-  return sigmoid(z);
-}
-
-/**
- * Calculate normalized Growth Momentum score (0-1)
- * Combines 3-month and YoY growth using log1p transform
- */
-function calculateGrowthMomentum(growth3m: number, growthYoy: number): number {
-  // Convert percentages to decimals if needed
-  const g3m = growth3m / 100;
-  const gYoy = growthYoy / 100;
-  
-  // Average of log-transformed growths
-  const g = (Math.log(1 + g3m) + Math.log(1 + gYoy)) / 2;
-  
-  const muG = Math.log(1 + 0.05); // Baseline 5% growth
-  const alphaG = 6; // Steeper slope
-  const z = alphaG * (g - muG);
-  return sigmoid(z);
-}
-
-/**
- * Calculate normalized Stability/Quality score (0-1)
- * Weighted combination of consistency, stability, and R²
- */
-function calculateStabilityQuality(
-  consistency: number,
-  stability: number,
-  r2: number
-): number {
-  const wC = 0.3; // Consistency weight
-  const wS = 0.5; // Stability weight
-  const wR = 0.2; // R² weight
-  
-  return wC * consistency + wS * stability + wR * r2;
-}
-
-/**
- * Calculate normalized Competition score (0-1)
- * Lower competition = higher score (inverted)
- */
-function calculateCompetition(competition: number): number {
-  return 1 - (competition / 100);
-}
-
-/**
- * Calculate normalized CPC Attractiveness score (0-1)
- * Positive spread (TopBid > CPC) indicates stronger advertiser value
- */
-function calculateCPCAttractiveness(cpc: number, topPageBid: number): number {
-  const d = Math.log10(1 + topPageBid) - Math.log10(1 + cpc);
-  const muC = 0; // Center at 0
-  const alphaC = 8; // Slope
-  const z = alphaC * (d - muC);
-  return sigmoid(z);
-}
-
-/**
- * Calculate normalized Ad Efficiency score (0-1)
- * Fraction of top-bid not consumed by CPC
- */
-function calculateAdEfficiency(cpc: number, topPageBid: number): number {
-  const epsilon = 1e-6; // Prevent division by zero
-  const rawRatio = (topPageBid - cpc) / (topPageBid + epsilon);
-  
-  // Map to 0-1 using logistic
-  const alpha = 8;
-  const mu = 0;
-  const z = alpha * (rawRatio - mu);
-  return sigmoid(z);
-}
-
-/**
- * Calculate comprehensive Opportunity Index (0-100)
- */
-export function calculateOpportunityScore(inputs: OpportunityScoreInputs): {
+export interface OpportunityScoreResult {
+  volatility: number;
+  trendStrength: number;
+  bidEfficiency: number;
+  tac: number;
+  sac: number;
   opportunityScore: number;
-  components: ComponentScores;
-} {
-  // Calculate individual component scores (0-1)
-  const sMS = calculateMarketSize(inputs.volume);
-  const sGM = calculateGrowthMomentum(inputs.growth3m, inputs.growthYoy);
-  const sSQ = calculateStabilityQuality(
-    inputs.growthConsistency,
-    inputs.growthStability,
-    inputs.growthR2
-  );
-  const sCMP = calculateCompetition(inputs.competition);
-  const sCPCa = calculateCPCAttractiveness(inputs.cpc, inputs.topPageBid);
-  const sAE = calculateAdEfficiency(inputs.cpc, inputs.topPageBid);
+}
 
-  // Component scores for debugging/display
-  const components: ComponentScores = {
-    marketSize: sMS,
-    growthMomentum: sGM,
-    stabilityQuality: sSQ,
-    competition: sCMP,
-    cpcAttractiveness: sCPCa,
-    adEfficiency: sAE,
-  };
+/**
+ * Calculate volatility as average relative deviation from exponential trend
+ * Exponential fit: growth_factor = last_month / first_month
+ * For each month: predicted(t) = first_month * growth_factor^(t/11)
+ * Volatility = average(|actual - predicted| / predicted)
+ */
+function calculateVolatility(monthlyData: { month: string; volume: number }[]): number {
+  if (!monthlyData || monthlyData.length < 2) {
+    return 0;
+  }
 
-  // Suggested weights (balanced for idea evaluation)
-  const weights = {
-    marketSize: 0.25,
-    growthMomentum: 0.20,
-    stabilityQuality: 0.15,
-    competition: 0.15,
-    cpcAttractiveness: 0.15,
-    adEfficiency: 0.10,
-  };
+  const volumes = monthlyData.map(d => d.volume);
+  const firstMonth = volumes[0];
+  const lastMonth = volumes[volumes.length - 1];
 
-  // Weighted sum (0-1)
-  const opportunityRaw =
-    weights.marketSize * sMS +
-    weights.growthMomentum * sGM +
-    weights.stabilityQuality * sSQ +
-    weights.competition * sCMP +
-    weights.cpcAttractiveness * sCPCa +
-    weights.adEfficiency * sAE;
+  // Avoid division by zero
+  if (firstMonth === 0) {
+    return 0;
+  }
 
-  // Scale to 0-100
-  const opportunityScore = Math.round(opportunityRaw * 100);
+  // Calculate exponential growth factor
+  const growthFactor = lastMonth / firstMonth;
+
+  // Calculate relative deviations for each month
+  const deviations: number[] = [];
+  for (let t = 0; t < volumes.length; t++) {
+    const predicted = firstMonth * Math.pow(growthFactor, t / (volumes.length - 1));
+    
+    // Avoid division by zero
+    if (predicted === 0) {
+      continue;
+    }
+
+    const relativeDeviation = Math.abs(volumes[t] - predicted) / predicted;
+    deviations.push(relativeDeviation);
+  }
+
+  // Return average relative deviation
+  if (deviations.length === 0) {
+    return 0;
+  }
+
+  const avgDeviation = deviations.reduce((sum, d) => sum + d, 0) / deviations.length;
+  return avgDeviation;
+}
+
+/**
+ * Calculate Trend Strength = YoY Growth / Volatility
+ */
+function calculateTrendStrength(growthYoy: number, volatility: number): number {
+  // Avoid division by zero
+  if (volatility === 0) {
+    return 0;
+  }
+
+  // Convert YoY growth percentage to decimal
+  const growthDecimal = growthYoy / 100;
+
+  const trendStrength = growthDecimal / volatility;
+  return trendStrength;
+}
+
+/**
+ * Calculate Bid Efficiency = Top Page Bid / CPC
+ */
+function calculateBidEfficiency(topPageBid: number, cpc: number): number {
+  // Avoid division by zero
+  if (cpc === 0) {
+    return 0;
+  }
+
+  return topPageBid / cpc;
+}
+
+/**
+ * Calculate TAC (Total Advertiser Cost) = Volume * CPC
+ */
+function calculateTAC(volume: number, cpc: number): number {
+  return volume * cpc;
+}
+
+/**
+ * Calculate SAC = TAC * (1 - Competition/100)
+ */
+function calculateSAC(tac: number, competition: number): number {
+  const competitionFactor = 1 - (competition / 100);
+  return tac * competitionFactor;
+}
+
+/**
+ * Calculate Opportunity Score = log(SAC) * Trend Strength * Bid Efficiency
+ */
+export function calculateOpportunityScore(inputs: OpportunityScoreInputs): OpportunityScoreResult {
+  // Calculate derived metrics
+  const volatility = calculateVolatility(inputs.monthlyData);
+  const trendStrength = calculateTrendStrength(inputs.growthYoy, volatility);
+  const bidEfficiency = calculateBidEfficiency(inputs.topPageBid, inputs.cpc);
+  const tac = calculateTAC(inputs.volume, inputs.cpc);
+  const sac = calculateSAC(tac, inputs.competition);
+
+  // Calculate Opportunity Score
+  // Use log10 for readability, add 1 to handle SAC=0 case
+  let opportunityScore = 0;
+  if (sac > 0) {
+    opportunityScore = Math.log10(sac) * trendStrength * bidEfficiency;
+  }
 
   return {
-    opportunityScore,
-    components,
+    volatility: Number(volatility.toFixed(4)),
+    trendStrength: Number(trendStrength.toFixed(4)),
+    bidEfficiency: Number(bidEfficiency.toFixed(4)),
+    tac: Number(tac.toFixed(2)),
+    sac: Number(sac.toFixed(2)),
+    opportunityScore: Number(opportunityScore.toFixed(4)),
   };
 }

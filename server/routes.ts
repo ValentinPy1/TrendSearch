@@ -404,19 +404,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         avgCpc: aggregates.avgCpc,
       });
 
-      // Create keywords with opportunity scores
+      // Create keywords with opportunity scores and derived metrics
       const keywordsToInsert = keywordData.map((kw) => {
-        // Calculate opportunity score for each keyword
-        const { opportunityScore } = calculateOpportunityScore({
+        // Calculate all metrics including opportunity score
+        const metrics = calculateOpportunityScore({
           volume: kw.volume || 0,
           competition: kw.competition || 0,
           cpc: parseFloat(kw.cpc?.toString() || "0"),
           topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
-          growth3m: parseFloat(kw.growth3m?.toString() || "0"),
           growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
-          growthConsistency: parseFloat(kw.growthConsistency?.toString() || "0"),
-          growthStability: parseFloat(kw.growthStability?.toString() || "0"),
-          growthR2: parseFloat(kw.growthR2?.toString() || "0"),
+          monthlyData: kw.monthlyData || [],
         });
         
         return {
@@ -434,7 +431,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           growthConsistency: kw.growthConsistency,
           growthStability: kw.growthStability,
           sustainedGrowthScore: kw.sustainedGrowthScore,
-          opportunityScore,
+          volatility: metrics.volatility.toString(),
+          trendStrength: metrics.trendStrength.toString(),
+          bidEfficiency: metrics.bidEfficiency.toString(),
+          tac: metrics.tac.toString(),
+          sac: metrics.sac.toString(),
+          opportunityScore: metrics.opportunityScore.toString(),
           monthlyData: kw.monthlyData,
         };
       });
@@ -498,19 +500,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No more unique keywords available" });
       }
 
-      // Create the new keywords with opportunity scores
+      // Create the new keywords with opportunity scores and derived metrics
       const keywordsToInsert = uniqueNewKeywords.map((kw) => {
-        // Calculate opportunity score for each keyword
-        const { opportunityScore } = calculateOpportunityScore({
+        // Calculate all metrics including opportunity score
+        const metrics = calculateOpportunityScore({
           volume: kw.volume || 0,
           competition: kw.competition || 0,
           cpc: parseFloat(kw.cpc?.toString() || "0"),
           topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
-          growth3m: parseFloat(kw.growth3m?.toString() || "0"),
           growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
-          growthConsistency: parseFloat(kw.growthConsistency?.toString() || "0"),
-          growthStability: parseFloat(kw.growthStability?.toString() || "0"),
-          growthR2: parseFloat(kw.growthR2?.toString() || "0"),
+          monthlyData: kw.monthlyData || [],
         });
         
         return {
@@ -528,7 +527,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           growthConsistency: kw.growthConsistency,
           growthStability: kw.growthStability,
           sustainedGrowthScore: kw.sustainedGrowthScore,
-          opportunityScore,
+          volatility: metrics.volatility.toString(),
+          trendStrength: metrics.trendStrength.toString(),
+          bidEfficiency: metrics.bidEfficiency.toString(),
+          tac: metrics.tac.toString(),
+          sac: metrics.sac.toString(),
+          opportunityScore: metrics.opportunityScore.toString(),
           monthlyData: kw.monthlyData,
         };
       });
