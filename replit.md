@@ -95,7 +95,7 @@ Trends Search helps entrepreneurs find and validate their startup ideas using:
 
 **Keyword Actions** (visible on hover):
 - **Copy icon:** Copies keyword to clipboard
-- **Search icon:** Adds keyword to search input
+- **Search icon:** Adds keyword to search input and scrolls to focus the search bar
 - **Trash icon (red):** Hides keyword from table and excludes from aggregates (frontend-only, doesn't delete from database)
 
 ### 3. Trend Analysis
@@ -150,7 +150,7 @@ Required:
 4. Click "Generate Report" - Vector database returns 20 semantically-related keywords (10 shown initially)
 5. View 6 metric cards and interactive 12-month trend chart
 6. Select keywords from table to view their trends
-7. Hover over keywords to copy, search, or hide them
+7. Hover over keywords to copy, search (with auto-scroll to search bar), or hide them
 8. Click "+ Show 5 more keywords" to expand the table (up to 20 keywords)
 9. Hide unwanted keywords to refine aggregate metrics (hidden keywords excluded from calculations)
 10. Click "History" to view all previous ideas and reports

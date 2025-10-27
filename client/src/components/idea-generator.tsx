@@ -33,10 +33,26 @@ export function IdeaGenerator({
     },
   });
 
-  // Update form when searchKeyword changes
+  // Update form and focus input when searchKeyword changes
   useEffect(() => {
     if (searchKeyword) {
       form.setValue("idea", searchKeyword);
+      
+      // Query the input element and scroll to it
+      const inputElement = document.querySelector('[data-testid="input-idea"]') as HTMLInputElement;
+      
+      if (inputElement) {
+        inputElement.scrollIntoView({ 
+          behavior: "smooth", 
+          block: "center" 
+        });
+        
+        // Small delay to ensure smooth scroll completes before focusing
+        setTimeout(() => {
+          inputElement.focus();
+          inputElement.select(); // Select all text for easy editing
+        }, 300);
+      }
     }
   }, [searchKeyword, form]);
 
