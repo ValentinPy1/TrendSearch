@@ -225,27 +225,6 @@ export function KeywordsTable({
     }
   };
 
-  const getOpportunityGradientText = (score: number) => {
-    // 0-100 range: low (red) to medium (yellow) to high (green)
-    if (score < 50) {
-      // 0-50: red to yellow
-      const normalizedValue = score / 50;
-      const hue = normalizedValue * 60; // 0 (red) to 60 (yellow)
-      const lightness = 60 - normalizedValue * 10; // 60% to 50%
-      return {
-        color: `hsl(${hue}, 80%, ${lightness}%)`,
-      };
-    } else {
-      // 50-100: yellow to green
-      const normalizedValue = (score - 50) / 50;
-      const hue = 60 + normalizedValue * 82; // 60 (yellow) to 142 (green)
-      const lightness = 60 - normalizedValue * 10; // 60% to 50%
-      return {
-        color: `hsl(${hue}, 80%, ${lightness}%)`,
-      };
-    }
-  };
-
   return (
     <GlassmorphicCard className="p-8">
       <div className="overflow-x-auto">
