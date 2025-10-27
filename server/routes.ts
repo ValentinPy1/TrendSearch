@@ -11,7 +11,7 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
   // Use vector similarity search to find most relevant keywords
   const similarKeywords = await keywordVectorService.findSimilarKeywords(idea, topN);
   
-  // Map CSV columns (2024_10 through 2025_09) to correct month labels
+  // Map CSV columns (2024_10 through 2025_09) to correct month labels in chronological order
   const monthMapping = [
     { key: '2024_10', label: 'Oct' },
     { key: '2024_11', label: 'Nov' },
@@ -29,12 +29,13 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
   
   const keywords = similarKeywords.map(kw => {
     // Convert monthly data from CSV format to our format with correct month labels
+    // Recharts displays data in reverse order, so reverse here to show chronologically
     const monthlyData = monthMapping.map(({ key, label }) => {
       return {
         month: label,
         volume: Math.floor(kw[key as keyof typeof kw] as number || kw.search_volume || 0)
       };
-    });
+    }).reverse();
 
     return {
       keyword: kw.keyword,
