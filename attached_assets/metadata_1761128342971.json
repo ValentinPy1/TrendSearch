@@ -1,7 +1,0 @@
-{
-  "version": "1.0.0",
-  "total_keywords": 80157,
-  "embedding_dimension": 384,
-  "keywords_file": "keywords.csv",
-  "embeddings_file": "embeddings.npy"
-}
