@@ -84,7 +84,7 @@ Trends Search helps entrepreneurs find and validate their startup ideas using:
 - Order matches table column order for consistency
 
 **Keywords Table** displays 8 columns:
-1. Keyword - the search term
+1. Keyword - the search term with hover actions (copy, search, delete)
 2. Match - similarity score to the idea (percentage with blue gradient 0-100)
 3. Volume - monthly search volume
 4. Competition - competition level (0-100 with red gradient)
@@ -92,6 +92,11 @@ Trends Search helps entrepreneurs find and validate their startup ideas using:
 6. Top Page Bid - average top-of-page bid (purple gradient based on max value)
 7. 3Mo Trend - 3-month growth percentage
 8. YoY Trend - year-over-year growth percentage
+
+**Keyword Actions** (visible on hover):
+- **Copy icon:** Copies keyword to clipboard
+- **Search icon:** Adds keyword to search input
+- **Trash icon (red):** Deletes keyword from report (excludes from aggregates)
 
 ### 3. Trend Analysis
 - Interactive line chart showing 12 months of search volume
@@ -113,7 +118,8 @@ Trends Search helps entrepreneurs find and validate their startup ideas using:
 - ✅ Blue gradient for Match percentage (0-100)
 - ✅ Red gradient for Competition (0-100)
 - ✅ Purple gradient for CPC and Top Page Bid (scaled to max value)
-- ✅ Fixed keyword count (always 10 keywords)
+- ✅ Optimized keyword loading (preload 20, show 10, expand by 5)
+- ✅ Keyword deletion with trash icon (excludes from aggregates)
 - ✅ Trend chart visualization
 - ✅ Dark theme with gradient orbs
 - ✅ Glassmorphic UI design
@@ -141,11 +147,14 @@ Required:
 1. User signs up with first name, last name, email, and password (or logs in with email/password)
 2. User enters an existing idea or leaves blank for AI generation
 3. Click "Generate Idea" - GPT-4o-mini generates focused microSaaS idea
-4. Click "Generate Report" - Vector database returns 10 semantically-related keywords with real data
+4. Click "Generate Report" - Vector database returns 20 semantically-related keywords (10 shown initially)
 5. View 6 metric cards and interactive 12-month trend chart
 6. Select keywords from table to view their trends
-7. Click "History" to view all previous ideas and reports
-8. At the bottom of the page: Call-to-action linking to thepioneer.vc - "Validated an idea ? Let's help you launch it !"
+7. Hover over keywords to copy, search, or delete them
+8. Click "+ Show 5 more keywords" to expand the table (up to 20 keywords)
+9. Delete unwanted keywords to refine aggregate metrics
+10. Click "History" to view all previous ideas and reports
+11. At the bottom of the page: Call-to-action linking to thepioneer.vc - "Validated an idea ? Let's help you launch it !"
 
 ## Development Notes
 
