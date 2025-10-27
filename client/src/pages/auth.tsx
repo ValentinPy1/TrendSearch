@@ -75,7 +75,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         <div className="text-center">
           <h1 className="text-6xl font-bold bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent mb-4">Trends Search</h1>
           <p className="text-lg text-white/60">
-            Validate your startup ideas with real market data
+            Discover trending opportunities with real market data
           </p>
         </div>
 
@@ -88,7 +88,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               <p className="text-sm text-white/60">
                 {isLogin
                   ? "Enter your credentials to continue"
-                  : "Sign up to start validating your ideas"}
+                  : "Sign up to start discovering opportunities"}
               </p>
             </div>
 

@@ -372,7 +372,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               {/* Call to Action */}
               <div className="text-center py-8">
                 <h3 className="text-2xl font-semibold mb-6 bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent">
-                  Validated an idea ?<br />
+                  Found an opportunity?<br />
                   Let's find a cofounder and launch with Pioneers
                 </h3>
                 <Button
@@ -421,55 +421,54 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           >
             <DialogHeader>
               <DialogTitle className="text-2xl text-white text-left">
-                How to Use Idea Watcher
+                How to Use Trends Search
               </DialogTitle>
               <DialogDescription
                 id="help-description"
                 className="text-white/60 text-left"
               >
-                Validate startup ideas with real market data
+                Discover market opportunities through trend research
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 text-white/80 text-left">
               <div>
                 <h3 className="text-base font-semibold text-white mb-1">
-                  <span className="text-blue-400">1.</span> Enter or Generate an
-                  Idea
+                  <span className="text-blue-400">1.</span> Search for Market
+                  Opportunities
                 </h3>
                 <p className="text-sm">
-                  Type your idea or keyword in the text field, or click the{" "}
+                  Enter any keyword or niche you're curious about, or click the{" "}
                   <span className="text-yellow-300">sparkle icon ✨</span> to
-                  generate one with AI. Press{" "}
+                  let AI suggest trending opportunities. Press{" "}
                   <kbd className="px-1.5 py-0.5 bg-blue-500/20 border border-blue-400/30 rounded text-xs text-blue-300 font-semibold">
                     Enter
                   </kbd>{" "}
-                  to generate a market report.
+                  to analyze market trends.
                 </p>
               </div>
 
               <div>
                 <h3 className="text-base font-semibold text-white mb-1">
-                  <span className="text-blue-400">2.</span> Review the 6 Key
-                  Metrics
+                  <span className="text-blue-400">2.</span> Analyze Key Market
+                  Indicators
                 </h3>
                 <p className="text-sm leading-relaxed">
-                  <strong>Avg Volume:</strong> Monthly search demand •{" "}
-                  <strong>Avg Competition:</strong> How crowded the market is •{" "}
-                  <strong>Avg CPC:</strong> Cost per click for ads •{" "}
-                  <strong>Avg Top Page Bid:</strong> Top-of-page advertising
-                  cost • <strong>Avg 3M Growth:</strong> Short-term trend •{" "}
-                  <strong>Avg YoY Growth:</strong> Long-term trend
+                  <strong>Avg Volume:</strong> Search demand size •{" "}
+                  <strong>Avg Competition:</strong> Market saturation level •{" "}
+                  <strong>Avg CPC:</strong> Monetization potential •{" "}
+                  <strong>Avg Top Page Bid:</strong> Premium ad value •{" "}
+                  <strong>Avg 3M Growth:</strong> Recent momentum •{" "}
+                  <strong>Avg YoY Growth:</strong> Long-term trajectory
                 </p>
               </div>
 
               <div>
                 <h3 className="text-base font-semibold text-white mb-1">
-                  <span className="text-blue-400">3.</span> Explore Keyword
-                  Trends
+                  <span className="text-blue-400">3.</span> Spot Trend Patterns
                 </h3>
                 <p className="text-sm">
-                  Click any keyword in the table to view its 12-month historical
-                  search volume chart and detailed metrics.
+                  Click keywords to visualize 12-month search trends and identify
+                  growing opportunities with strong momentum and low competition.
                 </p>
               </div>
 
@@ -478,9 +477,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   💡 Pro Tip
                 </h3>
                 <p className="text-sm text-purple-200/80">
-                  Found a trending keyword? Enter it back into the text field to
-                  discover even more related ideas and iterate your way to the
-                  perfect niche!
+                  Spot a rising keyword? Search it to uncover related niches and
+                  drill deeper into emerging market segments!
                 </p>
               </div>
             </div>
