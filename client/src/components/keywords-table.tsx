@@ -16,8 +16,9 @@ type SortField =
   | "volume"
   | "competition"
   | "cpc"
+  | "growth3m"
   | "growthYoy"
-  | "opportunityScore";
+  | "topPageBid";
 type SortDirection = "asc" | "desc" | null;
 
 interface KeywordsTableProps {
@@ -82,8 +83,9 @@ export function KeywordsTable({
     volume: "Average monthly searches for this keyword",
     competition: "Level of advertiser competition (0-100 scale)",
     cpc: "Average cost per click in advertising",
+    growth3m: "Search volume change over last 3 months",
     growthYoy: "Search volume change compared to last year",
-    opportunityScore: "log(SAC) × Trend Strength × Bid Efficiency - comprehensive opportunity metric",
+    topPageBid: "Estimated cost to appear at top of search results",
   };
 
   const handleSort = (field: SortField) => {
@@ -130,10 +132,6 @@ export function KeywordsTable({
           aVal = parseFloat(a.similarityScore || "0");
           bVal = parseFloat(b.similarityScore || "0");
           break;
-        case "opportunityScore":
-          aVal = a.opportunityScore || 0;
-          bVal = b.opportunityScore || 0;
-          break;
         case "volume":
           aVal = a.volume || 0;
           bVal = b.volume || 0;
@@ -146,9 +144,17 @@ export function KeywordsTable({
           aVal = parseFloat(a.cpc || "0");
           bVal = parseFloat(b.cpc || "0");
           break;
+        case "growth3m":
+          aVal = parseFloat(a.growth3m || "0");
+          bVal = parseFloat(b.growth3m || "0");
+          break;
         case "growthYoy":
           aVal = parseFloat(a.growthYoy || "0");
           bVal = parseFloat(b.growthYoy || "0");
+          break;
+        case "topPageBid":
+          aVal = parseFloat(a.topPageBid || "0");
+          bVal = parseFloat(b.topPageBid || "0");
           break;
       }
 
@@ -333,6 +339,23 @@ export function KeywordsTable({
                 </th>
                 <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort("growth3m")}
+                  data-testid="header-growth-3m"
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        3Mo Trend
+                        <SortIcon field="growth3m" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.growth3m}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </th>
+                <th
+                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
                   onClick={() => handleSort("growthYoy")}
                   data-testid="header-growth-yoy"
                 >
@@ -350,18 +373,18 @@ export function KeywordsTable({
                 </th>
                 <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("opportunityScore")}
-                  data-testid="header-opportunity-score"
+                  onClick={() => handleSort("topPageBid")}
+                  data-testid="header-top-page-bid"
                 >
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="flex items-center justify-end">
-                        Opportunity
-                        <SortIcon field="opportunityScore" />
+                        Top Page Bid
+                        <SortIcon field="topPageBid" />
                       </div>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>{columnInfo.opportunityScore}</p>
+                      <p>{columnInfo.topPageBid}</p>
                     </TooltipContent>
                   </Tooltip>
                 </th>
@@ -369,8 +392,9 @@ export function KeywordsTable({
             </thead>
             <tbody>
               {sortedKeywords.map((keyword, index) => {
+                const growth3m = parseFloat(keyword.growth3m || "0");
                 const growthYoy = parseFloat(keyword.growthYoy || "0");
-                const opportunityScore = parseFloat(keyword.opportunityScore || "0");
+                const topPageBid = parseFloat(keyword.topPageBid || "0");
                 const matchPercentage =
                   parseFloat(keyword.similarityScore || "0") * 100;
                 const competition = keyword.competition || 0;
@@ -378,6 +402,10 @@ export function KeywordsTable({
 
                 const maxCpc = Math.max(
                   ...sortedKeywords.map((k) => parseFloat(k.cpc || "0")),
+                );
+                
+                const maxTopPageBid = Math.max(
+                  ...sortedKeywords.map((k) => parseFloat(k.topPageBid || "0")),
                 );
 
                 return (
@@ -472,6 +500,15 @@ export function KeywordsTable({
                     <td className="py-4 px-4 text-sm text-right">
                       <span
                         className="font-medium"
+                        style={getTrendGradientText(growth3m)}
+                      >
+                        {growth3m >= 0 ? "+" : ""}
+                        {growth3m.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-sm text-right">
+                      <span
+                        className="font-medium"
                         style={getTrendGradientText(growthYoy)}
                       >
                         {growthYoy >= 0 ? "+" : ""}
@@ -481,9 +518,9 @@ export function KeywordsTable({
                     <td className="py-4 px-4 text-sm text-right">
                       <span
                         className="font-medium"
-                        style={getOpportunityGradientText(opportunityScore)}
+                        style={getPurpleGradientText(topPageBid, maxTopPageBid)}
                       >
-                        {opportunityScore.toFixed(1)}
+                        ${topPageBid.toFixed(2)}
                       </span>
                     </td>
                   </tr>
@@ -491,7 +528,7 @@ export function KeywordsTable({
               })}
               {onLoadMore && (
                 <tr className="border-t border-white/10">
-                  <td colSpan={7} className="py-4 px-4">
+                  <td colSpan={8} className="py-4 px-4">
                     <Button
                       variant="ghost"
                       onClick={onLoadMore}
