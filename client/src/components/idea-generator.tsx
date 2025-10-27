@@ -169,7 +169,7 @@ export function IdeaGenerator({
             Trends Search
           </h2>
           <p className="text-base text-white/80 leading-relaxed">
-            Generate startup ideas or validate your own. Get instant insights
+            Discover trending opportunities or research your own ideas. Get instant insights
             from 80,000+ real keywords with search volume, competition, and
             growth trends.
           </p>
