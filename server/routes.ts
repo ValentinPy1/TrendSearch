@@ -28,7 +28,7 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
     { key: "2025_07", label: "Jul" },
     { key: "2025_08", label: "Aug" },
     { key: "2025_09", label: "Sep" },
-  ].reverse();
+  ];
 
   const keywords = similarKeywords.map((kw) => {
     // Convert monthly data from CSV format to our format with correct month labels
