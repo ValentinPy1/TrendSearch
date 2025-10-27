@@ -13,13 +13,13 @@ import type { Keyword } from "@shared/schema";
 type SortField =
   | "keyword"
   | "similarityScore"
-  | "opportunityScore"
   | "volume"
   | "competition"
   | "cpc"
   | "topPageBid"
-  | "growth3m"
-  | "growthYoy";
+  | "volatility"
+  | "growthYoy"
+  | "opportunityScore";
 type SortDirection = "asc" | "desc" | null;
 
 interface KeywordsTableProps {
@@ -81,13 +81,13 @@ export function KeywordsTable({
   const columnInfo = {
     keyword: "Search terms related to your idea",
     similarityScore: "How closely this keyword matches your idea",
-    opportunityScore: "Comprehensive 0-100 score based on market size, growth, competition, and ad economics",
     volume: "Average monthly searches for this keyword",
     competition: "Level of advertiser competition (0-100 scale)",
     cpc: "Average cost per click in advertising",
     topPageBid: "Estimated bid to appear at top of search results",
-    growth3m: "Search volume change over last 3 months",
+    volatility: "Average relative deviation from exponential growth trend - measures keyword stability",
     growthYoy: "Search volume change compared to last year",
+    opportunityScore: "log(SAC) × Trend Strength × Bid Efficiency - comprehensive opportunity metric",
   };
 
   const handleSort = (field: SortField) => {
@@ -154,9 +154,9 @@ export function KeywordsTable({
           aVal = parseFloat(a.topPageBid || "0");
           bVal = parseFloat(b.topPageBid || "0");
           break;
-        case "growth3m":
-          aVal = parseFloat(a.growth3m || "0");
-          bVal = parseFloat(b.growth3m || "0");
+        case "volatility":
+          aVal = parseFloat(a.volatility || "0");
+          bVal = parseFloat(b.volatility || "0");
           break;
         case "growthYoy":
           aVal = parseFloat(a.growthYoy || "0");
@@ -362,18 +362,18 @@ export function KeywordsTable({
                 </th>
                 <th
                   className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("growth3m")}
-                  data-testid="header-growth-3m"
+                  onClick={() => handleSort("volatility")}
+                  data-testid="header-volatility"
                 >
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="flex items-center justify-end">
-                        3Mo Trend
-                        <SortIcon field="growth3m" />
+                        Volatility
+                        <SortIcon field="volatility" />
                       </div>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>{columnInfo.growth3m}</p>
+                      <p>{columnInfo.volatility}</p>
                     </TooltipContent>
                   </Tooltip>
                 </th>
@@ -394,12 +394,30 @@ export function KeywordsTable({
                     </TooltipContent>
                   </Tooltip>
                 </th>
+                <th
+                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
+                  onClick={() => handleSort("opportunityScore")}
+                  data-testid="header-opportunity-score"
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        Opportunity
+                        <SortIcon field="opportunityScore" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{columnInfo.opportunityScore}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </th>
               </tr>
             </thead>
             <tbody>
               {sortedKeywords.map((keyword, index) => {
-                const growth3m = parseFloat(keyword.growth3m || "0");
+                const volatility = parseFloat(keyword.volatility || "0");
                 const growthYoy = parseFloat(keyword.growthYoy || "0");
+                const opportunityScore = parseFloat(keyword.opportunityScore || "0");
                 const matchPercentage =
                   parseFloat(keyword.similarityScore || "0") * 100;
                 const competition = keyword.competition || 0;
@@ -511,12 +529,8 @@ export function KeywordsTable({
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
-                      <span
-                        className="font-medium"
-                        style={getTrendGradientText(growth3m)}
-                      >
-                        {growth3m >= 0 ? "+" : ""}
-                        {growth3m.toFixed(1)}%
+                      <span className="font-medium text-white/70">
+                        {(volatility * 100).toFixed(1)}%
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-right">
@@ -528,12 +542,20 @@ export function KeywordsTable({
                         {growthYoy.toFixed(1)}%
                       </span>
                     </td>
+                    <td className="py-4 px-4 text-sm text-right">
+                      <span
+                        className="font-medium"
+                        style={getOpportunityGradientText(opportunityScore)}
+                      >
+                        {opportunityScore.toFixed(1)}
+                      </span>
+                    </td>
                   </tr>
                 );
               })}
               {onLoadMore && (
                 <tr className="border-t border-white/10">
-                  <td colSpan={8} className="py-4 px-4">
+                  <td colSpan={9} className="py-4 px-4">
                     <Button
                       variant="ghost"
                       onClick={onLoadMore}
