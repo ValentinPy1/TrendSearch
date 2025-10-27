@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import { db } from "./db";
 import { 
   users, ideas, reports, keywords,
@@ -59,29 +59,56 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getIdeasByUser(userId: string): Promise<IdeaWithReport[]> {
-    const userIdeas = await db
-      .select()
+    // OPTIMIZED: Use joins to fetch all data in 2 queries instead of N+1
+    
+    // Query 1: Get all ideas with their reports in a single query using LEFT JOIN
+    const ideasWithReportsData = await db
+      .select({
+        idea: ideas,
+        report: reports,
+      })
       .from(ideas)
+      .leftJoin(reports, eq(ideas.id, reports.ideaId))
       .where(eq(ideas.userId, userId))
       .orderBy(desc(ideas.createdAt));
 
-    const ideasWithReports: IdeaWithReport[] = [];
-    
-    for (const idea of userIdeas) {
-      const report = await this.getReportByIdeaId(idea.id);
+    // Extract report IDs for batch keyword fetching
+    const reportIds = ideasWithReportsData
+      .map(row => row.report?.id)
+      .filter((id): id is string => id != null); // Filters out both null and undefined
+
+    // Query 2: Batch fetch all keywords for all reports at once
+    const allKeywords = reportIds.length > 0
+      ? await db.select().from(keywords).where(inArray(keywords.reportId, reportIds))
+      : [];
+
+    // Group keywords by reportId for efficient lookup
+    const keywordsByReportId = new Map<string, Keyword[]>();
+    allKeywords.forEach(keyword => {
+      const list = keywordsByReportId.get(keyword.reportId) || [];
+      list.push(keyword);
+      keywordsByReportId.set(keyword.reportId, list);
+    });
+
+    // Construct the final result structure
+    const ideasWithReports: IdeaWithReport[] = ideasWithReportsData.map(({ idea, report }) => {
       if (report) {
-        const keywordsList = await this.getKeywordsByReportId(report.id);
-        ideasWithReports.push({
+        const keywordsList = keywordsByReportId.get(report.id) || [];
+        return {
           ...idea,
           report: {
             ...report,
             keywords: keywordsList
           }
-        });
+        };
       } else {
-        ideasWithReports.push(idea);
+        // Explicitly include report property as undefined for ideas without reports
+        return {
+          ...idea,
+          report: undefined
+        };
       }
-    }
+    });
     
     return ideasWithReports;
   }
