@@ -42,6 +42,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState<string | null>(null);
   const [displayedKeywordCount, setDisplayedKeywordCount] = useState(10);
+  const [excludedKeywordIds, setExcludedKeywordIds] = useState<Set<string>>(new Set());
 
   const {
     data: ideas,
@@ -66,23 +67,27 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     },
   });
 
-  const deleteKeywordMutation = useMutation({
-    mutationFn: async (keywordId: string) => {
-      const response = await apiRequest(
-        "DELETE",
-        `/api/keywords/${keywordId}`,
-        {}
-      );
-      return response;
-    },
-    onSuccess: async () => {
-      // Refetch ideas data
-      await refetch();
-    },
-  });
-
   const handleDeleteKeyword = (keywordId: string) => {
-    deleteKeywordMutation.mutate(keywordId);
+    // Remove keyword from view (frontend-only, doesn't delete from database)
+    setExcludedKeywordIds(prev => new Set([...Array.from(prev), keywordId]));
+    
+    // If the deleted keyword was selected, select the first non-excluded keyword
+    if (selectedIdea?.report?.keywords) {
+      const visibleKeywords = selectedIdea.report.keywords.filter(
+        k => k.id !== keywordId && !excludedKeywordIds.has(k.id)
+      );
+      if (selectedKeyword) {
+        const currentKeywordExcluded = selectedIdea.report.keywords.find(
+          k => k.keyword === selectedKeyword
+        )?.id === keywordId;
+        
+        if (currentKeywordExcluded && visibleKeywords.length > 0) {
+          setSelectedKeyword(visibleKeywords[0].keyword);
+        } else if (currentKeywordExcluded) {
+          setSelectedKeyword(null);
+        }
+      }
+    }
   };
 
   const handleLoadMore = () => {
@@ -100,32 +105,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     }
   };
 
-  // Update selected idea with latest data
+  // Update selected idea with latest data (but don't auto-select on initial load)
   useEffect(() => {
     if (ideas && ideas.length > 0 && selectedIdea) {
+      // Only update if there's already a selected idea
       const updated = ideas.find((i) => i.id === selectedIdea.id);
       if (updated) {
-        // Check if keyword count changed (indicates a deletion happened)
-        const currentKeywordCount = selectedIdea.report?.keywords?.length || 0;
-        const updatedKeywordCount = updated.report?.keywords?.length || 0;
-        
-        if (updatedKeywordCount !== currentKeywordCount || !selectedIdea.report) {
-          setSelectedIdea(updated);
-          
-          // Check if currently selected keyword still exists after deletion
-          if (selectedKeyword && updated?.report?.keywords) {
-            const keywordStillExists = updated.report.keywords.some(
-              (k) => k.keyword === selectedKeyword
-            );
-            // If deleted keyword was selected, select the first available keyword
-            if (!keywordStillExists && updated.report.keywords.length > 0) {
-              setSelectedKeyword(updated.report.keywords[0].keyword);
-            } else if (!keywordStillExists) {
-              setSelectedKeyword(null);
-            }
-          }
-        }
-        
+        setSelectedIdea(updated);
         // Set first keyword if not already set
         if (
           updated?.report?.keywords &&
@@ -133,7 +119,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           !selectedKeyword
         ) {
           setSelectedKeyword(updated.report.keywords[0].keyword);
-          setSelectedIdea(updated);
         }
       }
     }
@@ -142,6 +127,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const handleIdeaGenerated = (newIdea: IdeaWithReport) => {
     setSelectedIdea(newIdea);
     setDisplayedKeywordCount(10); // Reset to show 10 initially
+    setExcludedKeywordIds(new Set()); // Clear excluded keywords for new idea
     if (newIdea?.report?.keywords && newIdea.report.keywords.length > 0) {
       setSelectedKeyword(newIdea.report.keywords[0].keyword);
     }
@@ -151,6 +137,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const handleIdeaSelect = (idea: IdeaWithReport) => {
     setSelectedIdea(idea);
     setDisplayedKeywordCount(10); // Reset to show 10 initially
+    setExcludedKeywordIds(new Set()); // Clear excluded keywords when switching ideas
     if (idea?.report?.keywords && idea.report.keywords.length > 0) {
       setSelectedKeyword(idea.report.keywords[0].keyword);
     } else {
@@ -303,8 +290,12 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           !error &&
           !isGeneratingReport &&
           selectedIdea?.report && (() => {
-            const displayedKeywords = selectedIdea.report.keywords.slice(0, displayedKeywordCount);
-            const hasMoreToShow = displayedKeywordCount < selectedIdea.report.keywords.length;
+            // Filter out excluded keywords first
+            const visibleKeywords = selectedIdea.report.keywords.filter(
+              k => !excludedKeywordIds.has(k.id)
+            );
+            const displayedKeywords = visibleKeywords.slice(0, displayedKeywordCount);
+            const hasMoreToShow = displayedKeywordCount < visibleKeywords.length;
             
             return (
             <div className="space-y-4">
@@ -329,7 +320,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   onKeywordSelect={setSelectedKeyword}
                   onSearchKeyword={setSearchKeyword}
                   onDeleteKeyword={handleDeleteKeyword}
-                  onLoadMore={hasMoreToShow || selectedIdea.report.keywords.length < 100 ? handleLoadMore : undefined}
+                  onLoadMore={hasMoreToShow || visibleKeywords.length < 100 ? handleLoadMore : undefined}
                   isLoadingMore={loadMoreKeywordsMutation.isPending}
                 />
               </div>

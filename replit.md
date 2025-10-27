@@ -96,7 +96,7 @@ Trends Search helps entrepreneurs find and validate their startup ideas using:
 **Keyword Actions** (visible on hover):
 - **Copy icon:** Copies keyword to clipboard
 - **Search icon:** Adds keyword to search input
-- **Trash icon (red):** Deletes keyword from report (excludes from aggregates)
+- **Trash icon (red):** Hides keyword from table and excludes from aggregates (frontend-only, doesn't delete from database)
 
 ### 3. Trend Analysis
 - Interactive line chart showing 12 months of search volume
@@ -119,7 +119,7 @@ Trends Search helps entrepreneurs find and validate their startup ideas using:
 - ✅ Red gradient for Competition (0-100)
 - ✅ Purple gradient for CPC and Top Page Bid (scaled to max value)
 - ✅ Optimized keyword loading (preload 20, show 10, expand by 5)
-- ✅ Keyword deletion with trash icon (excludes from aggregates)
+- ✅ Keyword filtering with trash icon (frontend-only exclusion from view and aggregates)
 - ✅ Trend chart visualization
 - ✅ Dark theme with gradient orbs
 - ✅ Glassmorphic UI design
@@ -150,9 +150,9 @@ Required:
 4. Click "Generate Report" - Vector database returns 20 semantically-related keywords (10 shown initially)
 5. View 6 metric cards and interactive 12-month trend chart
 6. Select keywords from table to view their trends
-7. Hover over keywords to copy, search, or delete them
+7. Hover over keywords to copy, search, or hide them
 8. Click "+ Show 5 more keywords" to expand the table (up to 20 keywords)
-9. Delete unwanted keywords to refine aggregate metrics
+9. Hide unwanted keywords to refine aggregate metrics (hidden keywords excluded from calculations)
 10. Click "History" to view all previous ideas and reports
 11. At the bottom of the page: Call-to-action linking to thepioneer.vc - "Validated an idea ? Let's help you launch it !"
 
