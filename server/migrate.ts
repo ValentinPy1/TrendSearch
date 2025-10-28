@@ -1,26 +1,29 @@
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { migrate } from "drizzle-orm/neon-serverless/migrator";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
-
-neonConfig.webSocketConstructor = ws;
+import { drizzle } from "drizzle-orm/postgres-js";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+import postgres from "postgres";
 
 if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set");
+    throw new Error("DATABASE_URL must be set");
 }
 
 async function runMigrations() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const db = drizzle({ client: pool });
+    const sql = postgres(process.env.DATABASE_URL, {
+        max: 1,
+        idle_timeout: 20,
+        connect_timeout: 30,
+        ssl: 'require',
+    });
 
-  console.log("Running migrations...");
-  await migrate(db, { migrationsFolder: "./migrations" });
-  console.log("Migrations complete!");
+    const db = drizzle(sql);
 
-  await pool.end();
+    console.log("Running migrations...");
+    await migrate(db, { migrationsFolder: "./migrations" });
+    console.log("Migrations complete!");
+
+    await sql.end();
 }
 
 runMigrations().catch((err) => {
-  console.error("Migration failed:", err);
-  process.exit(1);
+    console.error("Migration failed:", err);
+    process.exit(1);
 });
