@@ -1,0 +1,801 @@
+[
+    {
+        "sector": "Agriculture & Farming",
+        "user_types": [
+            "hobby gardeners",
+            "home gardeners",
+            "small farm owners",
+            "organic growers",
+            "beekeepers",
+            "vertical-farm operators",
+            "agri-consultants",
+            "equipment subcontractors"
+        ],
+        "product_fits": [
+            "crop and soil monitoring dashboards",
+            "weather and pest alerting tools",
+            "harvest planning apps",
+            "CSA subscription management",
+            "produce pricing and invoice generators",
+            "traceability and certification checklists"
+        ]
+    },
+    {
+        "sector": "Architecture, Engineering & Construction",
+        "user_types": [
+            "homeowners",
+            "independent architects",
+            "contractors",
+            "subcontractors",
+            "site managers",
+            "estimators",
+            "BIM modelers"
+        ],
+        "product_fits": [
+            "estimator calculators",
+            "permit checklist managers",
+            "progress photo timelines",
+            "subcontractor scheduling",
+            "materials BOM and quoting tools",
+            "on-site defect tracking",
+            "compliance templates"
+        ]
+    },
+    {
+        "sector": "Automotive & Mobility",
+        "user_types": [
+            "car owners",
+            "drivers",
+            "cyclists",
+            "independent mechanics",
+            "detailing shops",
+            "rental operators",
+            "fleet managers",
+            "driving instructors"
+        ],
+        "product_fits": [
+            "appointment and parts ordering systems",
+            "maintenance logs",
+            "inventory tools for small shops",
+            "fleet cost dashboards",
+            "digital vehicle checklists",
+            "quoting and invoicing apps"
+        ]
+    },
+    {
+        "sector": "Banking, Finance & Personal Wealth",
+        "user_types": [
+            "retail banking customers",
+            "investors",
+            "financial advisors",
+            "independent accountants",
+            "tax preparers",
+            "personal finance coaches",
+            "wealth managers"
+        ],
+        "product_fits": [
+            "budgeting and forecasting widgets",
+            "subscription receipt aggregators",
+            "invoice to bookkeeping micro-tools",
+            "tax checklist automation",
+            "investment trackers for niches"
+        ]
+    },
+    {
+        "sector": "Beauty, Personal Care & Salons",
+        "user_types": [
+            "clients",
+            "independent stylists",
+            "small salon owners",
+            "mobile beauticians",
+            "barbers"
+        ],
+        "product_fits": [
+            "booking and deposit widgets",
+            "client history and notes",
+            "product inventory and reorder alerts",
+            "membership management",
+            "appointment reminders",
+            "gift-card microstores"
+        ]
+    },
+    {
+        "sector": "Cannabis & Psychedelic",
+        "user_types": [
+            "adult customers",
+            "boutique growers",
+            "dispensary managers",
+            "therapists",
+            "micro-labs"
+        ],
+        "product_fits": [
+            "compliance record keeping tools",
+            "inventory and POS integrations",
+            "customer ID verification widgets",
+            "strain catalogs",
+            "clinic appointment scheduling"
+        ]
+    },
+    {
+        "sector": "Catering, Restaurants & Foodservice",
+        "user_types": [
+            "diners",
+            "pop-up chefs",
+            "catering freelancers",
+            "small restaurant owners",
+            "food truck operators",
+            "ghost kitchen managers"
+        ],
+        "product_fits": [
+            "order and shift scheduling tools",
+            "menu allergen labeling widgets",
+            "inventory and supplier ordering apps",
+            "event quoting tools",
+            "customer waitlist systems",
+            "delivery aggregator dashboards"
+        ]
+    },
+    {
+        "sector": "Childcare & Education",
+        "user_types": [
+            "parents",
+            "students",
+            "private tutors",
+            "after-school program operators",
+            "daycare owners",
+            "homeschooling co-ops"
+        ],
+        "product_fits": [
+            "lesson planning tools",
+            "progress trackers",
+            "parent communication portals",
+            "attendance and billing apps",
+            "consent form automation"
+        ]
+    },
+    {
+        "sector": "Corporate Training & L&D",
+        "user_types": [
+            "employees",
+            "freelance trainers",
+            "L&D consultants",
+            "HR managers"
+        ],
+        "product_fits": [
+            "micro-course authoring tools",
+            "cohort management apps",
+            "skill gap trackers",
+            "completion badges and analytics",
+            "training scheduling tools"
+        ]
+    },
+    {
+        "sector": "Creative & Design",
+        "user_types": [
+            "casual creators",
+            "print-on-demand hobbyists",
+            "freelance designers",
+            "small studios",
+            "UX consultants",
+            "indie game asset creators"
+        ],
+        "product_fits": [
+            "client feedback loops",
+            "deliverable sharing apps",
+            "invoice and contract generators",
+            "pricing calculators",
+            "portfolio widgets",
+            "license management tools"
+        ]
+    },
+    {
+        "sector": "E-commerce & Retail",
+        "user_types": [
+            "shoppers",
+            "D2C founders",
+            "Etsy sellers",
+            "Shopify store owners",
+            "local boutiques",
+            "online resellers"
+        ],
+        "product_fits": [
+            "analytics dashboards",
+            "returns automation tools",
+            "product bundle generators",
+            "shipping label optimizers",
+            "email automation micro-apps",
+            "conversion popups and upsell widgets"
+        ]
+    },
+    {
+        "sector": "Events & Venues",
+        "user_types": [
+            "attendees",
+            "event organizers",
+            "venue managers",
+            "DJs",
+            "wedding planners",
+            "meetup organizers"
+        ],
+        "product_fits": [
+            "RSVP and ticket checkouts",
+            "floorplan seat mapping",
+            "vendor coordination tools",
+            "registration and payment forms",
+            "post-event survey tools"
+        ]
+    },
+    {
+        "sector": "Fashion & Apparel",
+        "user_types": [
+            "shoppers",
+            "indie designers",
+            "tailors",
+            "small clothing brand owners",
+            "stylists"
+        ],
+        "product_fits": [
+            "size and fit recommendation widgets",
+            "production tracking tools",
+            "lookbook generators",
+            "wholesale order portals",
+            "fabric inventory systems"
+        ]
+    },
+    {
+        "sector": "Fitness, Sports & Wellness",
+        "user_types": [
+            "gym members",
+            "athletes",
+            "personal trainers",
+            "studio owners",
+            "yoga instructors",
+            "sports coaches"
+        ],
+        "product_fits": [
+            "client program scheduling",
+            "habit trackers",
+            "nutrition logging",
+            "class subscription management",
+            "video coaching portals"
+        ]
+    },
+    {
+        "sector": "Food & Beverage Producers",
+        "user_types": [
+            "food lovers",
+            "hobby bakers",
+            "micro-brewers",
+            "artisan producers",
+            "chocolatiers",
+            "small food manufacturers"
+        ],
+        "product_fits": [
+            "recipe scaling and costing tools",
+            "batch tracking",
+            "allergen labeling apps",
+            "subscription commerce platforms",
+            "customer CRM for tastings"
+        ]
+    },
+    {
+        "sector": "Freelance & Consulting",
+        "user_types": [
+            "consultants",
+            "coaches",
+            "business advisors",
+            "freelance writers",
+            "fractional CTOs"
+        ],
+        "product_fits": [
+            "proposal builders",
+            "retainer billing tools",
+            "client onboarding funnels",
+            "knowledge bases",
+            "niche CRM systems"
+        ]
+    },
+    {
+        "sector": "Gaming & Esports",
+        "user_types": [
+            "players",
+            "stream viewers",
+            "indie developers",
+            "streamers",
+            "esports teams",
+            "tournament organizers"
+        ],
+        "product_fits": [
+            "tournament registration systems",
+            "stream overlay widgets",
+            "player analytics tools",
+            "community monetization tools",
+            "match analysis dashboards"
+        ]
+    },
+    {
+        "sector": "Government & Public Sector",
+        "user_types": [
+            "citizens",
+            "municipal employees",
+            "local officials",
+            "community organizers"
+        ],
+        "product_fits": [
+            "permit tracking tools",
+            "community feedback apps",
+            "meeting agenda tools",
+            "volunteer coordination",
+            "asset registries"
+        ]
+    },
+    {
+        "sector": "Hardware & IoT",
+        "user_types": [
+            "DIY tinkerers",
+            "small OEMs",
+            "device integrators",
+            "repair shops"
+        ],
+        "product_fits": [
+            "firmware update schedulers",
+            "device health dashboards",
+            "OTA release portals",
+            "warranty and RMA trackers"
+        ]
+    },
+    {
+        "sector": "Healthcare & Telehealth",
+        "user_types": [
+            "patients",
+            "therapists",
+            "dietitians",
+            "small clinic owners",
+            "physiotherapists",
+            "chiropractors"
+        ],
+        "product_fits": [
+            "appointment booking with intake forms",
+            "telehealth prep checklists",
+            "secure client notes",
+            "subscription billing tools",
+            "outcome tracking apps"
+        ]
+    },
+    {
+        "sector": "Home Services & Trades",
+        "user_types": [
+            "homeowners",
+            "renters",
+            "handymen",
+            "electricians",
+            "cleaners",
+            "landscapers"
+        ],
+        "product_fits": [
+            "job quoting tools",
+            "maintenance subscription management",
+            "route optimization tools",
+            "photo before-after logs",
+            "inventory tracking"
+        ]
+    },
+    {
+        "sector": "Hospitality & Travel",
+        "user_types": [
+            "travelers",
+            "B&B owners",
+            "boutique hotel managers",
+            "independent hosts",
+            "tour guides"
+        ],
+        "product_fits": [
+            "check-in automations",
+            "experience booking widgets",
+            "guest messaging templates",
+            "upsell package tools",
+            "housekeeping checklists"
+        ]
+    },
+    {
+        "sector": "HR, Recruiting & Staffing",
+        "user_types": [
+            "job seekers",
+            "independent recruiters",
+            "hiring managers",
+            "talent agencies"
+        ],
+        "product_fits": [
+            "applicant screening tools",
+            "interview scorecards",
+            "candidate sourcing trackers",
+            "onboarding generators",
+            "freelance payout management"
+        ]
+    },
+    {
+        "sector": "Insurance & Risk Management",
+        "user_types": [
+            "policyholders",
+            "independent brokers",
+            "risk consultants",
+            "insurance agents"
+        ],
+        "product_fits": [
+            "quote comparison tools",
+            "claims intake apps",
+            "policy renewal reminders",
+            "risk assessment calculators"
+        ]
+    },
+    {
+        "sector": "Legal & Compliance",
+        "user_types": [
+            "individuals",
+            "solo attorneys",
+            "small firms",
+            "compliance officers"
+        ],
+        "product_fits": [
+            "contract templates and e-sign flows",
+            "client intake checklists",
+            "NDA and IP form generators",
+            "retainer billing tools"
+        ]
+    },
+    {
+        "sector": "Logistics & Freight",
+        "user_types": [
+            "parcel recipients",
+            "local couriers",
+            "3PL operators",
+            "drivers"
+        ],
+        "product_fits": [
+            "pickup scheduling",
+            "proof of delivery capture",
+            "route optimization tools",
+            "dispatch boards",
+            "billing reconciliation micro-apps"
+        ]
+    },
+    {
+        "sector": "Manufacturing & Makers",
+        "user_types": [
+            "buyers of handcrafted goods",
+            "makers",
+            "micro manufacturers",
+            "CNC shops",
+            "3D print services"
+        ],
+        "product_fits": [
+            "order and quote configurators",
+            "job tracking tools",
+            "materials yield calculators",
+            "maintenance logs"
+        ]
+    },
+    {
+        "sector": "Media, Podcasting & Publishing",
+        "user_types": [
+            "listeners",
+            "readers",
+            "indie podcasters",
+            "newsletter authors",
+            "small publishers",
+            "YouTubers"
+        ],
+        "product_fits": [
+            "show-note generators",
+            "sponsor management",
+            "publishing calendars",
+            "membership microservices",
+            "audience analytics"
+        ]
+    },
+    {
+        "sector": "Mental Health & Coaching",
+        "user_types": [
+            "clients",
+            "coaches",
+            "counselors",
+            "life coaches",
+            "habit coaches"
+        ],
+        "product_fits": [
+            "client progress dashboards",
+            "homework and accountability tools",
+            "appointment packages",
+            "subscription portals",
+            "secure journaling tools"
+        ]
+    },
+    {
+        "sector": "Mining, Oil & Utilities",
+        "user_types": [
+            "site contractors",
+            "inspectors",
+            "compliance consultants"
+        ],
+        "product_fits": [
+            "incident reporting forms",
+            "inspection checklists",
+            "crew scheduling",
+            "environmental monitoring dashboards"
+        ]
+    },
+    {
+        "sector": "Nonprofits & Associations",
+        "user_types": [
+            "members",
+            "donors",
+            "volunteer coordinators",
+            "NGO staff"
+        ],
+        "product_fits": [
+            "donor CRM",
+            "grant tracking",
+            "volunteer scheduling",
+            "membership renewals",
+            "fundraising widgets"
+        ]
+    },
+    {
+        "sector": "Pets & Animal Care",
+        "user_types": [
+            "pet owners",
+            "groomers",
+            "trainers",
+            "boarding shop owners",
+            "animal rescues"
+        ],
+        "product_fits": [
+            "appointment and vaccination record management",
+            "boarding reservation systems",
+            "feeding and medication logs",
+            "adoption form automations"
+        ]
+    },
+    {
+        "sector": "Pharmaceuticals & Biotech",
+        "user_types": [
+            "lab managers",
+            "CROs",
+            "clinical teams"
+        ],
+        "product_fits": [
+            "sample tracking tools",
+            "inventory alerts",
+            "study recruitment portals",
+            "compliance audit checklists"
+        ]
+    },
+    {
+        "sector": "Photography & Videography",
+        "user_types": [
+            "hobby photographers",
+            "freelance photographers",
+            "videographers",
+            "studios"
+        ],
+        "product_fits": [
+            "booking and shot list tools",
+            "client gallery delivery portals",
+            "pricing calculators",
+            "print order management"
+        ]
+    },
+    {
+        "sector": "Printing & Signage",
+        "user_types": [
+            "local customers",
+            "print shops",
+            "sign makers",
+            "t-shirt printers"
+        ],
+        "product_fits": [
+            "print job estimators",
+            "proof approval tools",
+            "file validation",
+            "production scheduling"
+        ]
+    },
+    {
+        "sector": "Real Estate & Property Management",
+        "user_types": [
+            "tenants",
+            "homebuyers",
+            "landlords",
+            "property managers",
+            "brokers",
+            "rental managers"
+        ],
+        "product_fits": [
+            "tenant screening tools",
+            "maintenance ticketing",
+            "lease generators",
+            "move-in checklists",
+            "revenue management dashboards"
+        ]
+    },
+    {
+        "sector": "Renewable Energy & Sustainability",
+        "user_types": [
+            "homeowners",
+            "solar installers",
+            "energy co-ops",
+            "auditors"
+        ],
+        "product_fits": [
+            "ROI calculators",
+            "monitoring dashboards",
+            "paperwork templates for incentives",
+            "client ESG reporting tools"
+        ]
+    },
+    {
+        "sector": "Research & Academia",
+        "user_types": [
+            "students",
+            "independent researchers",
+            "PhD candidates",
+            "lab managers"
+        ],
+        "product_fits": [
+            "literature tracking apps",
+            "experiment trackers",
+            "grant deadline reminders",
+            "collaborator tracking tools"
+        ]
+    },
+    {
+        "sector": "Retail Banking Adjacent (Fintech)",
+        "user_types": [
+            "casual users",
+            "fintech founders",
+            "small lenders",
+            "BNPL integrators"
+        ],
+        "product_fits": [
+            "compliance rule checkers",
+            "KYC automation tools",
+            "fee calculators",
+            "merchant reconciliation tools"
+        ]
+    },
+    {
+        "sector": "Recruitment & Career Tools",
+        "user_types": [
+            "job seekers",
+            "career coaches",
+            "resume writers",
+            "university career centers"
+        ],
+        "product_fits": [
+            "resume builders",
+            "interview prep bots",
+            "salary benchmarking",
+            "ATS testing tools"
+        ]
+    },
+    {
+        "sector": "Security, Privacy & Identity",
+        "user_types": [
+            "privacy-conscious consumers",
+            "infosec consultants",
+            "freelance auditors"
+        ],
+        "product_fits": [
+            "breach monitoring tools",
+            "MFA provisioning apps",
+            "privacy policy generators",
+            "cookie consent widgets"
+        ]
+    },
+    {
+        "sector": "Seniors & Assisted Living",
+        "user_types": [
+            "seniors",
+            "family caregivers",
+            "home aides",
+            "assisted-living managers"
+        ],
+        "product_fits": [
+            "medication reminders",
+            "visit logs",
+            "family update portals",
+            "transport scheduling tools"
+        ]
+    },
+    {
+        "sector": "Software Development & DevTools",
+        "user_types": [
+            "hobby developers",
+            "freelance engineers",
+            "indie devs",
+            "micro-agencies"
+        ],
+        "product_fits": [
+            "deploy hook automations",
+            "changelog generators",
+            "lightweight analytics",
+            "billing meters for APIs",
+            "README generators"
+        ]
+    },
+    {
+        "sector": "Sports, Clubs & Recreation",
+        "user_types": [
+            "club members",
+            "coaches",
+            "league managers",
+            "facility owners"
+        ],
+        "product_fits": [
+            "league scheduling tools",
+            "score reporting apps",
+            "membership management",
+            "facility booking tools"
+        ]
+    },
+    {
+        "sector": "Transportation & Commuting",
+        "user_types": [
+            "commuters",
+            "fleet operators",
+            "rideshare drivers"
+        ],
+        "product_fits": [
+            "mileage and fuel trackers",
+            "fleet maintenance logs",
+            "ride scheduling",
+            "fare optimization dashboards"
+        ]
+    },
+    {
+        "sector": "Waste Management & Recycling",
+        "user_types": [
+            "recycling customers",
+            "collection contractors",
+            "facility operators"
+        ],
+        "product_fits": [
+            "pickup scheduling",
+            "waste stream dashboards",
+            "customer billing portals",
+            "certification report generators"
+        ]
+    },
+    {
+        "sector": "Web & Marketing",
+        "user_types": [
+            "bloggers",
+            "influencers",
+            "marketers",
+            "SEO freelancers",
+            "small agencies"
+        ],
+        "product_fits": [
+            "content calendars",
+            "analytics dashboards",
+            "SEO audits",
+            "link tracker apps",
+            "lead capture widgets"
+        ]
+    },
+    {
+        "sector": "Wholesale, B2B & Distribution",
+        "user_types": [
+            "wholesale buyers",
+            "distributors",
+            "sales reps",
+            "warehouse owners"
+        ],
+        "product_fits": [
+            "catalog management tools",
+            "quote generators",
+            "inventory reorder alerts",
+            "B2B client portals"
+        ]
+    }
+]
