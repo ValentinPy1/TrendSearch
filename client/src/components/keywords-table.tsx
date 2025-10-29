@@ -184,6 +184,61 @@ export function KeywordsTable({
         return { color: `hsl(25, 80%, ${lightness}%)` };
     };
 
+    const getTrendStrengthBidEfficiencyGradient = (value: number) => {
+        // White to red from 1 to 0 (values below 1)
+        // White to green from 1 to 5 (values above 1)
+        if (value <= 1) {
+            // Range 0-1: white (at 1) to red (at 0)
+            const clampedValue = Math.max(0, Math.min(1, value)); // Clamp to 0-1
+            const normalizedValue = 1 - clampedValue; // Reverse: 0 at value 1, 1 at value 0
+            const lightness = 100 - normalizedValue * 50; // 100% (white) to 50% (red)
+            return { color: `hsl(0, 80%, ${lightness}%)` };
+        } else {
+            // Range 1-5: white (at 1) to green (at 5)
+            const clampedValue = Math.min(5, Math.max(1, value)); // Clamp to 1-5
+            const normalizedValue = (clampedValue - 1) / 4; // Normalize 1-5 to 0-1
+            const lightness = 100 - normalizedValue * 50; // 100% (white) to 50% (green)
+            return { color: `hsl(142, 70%, ${lightness}%)` };
+        }
+    };
+
+    const getLogarithmicPurpleGradient = (value: number) => {
+        // Logarithmic gradient from white to purple, range 0 to 10,000,000
+        const maxValue = 10000000; // 10 million
+        const clampedValue = Math.max(0, Math.min(maxValue, value));
+
+        if (clampedValue === 0) {
+            // White for zero
+            return { color: `hsl(250, 80%, 100%)` };
+        }
+
+        // Use logarithmic scale: log10(value) / log10(maxValue)
+        // Add 1 to avoid log(0), and adjust max accordingly
+        const normalizedValue = Math.log10(clampedValue + 1) / Math.log10(maxValue + 1);
+        const lightness = 100 - normalizedValue * 40; // 100% (white) to 60% (purple)
+        return { color: `hsl(250, 80%, ${lightness}%)` };
+    };
+
+    const formatCurrencyTwoSignificantDigits = (value: number): string => {
+        if (value === 0 || isNaN(value) || !isFinite(value)) {
+            return "N/A";
+        }
+
+        // Round to 2 significant digits
+        const order = Math.floor(Math.log10(Math.abs(value)));
+        const rounded = Math.round(value / Math.pow(10, order - 1)) * Math.pow(10, order - 1);
+
+        // Format with thousands separators
+        // For values >= 1, show as whole numbers
+        // For values < 1, show decimals
+        if (rounded >= 1) {
+            return `$${Math.round(rounded).toLocaleString('en-US')}`;
+        } else {
+            // For small values, show up to 2 decimal places
+            return `$${rounded.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+        }
+    };
+
     // Column configuration
     const columnConfigs = useMemo<Record<string, ColumnConfig>>(() => {
         const configs: Record<string, ColumnConfig> = {
@@ -379,7 +434,7 @@ export function KeywordsTable({
                 format: (value) => {
                     const strength = parseFloat(value || "0");
                     return (
-                        <span className="font-medium" style={getGreenGradientText(strength, 1)}>
+                        <span className="font-medium" style={getTrendStrengthBidEfficiencyGradient(strength)}>
                             {strength.toFixed(3)}
                         </span>
                     );
@@ -395,7 +450,7 @@ export function KeywordsTable({
                 format: (value) => {
                     const efficiency = parseFloat(value || "0");
                     return (
-                        <span className="font-medium" style={getGreenGradientText(efficiency, 1)}>
+                        <span className="font-medium" style={getTrendStrengthBidEfficiencyGradient(efficiency)}>
                             {efficiency.toFixed(3)}
                         </span>
                     );
@@ -410,7 +465,12 @@ export function KeywordsTable({
                 tooltip: "Total Acquisition Cost",
                 format: (value) => {
                     const tac = parseFloat(value || "0");
-                    return tac > 0 ? `$${tac.toFixed(2)}` : "N/A";
+                    const displayValue = formatCurrencyTwoSignificantDigits(tac);
+                    return (
+                        <span className="font-medium" style={getLogarithmicPurpleGradient(tac)}>
+                            {displayValue}
+                        </span>
+                    );
                 },
             },
             sac: {
@@ -422,7 +482,12 @@ export function KeywordsTable({
                 tooltip: "Search Acquisition Cost",
                 format: (value) => {
                     const sac = parseFloat(value || "0");
-                    return sac > 0 ? `$${sac.toFixed(2)}` : "N/A";
+                    const displayValue = formatCurrencyTwoSignificantDigits(sac);
+                    return (
+                        <span className="font-medium" style={getLogarithmicPurpleGradient(sac)}>
+                            {displayValue}
+                        </span>
+                    );
                 },
             },
             opportunityScore: {
