@@ -25,9 +25,23 @@ function applyFilters(
         return keywords;
     }
 
+    // Check if any filters require expensive opportunity metrics
+    const needsOpportunityMetrics = filters.some((filter) =>
+        ["volatility", "trendStrength", "bidEfficiency", "tac", "sac", "opportunityScore"].includes(filter.metric)
+    );
+
     return keywords.filter((kw) => {
-        // Calculate opportunity metrics for filtering if needed
-        const metrics = calculateOpportunityMetrics(kw);
+        // Use precomputed metrics if available, otherwise calculate on-the-fly
+        let metrics: any = null;
+        if (needsOpportunityMetrics) {
+            // Check if keyword has precomputed metrics
+            if ((kw as any).precomputedMetrics) {
+                metrics = (kw as any).precomputedMetrics;
+            } else {
+                // Fallback to calculating on-the-fly (backwards compatibility)
+                metrics = calculateOpportunityMetrics(kw);
+            }
+        }
 
         // Check all filters (AND logic)
         return filters.every((filter) => {
@@ -155,7 +169,7 @@ function processKeywords(rawKeywords: any[]) {
             }
         }
 
-        return {
+        const result: any = {
             keyword: kw.keyword,
             volume: Math.floor(kw.search_volume || 0),
             competition: Math.floor(kw.competition || 0),
@@ -175,6 +189,13 @@ function processKeywords(rawKeywords: any[]) {
             sustainedGrowthScore: (kw.sustained_growth_score || 0).toFixed(4),
             monthlyData,
         };
+
+        // Preserve precomputed metrics if available
+        if ((kw as any).precomputedMetrics) {
+            result.precomputedMetrics = (kw as any).precomputedMetrics;
+        }
+
+        return result;
     });
 }
 
@@ -195,8 +216,13 @@ async function getKeywordsFromVectorDB(
         const allProcessedKeywords = processKeywords(allRawKeywords);
 
         // Step 3: Apply filters to get matching keywords
+        // Use precomputed metrics if available, otherwise calculate on-the-fly
         let filteredKeywords = applyFilters(allProcessedKeywords, filters, (kw) => {
-            // Calculate opportunity metrics for filtering
+            // Fallback: Calculate opportunity metrics only if not precomputed
+            if ((kw as any).precomputedMetrics) {
+                return (kw as any).precomputedMetrics;
+            }
+            // Calculate on-the-fly (backwards compatibility when precomputed metrics not available)
             return calculateOpportunityScore({
                 volume: kw.volume || 0,
                 competition: kw.competition || 0,
@@ -782,8 +808,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const allKeywords = processKeywords(allRawKeywords);
 
             // Apply filters to all keywords
+            // Use precomputed metrics if available, otherwise calculate on-the-fly
             const filteredKeywords = applyFilters(allKeywords, filters, (kw) => {
-                // Calculate opportunity metrics for filtering
+                // Fallback: Calculate opportunity metrics only if not precomputed
+                if ((kw as any).precomputedMetrics) {
+                    return (kw as any).precomputedMetrics;
+                }
+                // Calculate on-the-fly (backwards compatibility when precomputed metrics not available)
                 return calculateOpportunityScore({
                     volume: kw.volume || 0,
                     competition: kw.competition || 0,

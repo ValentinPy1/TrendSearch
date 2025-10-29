@@ -110,6 +110,7 @@ data/keywords_all.csv
 data/keywords_long_tail.csv
 data/embeddings_chunks/
 data/embeddings_chunks/*.bin
+data/precomputed_opportunity_metrics.json
 
 # Large attached assets
 attached_assets/*.pkl

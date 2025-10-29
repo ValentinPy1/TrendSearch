@@ -32,8 +32,18 @@ interface KeywordData {
     priority_score?: number;
 }
 
+interface PrecomputedOpportunityMetrics {
+    volatility: number;
+    trendStrength: number;
+    bidEfficiency: number;
+    tac: number;
+    sac: number;
+    opportunityScore: number;
+}
+
 interface KeywordWithScore extends KeywordData {
     similarityScore: number;
+    precomputedMetrics?: PrecomputedOpportunityMetrics;
 }
 
 interface ChunkMetadata {
@@ -60,6 +70,7 @@ class KeywordVectorService {
     private extractor: any = null;
     private initialized = false;
     private initializationPromise: Promise<void> | null = null;
+    private precomputedMetrics: Map<string, PrecomputedOpportunityMetrics> | null = null;
 
     async initialize() {
         if (this.initialized) return;
@@ -116,6 +127,9 @@ class KeywordVectorService {
 
             console.log(`[KeywordVectorService] Loaded ${this.keywords.length} keywords from CSV`);
 
+            // Load precomputed opportunity metrics (if available)
+            this.loadPrecomputedMetrics();
+
             // Load binary chunks
             const embeddingsDir = path.join(process.cwd(), 'data', 'embeddings_chunks');
             this.embeddings = new Array(metadata.total_keywords);
@@ -154,6 +168,27 @@ class KeywordVectorService {
             console.log('[KeywordVectorService] Initialization complete!');
         } finally {
             this.initializationPromise = null;
+        }
+    }
+
+    /**
+     * Load precomputed opportunity metrics from JSON file (if exists)
+     */
+    private loadPrecomputedMetrics(): void {
+        try {
+            const metricsPath = path.join(process.cwd(), 'data', 'precomputed_opportunity_metrics.json');
+            if (fs.existsSync(metricsPath)) {
+                const metricsContent = fs.readFileSync(metricsPath, 'utf-8');
+                const metrics: Record<string, PrecomputedOpportunityMetrics> = JSON.parse(metricsContent);
+                this.precomputedMetrics = new Map(Object.entries(metrics));
+                console.log(`[KeywordVectorService] Loaded precomputed metrics for ${this.precomputedMetrics.size} keywords`);
+            } else {
+                console.log(`[KeywordVectorService] Precomputed metrics not found at ${metricsPath} (run: npx tsx scripts/precompute-opportunity-metrics.ts)`);
+                this.precomputedMetrics = null;
+            }
+        } catch (error) {
+            console.warn(`[KeywordVectorService] Failed to load precomputed metrics:`, error);
+            this.precomputedMetrics = null;
         }
     }
 
@@ -222,6 +257,7 @@ class KeywordVectorService {
     /**
      * Get all keywords from the database (for counting/filtering across entire dataset)
      * Returns keywords with a similarityScore of 0 (not similarity-ranked)
+     * Attaches precomputed metrics if available
      */
     async getAllKeywords(): Promise<KeywordWithScore[]> {
         if (!this.initialized) {
@@ -229,10 +265,23 @@ class KeywordVectorService {
         }
 
         // Return all keywords with similarityScore = 0 (not used for filtering by similarity)
-        return this.keywords.map((kw) => ({
-            ...kw,
-            similarityScore: 0,
-        }));
+        // Attach precomputed metrics if available
+        return this.keywords.map((kw) => {
+            const result: KeywordWithScore = {
+                ...kw,
+                similarityScore: 0,
+            };
+
+            // Attach precomputed metrics if available
+            if (this.precomputedMetrics) {
+                const metrics = this.precomputedMetrics.get(kw.keyword);
+                if (metrics) {
+                    result.precomputedMetrics = metrics;
+                }
+            }
+
+            return result;
+        });
     }
 
     /**
