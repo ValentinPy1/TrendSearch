@@ -15,7 +15,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { X, Filter, ChevronDown, ChevronUp, Plus } from "lucide-react";
+import { X, Filter, ChevronDown, ChevronUp, Plus, Pencil, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export type FilterOperator = ">" | ">=" | "<" | "<=" | "=";
@@ -67,11 +67,14 @@ export function KeywordFilters({
     const [newFilterMetric, setNewFilterMetric] = useState<string>("");
     const [newFilterOperator, setNewFilterOperator] = useState<FilterOperator>(">");
     const [newFilterValue, setNewFilterValue] = useState<string>("");
+    const [editingFilterId, setEditingFilterId] = useState<string | null>(null);
     const [previewCount, setPreviewCount] = useState<number | null>(null);
     const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
-    // Get available metrics (not already filtered)
-    const usedMetrics = new Set(filters.map((f) => f.metric));
+    // Get available metrics (not already filtered, except the one being edited)
+    const usedMetrics = new Set(
+        filters.filter((f) => f.id !== editingFilterId).map((f) => f.metric)
+    );
     const availableMetrics = FILTERABLE_METRICS.filter(
         (m) => !usedMetrics.has(m.value),
     );
@@ -123,19 +126,57 @@ export function KeywordFilters({
         const numericValue = parseFloat(newFilterValue);
         if (isNaN(numericValue)) return;
 
-        const newFilter: KeywordFilter = {
-            id: Date.now().toString(),
-            metric: newFilterMetric,
-            operator: newFilterOperator,
-            value: numericValue,
-        };
+        if (editingFilterId) {
+            // Update existing filter
+            onFiltersChange(
+                filters.map((f) =>
+                    f.id === editingFilterId
+                        ? {
+                            ...f,
+                            metric: newFilterMetric,
+                            operator: newFilterOperator,
+                            value: numericValue,
+                        }
+                        : f
+                )
+            );
+            setEditingFilterId(null);
+        } else {
+            // Add new filter
+            const newFilter: KeywordFilter = {
+                id: Date.now().toString(),
+                metric: newFilterMetric,
+                operator: newFilterOperator,
+                value: numericValue,
+            };
+            onFiltersChange([...filters, newFilter]);
+        }
 
-        onFiltersChange([...filters, newFilter]);
+        // Reset form
         setNewFilterMetric("");
         setNewFilterValue("");
+        setNewFilterOperator(">");
+    };
+
+    const handleEditFilter = (filter: KeywordFilter) => {
+        setNewFilterMetric(filter.metric);
+        setNewFilterOperator(filter.operator);
+        setNewFilterValue(filter.value.toString());
+        setEditingFilterId(filter.id);
+    };
+
+    const handleCancelEdit = () => {
+        setNewFilterMetric("");
+        setNewFilterValue("");
+        setNewFilterOperator(">");
+        setEditingFilterId(null);
     };
 
     const handleRemoveFilter = (filterId: string) => {
+        // If removing the filter being edited, cancel edit mode
+        if (editingFilterId === filterId) {
+            handleCancelEdit();
+        }
         onFiltersChange(filters.filter((f) => f.id !== filterId));
     };
 
@@ -211,7 +252,10 @@ export function KeywordFilters({
                             <Badge
                                 key={filter.id}
                                 variant="secondary"
-                                className="px-3 py-1.5 bg-white/10 text-white border-white/20 flex items-center gap-2"
+                                className={`px-3 py-1.5 text-white border flex items-center gap-2 ${editingFilterId === filter.id
+                                    ? "bg-white/20 border-white/40 ring-2 ring-white/30"
+                                    : "bg-white/10 border-white/20"
+                                    }`}
                             >
                                 <span className="font-medium">{getMetricLabel(filter.metric)}</span>
                                 <span className="text-white/60">{filter.operator}</span>
@@ -220,7 +264,17 @@ export function KeywordFilters({
                                     variant="ghost"
                                     size="icon"
                                     className="h-4 w-4 ml-1 hover:bg-white/20"
+                                    onClick={() => handleEditFilter(filter)}
+                                    disabled={editingFilterId !== null && editingFilterId !== filter.id}
+                                >
+                                    <Pencil className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-4 w-4 hover:bg-white/20"
                                     onClick={() => handleRemoveFilter(filter.id)}
+                                    disabled={editingFilterId === filter.id}
                                 >
                                     <X className="h-3 w-3" />
                                 </Button>
@@ -229,7 +283,7 @@ export function KeywordFilters({
                     </div>
                 )}
 
-                {/* Add Filter Form */}
+                {/* Add/Edit Filter Form */}
                 <div className="flex flex-wrap gap-2 items-end p-4 bg-white/5 rounded-lg border border-white/10">
                     <div className="flex-1 min-w-[150px]">
                         <label className="text-xs text-white/60 mb-1 block">Metric</label>
@@ -238,11 +292,21 @@ export function KeywordFilters({
                                 <SelectValue placeholder="Select metric" />
                             </SelectTrigger>
                             <SelectContent>
-                                {availableMetrics.map((metric) => (
-                                    <SelectItem key={metric.value} value={metric.value}>
-                                        {metric.label}
-                                    </SelectItem>
-                                ))}
+                                {editingFilterId ? (
+                                    // When editing, show all metrics including the current one
+                                    FILTERABLE_METRICS.map((metric) => (
+                                        <SelectItem key={metric.value} value={metric.value}>
+                                            {metric.label}
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    // When adding, only show available metrics
+                                    availableMetrics.map((metric) => (
+                                        <SelectItem key={metric.value} value={metric.value}>
+                                            {metric.label}
+                                        </SelectItem>
+                                    ))
+                                )}
                             </SelectContent>
                         </Select>
                     </div>
@@ -290,9 +354,28 @@ export function KeywordFilters({
                         variant="secondary"
                         className="flex items-center gap-2"
                     >
-                        <Plus className="h-4 w-4" />
-                        Add Filter
+                        {editingFilterId ? (
+                            <>
+                                <Check className="h-4 w-4" />
+                                Update
+                            </>
+                        ) : (
+                            <>
+                                <Plus className="h-4 w-4" />
+                                Add Filter
+                            </>
+                        )}
                     </Button>
+                    {editingFilterId && (
+                        <Button
+                            onClick={handleCancelEdit}
+                            size="sm"
+                            variant="ghost"
+                            className="flex items-center gap-2 text-white/60 hover:text-white"
+                        >
+                            Cancel
+                        </Button>
+                    )}
                 </div>
 
                 {/* Preview Count */}
