@@ -84,8 +84,33 @@ export function KeywordsTable({
     const [sortDirection, setSortDirection] = useState<SortDirection>(null);
     const [keywordIdsAtSort, setKeywordIdsAtSort] = useState<Set<string>>(new Set());
     const previousKeywordCountRef = useRef(0);
-    const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_VISIBLE_COLUMNS);
+
+    // Load visible columns from localStorage or use default
+    const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
+        if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem('keywords-table-visible-columns');
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    // Basic validation - full validation happens after columnConfigs is available
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        return parsed;
+                    }
+                } catch (e) {
+                    // Invalid JSON, use default
+                }
+            }
+        }
+        return DEFAULT_VISIBLE_COLUMNS;
+    });
     const [isColumnSelectorOpen, setIsColumnSelectorOpen] = useState(false);
+
+    // Save visible columns to localStorage whenever they change
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('keywords-table-visible-columns', JSON.stringify(visibleColumns));
+        }
+    }, [visibleColumns]);
 
     // Update keywordIdsAtSort when keywords change (idea switch or initial load)
     // but NOT when loading more keywords for the same idea
@@ -420,6 +445,36 @@ export function KeywordsTable({
         };
         return configs;
     }, [onDeleteKeyword, onSearchKeyword, toast]);
+
+    // Validate and sanitize visibleColumns against available columnConfigs
+    // This runs once after columnConfigs is available to clean up any invalid stored columns
+    const hasValidatedRef = useRef(false);
+    useEffect(() => {
+        if (hasValidatedRef.current) return;
+
+        const availableColumnIds = Object.keys(columnConfigs);
+        setVisibleColumns((prev) => {
+            // Filter out any columns that no longer exist
+            const validColumns = prev.filter((id) => availableColumnIds.includes(id));
+
+            // If no valid columns remain, or keyword column was removed, restore defaults
+            if (validColumns.length === 0 || !validColumns.includes("keyword")) {
+                hasValidatedRef.current = true;
+                return DEFAULT_VISIBLE_COLUMNS;
+            }
+
+            // If columns were filtered out, update the state (which will trigger localStorage save)
+            if (validColumns.length !== prev.length) {
+                hasValidatedRef.current = true;
+                return validColumns;
+            }
+
+            // No changes needed
+            hasValidatedRef.current = true;
+            return prev;
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [columnConfigs]);
 
     const handleSort = (field: SortField) => {
         if (sortField === field) {
