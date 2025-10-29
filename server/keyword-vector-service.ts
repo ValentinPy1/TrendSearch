@@ -234,6 +234,52 @@ class KeywordVectorService {
             similarityScore: 0,
         }));
     }
+
+    /**
+     * Calculate similarity scores for given keywords and sort by similarity
+     * @param query The search query text
+     * @param keywordIndices Array of keyword indices to calculate similarity for
+     * @returns Keywords sorted by similarity (highest first)
+     */
+    async calculateSimilarityForKeywords(
+        query: string,
+        keywordIndices: number[],
+    ): Promise<KeywordWithScore[]> {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+
+        // Generate query embedding
+        const queryOutput = await this.extractor(query, { pooling: 'mean', normalize: true });
+        const queryEmbedding = new Float32Array(queryOutput.data);
+
+        // Calculate similarities for the specified keywords
+        const similarities: Array<{ index: number; score: number }> = [];
+
+        for (const index of keywordIndices) {
+            if (index >= 0 && index < this.embeddings.length) {
+                const similarity = this.cosineSimilarity(queryEmbedding, this.embeddings[index]);
+                similarities.push({ index, score: similarity });
+            }
+        }
+
+        // Sort by similarity score (descending)
+        similarities.sort((a, b) => b.score - a.score);
+
+        // Return keywords with similarity scores
+        return similarities.map(({ index, score }) => ({
+            ...this.keywords[index],
+            similarityScore: score,
+        }));
+    }
+
+    /**
+     * Get keyword index by keyword text (for mapping filtered keywords back to indices)
+     */
+    getKeywordIndex(keywordText: string): number | null {
+        const index = this.keywords.findIndex((kw) => kw.keyword === keywordText);
+        return index >= 0 ? index : null;
+    }
 }
 
 export const keywordVectorService = new KeywordVectorService();

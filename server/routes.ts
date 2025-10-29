@@ -182,22 +182,20 @@ async function getKeywordsFromVectorDB(
     idea: string,
     topN: number = 10,
     filters?: KeywordFilter[],
+    excludeKeywords?: Set<string>, // For load-more: exclude already loaded keywords
 ) {
-    // When filters are present, fetch a larger pool to ensure we have enough matches
-    const fetchCount = filters && filters.length > 0 ? Math.max(topN * 10, 200) : topN;
+    let keywords: any[];
 
-    // Use vector similarity search to find most relevant keywords
-    const similarKeywords = await keywordVectorService.findSimilarKeywords(
-        idea,
-        fetchCount,
-    );
-
-    const keywords = processKeywords(similarKeywords);
-
-    // Apply filters if present
-    let filteredKeywords = keywords;
     if (filters && filters.length > 0) {
-        filteredKeywords = applyFilters(keywords, filters, (kw) => {
+        // NEW ALGORITHM: Filter first, then rank by similarity
+        // Step 1: Get ALL keywords from database
+        const allRawKeywords = await keywordVectorService.getAllKeywords();
+
+        // Step 2: Process all keywords
+        const allProcessedKeywords = processKeywords(allRawKeywords);
+
+        // Step 3: Apply filters to get matching keywords
+        let filteredKeywords = applyFilters(allProcessedKeywords, filters, (kw) => {
             // Calculate opportunity metrics for filtering
             return calculateOpportunityScore({
                 volume: kw.volume || 0,
@@ -209,12 +207,87 @@ async function getKeywordsFromVectorDB(
             });
         });
 
-        // Limit to requested count after filtering
-        filteredKeywords = filteredKeywords.slice(0, topN);
+        // Step 4: Exclude already loaded keywords (for load-more)
+        if (excludeKeywords && excludeKeywords.size > 0) {
+            filteredKeywords = filteredKeywords.filter(
+                (kw) => !excludeKeywords.has(kw.keyword),
+            );
+        }
+
+        // Step 5: If no filtered keywords, return empty result
+        if (filteredKeywords.length === 0) {
+            return {
+                keywords: [],
+                aggregates: {
+                    avgVolume: 0,
+                    growth3m: "0",
+                    growthYoy: "0",
+                    competition: "medium",
+                    avgTopPageBid: "0",
+                    avgCpc: "0",
+                },
+                hasMore: false, // Indicate no more filtered keywords
+            };
+        }
+
+        // Step 6: Get keyword indices for similarity calculation
+        const keywordIndices = filteredKeywords
+            .map((kw) => keywordVectorService.getKeywordIndex(kw.keyword))
+            .filter((idx): idx is number => idx !== null);
+
+        // Step 7: Calculate similarity scores for filtered keywords and sort
+        const keywordsWithSimilarity = await keywordVectorService.calculateSimilarityForKeywords(
+            idea,
+            keywordIndices,
+        );
+
+        // Step 8: Map similarity scores back to processed keywords
+        const similarityMap = new Map(
+            keywordsWithSimilarity.map((kw) => [kw.keyword, kw.similarityScore]),
+        );
+
+        filteredKeywords.forEach((kw) => {
+            kw.similarityScore = similarityMap.get(kw.keyword)?.toFixed(4) || "0.0000";
+        });
+
+        // Step 9: Sort by similarity score (highest first)
+        filteredKeywords.sort((a, b) => {
+            const scoreA = parseFloat(a.similarityScore || "0");
+            const scoreB = parseFloat(b.similarityScore || "0");
+            return scoreB - scoreA;
+        });
+
+        // Step 10: Limit to requested count
+        keywords = filteredKeywords.slice(0, topN);
+    } else {
+        // NO FILTERS: Use original algorithm (similarity first)
+        const similarKeywords = await keywordVectorService.findSimilarKeywords(idea, topN);
+
+        // Exclude already loaded keywords (for load-more)
+        if (excludeKeywords && excludeKeywords.size > 0) {
+            const excluded = similarKeywords.filter(
+                (kw) => !excludeKeywords.has(kw.keyword),
+            );
+            // If we excluded some, fetch more to compensate
+            if (excluded.length < topN) {
+                const additional = await keywordVectorService.findSimilarKeywords(
+                    idea,
+                    topN + excludeKeywords.size,
+                );
+                const unique = additional.filter(
+                    (kw) => !excludeKeywords.has(kw.keyword) && !excluded.some((e) => e.keyword === kw.keyword),
+                );
+                keywords = processKeywords([...excluded, ...unique].slice(0, topN));
+            } else {
+                keywords = processKeywords(excluded.slice(0, topN));
+            }
+        } else {
+            keywords = processKeywords(similarKeywords);
+        }
     }
 
-    // Calculate aggregate metrics from filtered data
-    if (filteredKeywords.length === 0) {
+    // Calculate aggregate metrics from keywords
+    if (keywords.length === 0) {
         return {
             keywords: [],
             aggregates: {
@@ -225,29 +298,30 @@ async function getKeywordsFromVectorDB(
                 avgTopPageBid: "0",
                 avgCpc: "0",
             },
+            hasMore: false,
         };
     }
 
     const avgVolume = Math.floor(
-        filteredKeywords.reduce((sum, k) => sum + k.volume, 0) / filteredKeywords.length,
+        keywords.reduce((sum: number, k: any) => sum + k.volume, 0) / keywords.length,
     );
     const growth3m = (
-        filteredKeywords.reduce((sum, k) => sum + parseFloat(k.growth3m), 0) /
-        filteredKeywords.length
+        keywords.reduce((sum: number, k: any) => sum + parseFloat(k.growth3m), 0) /
+        keywords.length
     ).toFixed(2);
     const growthYoy = (
-        filteredKeywords.reduce((sum, k) => sum + parseFloat(k.growthYoy), 0) /
-        filteredKeywords.length
+        keywords.reduce((sum: number, k: any) => sum + parseFloat(k.growthYoy), 0) /
+        keywords.length
     ).toFixed(2);
     const avgCompetition = Math.floor(
-        filteredKeywords.reduce((sum, k) => sum + k.competition, 0) / filteredKeywords.length,
+        keywords.reduce((sum: number, k: any) => sum + k.competition, 0) / keywords.length,
     );
     const avgTopPageBid = (
-        filteredKeywords.reduce((sum, k) => sum + parseFloat(k.topPageBid), 0) /
-        filteredKeywords.length
+        keywords.reduce((sum: number, k: any) => sum + parseFloat(k.topPageBid), 0) /
+        keywords.length
     ).toFixed(2);
     const avgCpc = (
-        filteredKeywords.reduce((sum, k) => sum + parseFloat(k.cpc), 0) / filteredKeywords.length
+        keywords.reduce((sum: number, k: any) => sum + parseFloat(k.cpc), 0) / keywords.length
     ).toFixed(2);
 
     // Map competition to text for compatibility
@@ -256,7 +330,7 @@ async function getKeywordsFromVectorDB(
     if (avgCompetition >= 66) competitionText = "high";
 
     return {
-        keywords: filteredKeywords,
+        keywords,
         aggregates: {
             avgVolume,
             growth3m,
@@ -265,6 +339,7 @@ async function getKeywordsFromVectorDB(
             avgTopPageBid,
             avgCpc,
         },
+        hasMore: filters && filters.length > 0 ? keywords.length >= topN : undefined, // Indicate if more filtered keywords available
     };
 }
 
@@ -530,11 +605,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 ideaId,
                 userId: req.session.userId!,
                 avgVolume: aggregates.avgVolume,
-                growth3m: aggregates.growth3m,
-                growthYoy: aggregates.growthYoy,
+                growth3m: parseFloat(aggregates.growth3m),
+                growthYoy: parseFloat(aggregates.growthYoy),
                 competition: aggregates.competition,
-                avgTopPageBid: aggregates.avgTopPageBid,
-                avgCpc: aggregates.avgCpc,
+                avgTopPageBid: parseFloat(aggregates.avgTopPageBid),
+                avgCpc: parseFloat(aggregates.avgCpc),
             });
 
             // Create keywords with opportunity scores and derived metrics
@@ -564,12 +639,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     growthConsistency: kw.growthConsistency,
                     growthStability: kw.growthStability,
                     sustainedGrowthScore: kw.sustainedGrowthScore,
-                    volatility: metrics.volatility.toString(),
-                    trendStrength: metrics.trendStrength.toString(),
-                    bidEfficiency: metrics.bidEfficiency.toString(),
-                    tac: metrics.tac.toString(),
-                    sac: metrics.sac.toString(),
-                    opportunityScore: metrics.opportunityScore.toString(),
+                    volatility: metrics.volatility,
+                    trendStrength: metrics.trendStrength,
+                    bidEfficiency: metrics.bidEfficiency,
+                    tac: metrics.tac,
+                    sac: metrics.sac,
+                    opportunityScore: metrics.opportunityScore,
                     monthlyData: kw.monthlyData,
                 };
             });
@@ -608,35 +683,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Get current keyword count
             const existingKeywords = await storage.getKeywordsByReportId(reportId);
             const currentCount = existingKeywords.length;
+            const existingKeywordSet = new Set(existingKeywords.map((k) => k.keyword));
 
             // Fetch 5 more keywords (with filters if provided)
             const { filters = [] } = req.body;
             const newCount = currentCount + 5;
-            const { keywords: keywordData } = await getKeywordsFromVectorDB(
+
+            // Use excludeKeywords to avoid fetching already loaded keywords
+            const { keywords: keywordData, hasMore } = await getKeywordsFromVectorDB(
                 idea.generatedIdea,
                 newCount,
                 filters,
+                existingKeywordSet, // Exclude already loaded keywords
             );
 
-            // Get the last 5 keywords
-            const newKeywordsData = keywordData.slice(currentCount);
+            // Get only new keywords (those not already in database)
+            const newKeywordsData = keywordData.filter(
+                (kw) => !existingKeywordSet.has(kw.keyword),
+            );
+
+            // If no new filtered keywords and filters are active, indicate no more filtered results
+            if (newKeywordsData.length === 0 && filters && filters.length > 0 && hasMore === false) {
+                return res.status(200).json({
+                    keywords: [],
+                    noMoreFiltered: true,
+                    message: "No more keywords match your filters. Would you like to load keywords without filters?"
+                });
+            }
 
             if (newKeywordsData.length === 0) {
                 return res.status(400).json({ message: "No more keywords available" });
             }
 
-            // Filter out any duplicates
-            const existingKeywordSet = new Set(existingKeywords.map((k) => k.keyword));
-            const uniqueNewKeywords = newKeywordsData.filter(
-                (kw) => !existingKeywordSet.has(kw.keyword),
-            );
-
-            if (uniqueNewKeywords.length === 0) {
-                return res.status(400).json({ message: "No more unique keywords available" });
-            }
-
             // Create the new keywords with opportunity scores and derived metrics
-            const keywordsToInsert = uniqueNewKeywords.map((kw) => {
+            const keywordsToInsert = newKeywordsData.map((kw: any) => {
                 // Calculate all metrics including opportunity score
                 const metrics = calculateOpportunityScore({
                     volume: kw.volume || 0,
@@ -662,12 +742,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     growthConsistency: kw.growthConsistency,
                     growthStability: kw.growthStability,
                     sustainedGrowthScore: kw.sustainedGrowthScore,
-                    volatility: metrics.volatility.toString(),
-                    trendStrength: metrics.trendStrength.toString(),
-                    bidEfficiency: metrics.bidEfficiency.toString(),
-                    tac: metrics.tac.toString(),
-                    sac: metrics.sac.toString(),
-                    opportunityScore: metrics.opportunityScore.toString(),
+                    volatility: metrics.volatility,
+                    trendStrength: metrics.trendStrength,
+                    bidEfficiency: metrics.bidEfficiency,
+                    tac: metrics.tac,
+                    sac: metrics.sac,
+                    opportunityScore: metrics.opportunityScore,
                     monthlyData: kw.monthlyData,
                 };
             });
