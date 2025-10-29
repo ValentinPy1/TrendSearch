@@ -8,11 +8,107 @@ import { keywordVectorService } from "./keyword-vector-service";
 import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
 import { calculateOpportunityScore } from "./opportunity-score";
 
-async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
+type FilterOperator = ">" | ">=" | "<" | "<=" | "=";
+
+interface KeywordFilter {
+    metric: string;
+    operator: FilterOperator;
+    value: number;
+}
+
+function applyFilters(
+    keywords: any[],
+    filters: KeywordFilter[],
+    calculateOpportunityMetrics: (kw: any) => any,
+): any[] {
+    if (!filters || filters.length === 0) {
+        return keywords;
+    }
+
+    return keywords.filter((kw) => {
+        // Calculate opportunity metrics for filtering if needed
+        const metrics = calculateOpportunityMetrics(kw);
+
+        // Check all filters (AND logic)
+        return filters.every((filter) => {
+            let valueToCompare: number;
+
+            // Get the value based on metric field
+            switch (filter.metric) {
+                case "volume":
+                    valueToCompare = kw.volume || 0;
+                    break;
+                case "competition":
+                    valueToCompare = kw.competition || 0;
+                    break;
+                case "cpc":
+                    valueToCompare = parseFloat(kw.cpc?.toString() || "0");
+                    break;
+                case "topPageBid":
+                    valueToCompare = parseFloat(kw.topPageBid?.toString() || "0");
+                    break;
+                case "growth3m":
+                    valueToCompare = parseFloat(kw.growth3m?.toString() || "0");
+                    break;
+                case "growthYoy":
+                    valueToCompare = parseFloat(kw.growthYoy?.toString() || "0");
+                    break;
+                case "similarityScore":
+                    valueToCompare = parseFloat(kw.similarityScore?.toString() || "0");
+                    break;
+                case "volatility":
+                    valueToCompare = parseFloat(metrics.volatility?.toString() || "0");
+                    break;
+                case "trendStrength":
+                    valueToCompare = parseFloat(metrics.trendStrength?.toString() || "0");
+                    break;
+                case "bidEfficiency":
+                    valueToCompare = parseFloat(metrics.bidEfficiency?.toString() || "0");
+                    break;
+                case "tac":
+                    valueToCompare = parseFloat(metrics.tac?.toString() || "0");
+                    break;
+                case "sac":
+                    valueToCompare = parseFloat(metrics.sac?.toString() || "0");
+                    break;
+                case "opportunityScore":
+                    valueToCompare = parseFloat(metrics.opportunityScore?.toString() || "0");
+                    break;
+                default:
+                    return true; // Unknown metric, don't filter
+            }
+
+            // Apply operator
+            switch (filter.operator) {
+                case ">":
+                    return valueToCompare > filter.value;
+                case ">=":
+                    return valueToCompare >= filter.value;
+                case "<":
+                    return valueToCompare < filter.value;
+                case "<=":
+                    return valueToCompare <= filter.value;
+                case "=":
+                    return Math.abs(valueToCompare - filter.value) < 0.0001; // Floating point comparison
+                default:
+                    return true;
+            }
+        });
+    });
+}
+
+async function getKeywordsFromVectorDB(
+    idea: string,
+    topN: number = 10,
+    filters?: KeywordFilter[],
+) {
+    // When filters are present, fetch a larger pool to ensure we have enough matches
+    const fetchCount = filters && filters.length > 0 ? Math.max(topN * 10, 200) : topN;
+
     // Use vector similarity search to find most relevant keywords
     const similarKeywords = await keywordVectorService.findSimilarKeywords(
         idea,
-        topN,
+        fetchCount,
     );
 
     // Map CSV columns (2024_10 through 2025_09) to correct month labels in chronological order
@@ -86,27 +182,60 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
         };
     });
 
-    // Calculate aggregate metrics from actual data
+    // Apply filters if present
+    let filteredKeywords = keywords;
+    if (filters && filters.length > 0) {
+        filteredKeywords = applyFilters(keywords, filters, (kw) => {
+            // Calculate opportunity metrics for filtering
+            return calculateOpportunityScore({
+                volume: kw.volume || 0,
+                competition: kw.competition || 0,
+                cpc: parseFloat(kw.cpc?.toString() || "0"),
+                topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                monthlyData: kw.monthlyData || [],
+            });
+        });
+
+        // Limit to requested count after filtering
+        filteredKeywords = filteredKeywords.slice(0, topN);
+    }
+
+    // Calculate aggregate metrics from filtered data
+    if (filteredKeywords.length === 0) {
+        return {
+            keywords: [],
+            aggregates: {
+                avgVolume: 0,
+                growth3m: "0",
+                growthYoy: "0",
+                competition: "medium",
+                avgTopPageBid: "0",
+                avgCpc: "0",
+            },
+        };
+    }
+
     const avgVolume = Math.floor(
-        keywords.reduce((sum, k) => sum + k.volume, 0) / keywords.length,
+        filteredKeywords.reduce((sum, k) => sum + k.volume, 0) / filteredKeywords.length,
     );
     const growth3m = (
-        keywords.reduce((sum, k) => sum + parseFloat(k.growth3m), 0) /
-        keywords.length
+        filteredKeywords.reduce((sum, k) => sum + parseFloat(k.growth3m), 0) /
+        filteredKeywords.length
     ).toFixed(2);
     const growthYoy = (
-        keywords.reduce((sum, k) => sum + parseFloat(k.growthYoy), 0) /
-        keywords.length
+        filteredKeywords.reduce((sum, k) => sum + parseFloat(k.growthYoy), 0) /
+        filteredKeywords.length
     ).toFixed(2);
     const avgCompetition = Math.floor(
-        keywords.reduce((sum, k) => sum + k.competition, 0) / keywords.length,
+        filteredKeywords.reduce((sum, k) => sum + k.competition, 0) / filteredKeywords.length,
     );
     const avgTopPageBid = (
-        keywords.reduce((sum, k) => sum + parseFloat(k.topPageBid), 0) /
-        keywords.length
+        filteredKeywords.reduce((sum, k) => sum + parseFloat(k.topPageBid), 0) /
+        filteredKeywords.length
     ).toFixed(2);
     const avgCpc = (
-        keywords.reduce((sum, k) => sum + parseFloat(k.cpc), 0) / keywords.length
+        filteredKeywords.reduce((sum, k) => sum + parseFloat(k.cpc), 0) / filteredKeywords.length
     ).toFixed(2);
 
     // Map competition to text for compatibility
@@ -115,7 +244,7 @@ async function getKeywordsFromVectorDB(idea: string, topN: number = 10) {
     if (avgCompetition >= 66) competitionText = "high";
 
     return {
-        keywords,
+        keywords: filteredKeywords,
         aggregates: {
             avgVolume,
             growth3m,
@@ -353,7 +482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Generate report for an idea
     app.post("/api/generate-report", requireAuth, async (req, res) => {
         try {
-            const { ideaId, keywordCount = 20 } = req.body;
+            const { ideaId, keywordCount = 20, filters = [] } = req.body;
 
             // Validate keywordCount (preload 20 keywords by default)
             const validatedCount = Math.max(
@@ -380,9 +509,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 });
             }
 
-            // Get real keyword data from vector database
+            // Get real keyword data from vector database with filters
             const { keywords: keywordData, aggregates } =
-                await getKeywordsFromVectorDB(idea.generatedIdea, validatedCount);
+                await getKeywordsFromVectorDB(idea.generatedIdea, validatedCount, filters);
 
             // Create report
             const report = await storage.createReport({
@@ -468,11 +597,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const existingKeywords = await storage.getKeywordsByReportId(reportId);
             const currentCount = existingKeywords.length;
 
-            // Fetch 5 more keywords
+            // Fetch 5 more keywords (with filters if provided)
+            const { filters = [] } = req.body;
             const newCount = currentCount + 5;
             const { keywords: keywordData } = await getKeywordsFromVectorDB(
                 idea.generatedIdea,
                 newCount,
+                filters,
             );
 
             // Get the last 5 keywords
@@ -536,6 +667,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("[Load More Keywords Error]:", error);
             res.status(500).json({
                 message: "Failed to load more keywords",
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    });
+
+    // Preview keyword count with filters (for UI preview)
+    app.post("/api/preview-filter-count", requireAuth, async (req, res) => {
+        try {
+            const { ideaText, filters = [] } = req.body;
+            if (!ideaText) {
+                return res.status(400).json({ message: "Idea text is required" });
+            }
+
+            // Fetch a larger sample to get accurate count
+            const { keywords } = await getKeywordsFromVectorDB(ideaText, 1000, filters);
+            res.json({ count: keywords.length });
+        } catch (error) {
+            console.error("[Get Keywords Count Error]:", error);
+            res.status(500).json({
+                message: "Failed to get keyword count",
                 error: error instanceof Error ? error.message : String(error),
             });
         }
