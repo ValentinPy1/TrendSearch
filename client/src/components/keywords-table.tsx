@@ -712,10 +712,11 @@ export function KeywordsTable({
                     <PopoverTrigger asChild>
                         <Button
                             variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-white/60 hover:text-white"
+                            size="sm"
+                            className="h-8 text-white/60 hover:text-white gap-2"
                         >
                             <Columns className="h-4 w-4" />
+                            <span className="text-sm">Columns</span>
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-80 bg-popover/95 backdrop-blur-xl border-white/10" align="end">
