@@ -34,62 +34,67 @@ function applyFilters(
             let valueToCompare: number;
 
             // Get the value based on metric field
+            // Ensure all values are properly converted to numbers for consistent comparison
             switch (filter.metric) {
                 case "volume":
-                    valueToCompare = kw.volume || 0;
+                    valueToCompare = typeof kw.volume === "number" ? kw.volume : parseFloat(String(kw.volume || "0")) || 0;
                     break;
                 case "competition":
-                    valueToCompare = kw.competition || 0;
+                    valueToCompare = typeof kw.competition === "number" ? kw.competition : parseFloat(String(kw.competition || "0")) || 0;
                     break;
                 case "cpc":
-                    valueToCompare = parseFloat(kw.cpc?.toString() || "0");
+                    valueToCompare = parseFloat(String(kw.cpc || "0")) || 0;
                     break;
                 case "topPageBid":
-                    valueToCompare = parseFloat(kw.topPageBid?.toString() || "0");
+                    valueToCompare = parseFloat(String(kw.topPageBid || "0")) || 0;
                     break;
                 case "growth3m":
-                    valueToCompare = parseFloat(kw.growth3m?.toString() || "0");
+                    valueToCompare = parseFloat(String(kw.growth3m || "0")) || 0;
                     break;
                 case "growthYoy":
-                    valueToCompare = parseFloat(kw.growthYoy?.toString() || "0");
+                    valueToCompare = parseFloat(String(kw.growthYoy || "0")) || 0;
                     break;
                 case "similarityScore":
-                    valueToCompare = parseFloat(kw.similarityScore?.toString() || "0");
+                    valueToCompare = parseFloat(String(kw.similarityScore || "0")) || 0;
                     break;
                 case "volatility":
-                    valueToCompare = parseFloat(metrics.volatility?.toString() || "0");
+                    valueToCompare = parseFloat(String(metrics.volatility || "0")) || 0;
                     break;
                 case "trendStrength":
-                    valueToCompare = parseFloat(metrics.trendStrength?.toString() || "0");
+                    valueToCompare = parseFloat(String(metrics.trendStrength || "0")) || 0;
                     break;
                 case "bidEfficiency":
-                    valueToCompare = parseFloat(metrics.bidEfficiency?.toString() || "0");
+                    valueToCompare = parseFloat(String(metrics.bidEfficiency || "0")) || 0;
                     break;
                 case "tac":
-                    valueToCompare = parseFloat(metrics.tac?.toString() || "0");
+                    valueToCompare = parseFloat(String(metrics.tac || "0")) || 0;
                     break;
                 case "sac":
-                    valueToCompare = parseFloat(metrics.sac?.toString() || "0");
+                    valueToCompare = parseFloat(String(metrics.sac || "0")) || 0;
                     break;
                 case "opportunityScore":
-                    valueToCompare = parseFloat(metrics.opportunityScore?.toString() || "0");
+                    valueToCompare = parseFloat(String(metrics.opportunityScore || "0")) || 0;
                     break;
                 default:
                     return true; // Unknown metric, don't filter
             }
 
-            // Apply operator
+            // Ensure filter.value is also a number
+            const filterValue = typeof filter.value === "number" ? filter.value : parseFloat(String(filter.value)) || 0;
+
+            // Apply operator with robust numeric comparison
             switch (filter.operator) {
                 case ">":
-                    return valueToCompare > filter.value;
+                    return valueToCompare > filterValue;
                 case ">=":
-                    return valueToCompare >= filter.value;
+                    return valueToCompare >= filterValue;
                 case "<":
-                    return valueToCompare < filter.value;
+                    return valueToCompare < filterValue;
                 case "<=":
-                    return valueToCompare <= filter.value;
+                    return valueToCompare <= filterValue;
                 case "=":
-                    return Math.abs(valueToCompare - filter.value) < 0.0001; // Floating point comparison
+                    // Floating point comparison with small epsilon
+                    return Math.abs(valueToCompare - filterValue) < 0.0001;
                 default:
                     return true;
             }
