@@ -1,538 +1,767 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { ArrowUpDown, ArrowUp, ArrowDown, Copy, Search, Trash2 } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Copy, Search, Trash2, Columns, ChevronUp, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 import type { Keyword } from "@shared/schema";
 
 type SortField =
-  | "keyword"
-  | "similarityScore"
-  | "volume"
-  | "competition"
-  | "cpc"
-  | "growth3m"
-  | "growthYoy"
-  | "topPageBid";
+    | "keyword"
+    | "similarityScore"
+    | "volume"
+    | "competition"
+    | "cpc"
+    | "growth3m"
+    | "growthYoy"
+    | "topPageBid"
+    | "volatility"
+    | "trendStrength"
+    | "bidEfficiency"
+    | "tac"
+    | "sac"
+    | "opportunityScore";
 type SortDirection = "asc" | "desc" | null;
 
+type ColumnAlign = "left" | "center" | "right";
+
+type ColumnConfig = {
+    id: string;
+    label: string;
+    field: keyof Keyword;
+    align: ColumnAlign;
+    sortable: boolean;
+    format: (value: any, keyword: Keyword, allKeywords: Keyword[]) => React.ReactNode;
+    tooltip: string;
+    required?: boolean; // Cannot be hidden
+};
+
+const DEFAULT_VISIBLE_COLUMNS = [
+    "keyword",
+    "similarityScore",
+    "volume",
+    "competition",
+    "cpc",
+    "topPageBid",
+    "growth3m",
+    "growthYoy",
+];
+
 interface KeywordsTableProps {
-  keywords: Keyword[];
-  selectedKeyword: string | null;
-  onKeywordSelect: (keyword: string) => void;
-  onSearchKeyword?: (keyword: string) => void;
-  onDeleteKeyword?: (keywordId: string) => void;
-  onLoadMore?: () => void;
-  isLoadingMore?: boolean;
-  reportId?: string;
+    keywords: Keyword[];
+    selectedKeyword: string | null;
+    onKeywordSelect: (keyword: string) => void;
+    onSearchKeyword?: (keyword: string) => void;
+    onDeleteKeyword?: (keywordId: string) => void;
+    onLoadMore?: () => void;
+    isLoadingMore?: boolean;
+    reportId?: string;
 }
 
 export function KeywordsTable({
-  keywords,
-  selectedKeyword,
-  onKeywordSelect,
-  onSearchKeyword,
-  onDeleteKeyword,
-  onLoadMore,
-  isLoadingMore = false,
-  reportId,
+    keywords,
+    selectedKeyword,
+    onKeywordSelect,
+    onSearchKeyword,
+    onDeleteKeyword,
+    onLoadMore,
+    isLoadingMore = false,
+    reportId,
 }: KeywordsTableProps) {
-  const { toast } = useToast();
-  const [sortField, setSortField] = useState<SortField | null>(null);
-  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-  const [keywordIdsAtSort, setKeywordIdsAtSort] = useState<Set<string>>(new Set());
-  const previousKeywordCountRef = useRef(0);
+    const { toast } = useToast();
+    const [sortField, setSortField] = useState<SortField | null>(null);
+    const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+    const [keywordIdsAtSort, setKeywordIdsAtSort] = useState<Set<string>>(new Set());
+    const previousKeywordCountRef = useRef(0);
+    const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_VISIBLE_COLUMNS);
+    const [isColumnSelectorOpen, setIsColumnSelectorOpen] = useState(false);
 
-  // Update keywordIdsAtSort when keywords change (idea switch or initial load)
-  // but NOT when loading more keywords for the same idea
-  useEffect(() => {
-    const currentCount = keywords.length;
-    const previousCount = previousKeywordCountRef.current;
-    
-    // If sort is active and keywords changed in a way other than appending
-    // (i.e., different set of IDs), update keywordIdsAtSort
-    if (sortField && sortDirection) {
-      const currentIds = new Set(keywords.map(k => k.id));
-      const hasNewKeywords = keywords.some(k => !keywordIdsAtSort.has(k.id));
-      const hasMissingKeywords = Array.from(keywordIdsAtSort).some(id => 
-        !keywords.find(k => k.id === id)
-      );
-      
-      // If keywords were replaced (idea switch) or removed (filtering), update the set
-      // But if keywords only increased (load more), don't update
-      if (hasMissingKeywords) {
-        setKeywordIdsAtSort(currentIds);
-      } else if (hasNewKeywords && currentCount <= previousCount) {
-        // Keywords changed but count didn't increase = replacement, not append
-        setKeywordIdsAtSort(currentIds);
-      }
-    }
-    
-    previousKeywordCountRef.current = currentCount;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keywords, sortField, sortDirection]);
+    // Update keywordIdsAtSort when keywords change (idea switch or initial load)
+    // but NOT when loading more keywords for the same idea
+    useEffect(() => {
+        const currentCount = keywords.length;
+        const previousCount = previousKeywordCountRef.current;
 
-  const columnInfo = {
-    keyword: "Search terms related to your idea",
-    similarityScore: "How closely this keyword matches your idea",
-    volume: "Average monthly searches for this keyword",
-    competition: "Level of advertiser competition (0-100 scale)",
-    cpc: "Average cost per click in advertising",
-    growth3m: "Search volume change over last 3 months",
-    growthYoy: "Search volume change compared to last year",
-    topPageBid: "Estimated cost to appear at top of search results",
-  };
+        // If sort is active and keywords changed in a way other than appending
+        // (i.e., different set of IDs), update keywordIdsAtSort
+        if (sortField && sortDirection) {
+            const currentIds = new Set(keywords.map(k => k.id));
+            const hasNewKeywords = keywords.some(k => !keywordIdsAtSort.has(k.id));
+            const hasMissingKeywords = Array.from(keywordIdsAtSort).some(id =>
+                !keywords.find(k => k.id === id)
+            );
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      if (sortDirection === "asc") {
-        setSortDirection("desc");
-      } else if (sortDirection === "desc") {
-        setSortDirection(null);
-        setSortField(null);
-        setKeywordIdsAtSort(new Set());
-      } else {
-        setSortDirection("asc");
-        // Capture current keyword IDs when applying sort
-        setKeywordIdsAtSort(new Set(keywords.map(k => k.id)));
-      }
-    } else {
-      setSortField(field);
-      setSortDirection("asc");
-      // Capture current keyword IDs when applying sort
-      setKeywordIdsAtSort(new Set(keywords.map(k => k.id)));
-    }
-  };
+            // If keywords were replaced (idea switch) or removed (filtering), update the set
+            // But if keywords only increased (load more), don't update
+            if (hasMissingKeywords) {
+                setKeywordIdsAtSort(currentIds);
+            } else if (hasNewKeywords && currentCount <= previousCount) {
+                // Keywords changed but count didn't increase = replacement, not append
+                setKeywordIdsAtSort(currentIds);
+            }
+        }
 
-  const sortedKeywords = useMemo(() => {
-    if (!sortField || !sortDirection) {
-      return keywords;
-    }
+        previousKeywordCountRef.current = currentCount;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [keywords, sortField, sortDirection]);
 
-    // Separate keywords into those present at sort time and new ones
-    const keywordsAtSort = keywords.filter(k => keywordIdsAtSort.has(k.id));
-    const newKeywords = keywords.filter(k => !keywordIdsAtSort.has(k.id));
-
-    // Sort only the keywords that were present when sort was applied
-    const sorted = [...keywordsAtSort].sort((a, b) => {
-      let aVal: any;
-      let bVal: any;
-
-      switch (sortField) {
-        case "keyword":
-          aVal = a.keyword?.toLowerCase() || "";
-          bVal = b.keyword?.toLowerCase() || "";
-          break;
-        case "similarityScore":
-          aVal = parseFloat(a.similarityScore || "0");
-          bVal = parseFloat(b.similarityScore || "0");
-          break;
-        case "volume":
-          aVal = a.volume || 0;
-          bVal = b.volume || 0;
-          break;
-        case "competition":
-          aVal = a.competition || 0;
-          bVal = b.competition || 0;
-          break;
-        case "cpc":
-          aVal = parseFloat(a.cpc || "0");
-          bVal = parseFloat(b.cpc || "0");
-          break;
-        case "growth3m":
-          aVal = parseFloat(a.growth3m || "0");
-          bVal = parseFloat(b.growth3m || "0");
-          break;
-        case "growthYoy":
-          aVal = parseFloat(a.growthYoy || "0");
-          bVal = parseFloat(b.growthYoy || "0");
-          break;
-        case "topPageBid":
-          aVal = parseFloat(a.topPageBid || "0");
-          bVal = parseFloat(b.topPageBid || "0");
-          break;
-      }
-
-      if (sortDirection === "asc") {
-        return aVal > bVal ? 1 : -1;
-      } else {
-        return aVal < bVal ? 1 : -1;
-      }
-    });
-
-    // Append new keywords to the end
-    return [...sorted, ...newKeywords];
-  }, [keywords, sortField, sortDirection, keywordIdsAtSort]);
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) {
-      return <ArrowUpDown className="h-4 w-4 ml-1 text-white/40" />;
-    }
-    if (sortDirection === "asc") {
-      return <ArrowUp className="h-4 w-4 ml-1 text-primary" />;
-    }
-    return <ArrowDown className="h-4 w-4 ml-1 text-primary" />;
-  };
-
-  const getBlueGradientText = (value: number) => {
-    // Map 30-70 range to white-to-blue gradient
-    const normalizedValue = Math.min(1, Math.max(0, (value - 30) / 40));
-    const lightness = 100 - normalizedValue * 40; // 100% (white) to 60% (blue)
-    return {
-      color: `hsl(210, 80%, ${lightness}%)`,
+    // Helper functions for formatting
+    const getBlueGradientText = (value: number) => {
+        const normalizedValue = Math.min(1, Math.max(0, (value - 30) / 40));
+        const lightness = 100 - normalizedValue * 40;
+        return { color: `hsl(210, 80%, ${lightness}%)` };
     };
-  };
 
-  const getRedGradientText = (value: number) => {
-    // 0-100 range to white-to-red gradient
-    const normalizedValue = Math.min(1, Math.max(0, value / 100));
-    const lightness = 100 - normalizedValue * 40; // 100% (white) to 60% (red)
-    return {
-      color: `hsl(0, 80%, ${lightness}%)`,
+    const getRedGradientText = (value: number) => {
+        const normalizedValue = Math.min(1, Math.max(0, value / 100));
+        const lightness = 100 - normalizedValue * 40;
+        return { color: `hsl(0, 80%, ${lightness}%)` };
     };
-  };
 
-  const getPurpleGradientText = (value: number, max: number) => {
-    // Scaled to max value, white-to-purple gradient
-    const normalizedValue = Math.min(1, value / max);
-    const lightness = 100 - normalizedValue * 40; // 100% (white) to 60% (purple)
-    return {
-      color: `hsl(250, 80%, ${lightness}%)`,
+    const getPurpleGradientText = (value: number, max: number) => {
+        const normalizedValue = Math.min(1, value / max);
+        const lightness = 100 - normalizedValue * 40;
+        return { color: `hsl(250, 80%, ${lightness}%)` };
     };
-  };
 
-  const getTrendGradientText = (value: number) => {
-    // White at 0%, full green at +200%, full red at -100%
-    if (value >= 0) {
-      // Positive: white to green (0% to +200%)
-      const normalizedValue = Math.min(1, value / 200);
-      const lightness = 100 - normalizedValue * 50; // 100% (white) to 50% (green)
-      return {
-        color: `hsl(142, 70%, ${lightness}%)`,
-      };
-    } else {
-      // Negative: white to red (0% to -100%)
-      const normalizedValue = Math.min(1, Math.abs(value) / 100);
-      const lightness = 100 - normalizedValue * 50; // 100% (white) to 50% (red)
-      return {
-        color: `hsl(0, 80%, ${lightness}%)`,
-      };
-    }
-  };
+    const getTrendGradientText = (value: number) => {
+        if (value >= 0) {
+            const normalizedValue = Math.min(1, value / 200);
+            const lightness = 100 - normalizedValue * 50;
+            return { color: `hsl(142, 70%, ${lightness}%)` };
+        } else {
+            const normalizedValue = Math.min(1, Math.abs(value) / 100);
+            const lightness = 100 - normalizedValue * 50;
+            return { color: `hsl(0, 80%, ${lightness}%)` };
+        }
+    };
 
-  return (
-    <GlassmorphicCard className="p-8">
-      <div className="overflow-x-auto">
-        <table className="w-full">
-            <thead>
-              <tr className="border-b border-white/10">
-                <th
-                  className="text-left py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("keyword")}
-                  data-testid="header-keyword"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center">
-                        Keyword
-                        <SortIcon field="keyword" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.keyword}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
-                  className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("similarityScore")}
-                  data-testid="header-similarity"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-center">
-                        Match
-                        <SortIcon field="similarityScore" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.similarityScore}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
-                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("volume")}
-                  data-testid="header-volume"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        Volume
-                        <SortIcon field="volume" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.volume}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
-                  className="text-center py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("competition")}
-                  data-testid="header-competition"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-center">
-                        Competition
-                        <SortIcon field="competition" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.competition}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
-                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("cpc")}
-                  data-testid="header-cpc"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        CPC
-                        <SortIcon field="cpc" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.cpc}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
-                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("topPageBid")}
-                  data-testid="header-top-page-bid"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        Top Page Bid
-                        <SortIcon field="topPageBid" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.topPageBid}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
-                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("growth3m")}
-                  data-testid="header-growth-3m"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        3Mo Trend
-                        <SortIcon field="growth3m" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.growth3m}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th
-                  className="text-right py-3 px-4 text-sm font-semibold text-white/80 cursor-pointer hover-elevate"
-                  onClick={() => handleSort("growthYoy")}
-                  data-testid="header-growth-yoy"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        YoY Trend
-                        <SortIcon field="growthYoy" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{columnInfo.growthYoy}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedKeywords.map((keyword, index) => {
-                const growth3m = parseFloat(keyword.growth3m || "0");
-                const growthYoy = parseFloat(keyword.growthYoy || "0");
-                const topPageBid = parseFloat(keyword.topPageBid || "0");
-                const matchPercentage =
-                  parseFloat(keyword.similarityScore || "0") * 100;
-                const competition = keyword.competition || 0;
-                const cpc = parseFloat(keyword.cpc || "0");
+    const getGreenGradientText = (value: number, max: number = 1) => {
+        const normalizedValue = Math.min(1, Math.max(0, value / max));
+        const lightness = 100 - normalizedValue * 40;
+        return { color: `hsl(142, 70%, ${lightness}%)` };
+    };
 
-                const maxCpc = Math.max(
-                  ...sortedKeywords.map((k) => parseFloat(k.cpc || "0")),
-                );
-                
-                const maxTopPageBid = Math.max(
-                  ...sortedKeywords.map((k) => parseFloat(k.topPageBid || "0")),
-                );
+    const getOrangeGradientText = (value: number, max: number = 100) => {
+        const normalizedValue = Math.min(1, Math.max(0, value / max));
+        const lightness = 100 - normalizedValue * 40;
+        return { color: `hsl(25, 80%, ${lightness}%)` };
+    };
 
-                return (
-                  <tr
-                    key={keyword.id}
-                    onClick={() => onKeywordSelect(keyword.keyword)}
-                    className={`
+    // Column configuration
+    const columnConfigs = useMemo<Record<string, ColumnConfig>>(() => {
+        const configs: Record<string, ColumnConfig> = {
+            keyword: {
+                id: "keyword",
+                label: "Keyword",
+                field: "keyword",
+                align: "left",
+                sortable: true,
+                required: true,
+                tooltip: "Search terms related to your idea",
+                format: (value, keyword) => (
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteKeyword?.(keyword.id);
+                            }}
+                        >
+                            <Trash2 className="h-3 w-3" />
+                        </Button>
+                        <span>{keyword.keyword}</span>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(keyword.keyword);
+                                    toast({
+                                        title: "Copied!",
+                                        description: `"${keyword.keyword}" copied to clipboard`,
+                                    });
+                                }}
+                            >
+                                <Copy className="h-3 w-3" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSearchKeyword?.(keyword.keyword);
+                                    toast({
+                                        title: "Keyword added to search",
+                                        description: `"${keyword.keyword}" added to input field`,
+                                    });
+                                }}
+                            >
+                                <Search className="h-3 w-3" />
+                            </Button>
+                        </div>
+                    </div>
+                ),
+            },
+            similarityScore: {
+                id: "similarityScore",
+                label: "Match",
+                field: "similarityScore",
+                align: "center",
+                sortable: true,
+                tooltip: "How closely this keyword matches your idea",
+                format: (value) => {
+                    const matchPercentage = parseFloat(value || "0") * 100;
+                    return (
+                        <span className="font-medium" style={getBlueGradientText(matchPercentage)}>
+                            {matchPercentage.toFixed(0)}%
+                        </span>
+                    );
+                },
+            },
+            volume: {
+                id: "volume",
+                label: "Volume",
+                field: "volume",
+                align: "right",
+                sortable: true,
+                tooltip: "Average monthly searches for this keyword",
+                format: (value) => (value?.toLocaleString() || "N/A"),
+            },
+            competition: {
+                id: "competition",
+                label: "Competition",
+                field: "competition",
+                align: "center",
+                sortable: true,
+                tooltip: "Level of advertiser competition (0-100 scale)",
+                format: (value) => {
+                    const competition = value || 0;
+                    return (
+                        <span className="font-medium" style={getRedGradientText(competition)}>
+                            {competition}
+                        </span>
+                    );
+                },
+            },
+            cpc: {
+                id: "cpc",
+                label: "CPC",
+                field: "cpc",
+                align: "right",
+                sortable: true,
+                tooltip: "Average cost per click in advertising",
+                format: (value, keyword, allKeywords) => {
+                    const cpc = parseFloat(value || "0");
+                    const maxCpc = Math.max(...allKeywords.map((k) => parseFloat(k.cpc || "0")));
+                    return (
+                        <span className="font-medium" style={getPurpleGradientText(cpc, maxCpc)}>
+                            ${cpc.toFixed(2)}
+                        </span>
+                    );
+                },
+            },
+            topPageBid: {
+                id: "topPageBid",
+                label: "Top Page Bid",
+                field: "topPageBid",
+                align: "right",
+                sortable: true,
+                tooltip: "Estimated cost to appear at top of search results",
+                format: (value, keyword, allKeywords) => {
+                    const topPageBid = parseFloat(value || "0");
+                    const maxTopPageBid = Math.max(...allKeywords.map((k) => parseFloat(k.topPageBid || "0")));
+                    return (
+                        <span className="font-medium" style={getPurpleGradientText(topPageBid, maxTopPageBid)}>
+                            ${topPageBid.toFixed(2)}
+                        </span>
+                    );
+                },
+            },
+            growth3m: {
+                id: "growth3m",
+                label: "3Mo Trend",
+                field: "growth3m",
+                align: "right",
+                sortable: true,
+                tooltip: "Search volume change over last 3 months",
+                format: (value) => {
+                    const growth3m = parseFloat(value || "0");
+                    return (
+                        <span className="font-medium" style={getTrendGradientText(growth3m)}>
+                            {growth3m >= 0 ? "+" : ""}
+                            {growth3m.toFixed(1)}%
+                        </span>
+                    );
+                },
+            },
+            growthYoy: {
+                id: "growthYoy",
+                label: "YoY Trend",
+                field: "growthYoy",
+                align: "right",
+                sortable: true,
+                tooltip: "Search volume change compared to last year",
+                format: (value) => {
+                    const growthYoy = parseFloat(value || "0");
+                    return (
+                        <span className="font-medium" style={getTrendGradientText(growthYoy)}>
+                            {growthYoy >= 0 ? "+" : ""}
+                            {growthYoy.toFixed(1)}%
+                        </span>
+                    );
+                },
+            },
+            volatility: {
+                id: "volatility",
+                label: "Volatility",
+                field: "volatility",
+                align: "right",
+                sortable: true,
+                tooltip: "Variability in search volume (lower = more stable)",
+                format: (value) => {
+                    const volatility = parseFloat(value || "0");
+                    return (
+                        <span className="font-medium text-white/80">
+                            {volatility.toFixed(2)}
+                        </span>
+                    );
+                },
+            },
+            trendStrength: {
+                id: "trendStrength",
+                label: "Trend Strength",
+                field: "trendStrength",
+                align: "right",
+                sortable: true,
+                tooltip: "Strength and reliability of the trend (0-1, higher = stronger trend)",
+                format: (value) => {
+                    const strength = parseFloat(value || "0");
+                    return (
+                        <span className="font-medium" style={getGreenGradientText(strength, 1)}>
+                            {strength.toFixed(3)}
+                        </span>
+                    );
+                },
+            },
+            bidEfficiency: {
+                id: "bidEfficiency",
+                label: "Bid Efficiency",
+                field: "bidEfficiency",
+                align: "right",
+                sortable: true,
+                tooltip: "Efficiency metric for bidding (higher = better value)",
+                format: (value) => {
+                    const efficiency = parseFloat(value || "0");
+                    return (
+                        <span className="font-medium" style={getGreenGradientText(efficiency, 1)}>
+                            {efficiency.toFixed(3)}
+                        </span>
+                    );
+                },
+            },
+            tac: {
+                id: "tac",
+                label: "TAC",
+                field: "tac",
+                align: "right",
+                sortable: true,
+                tooltip: "Total Acquisition Cost",
+                format: (value) => {
+                    const tac = parseFloat(value || "0");
+                    return tac > 0 ? `$${tac.toFixed(2)}` : "N/A";
+                },
+            },
+            sac: {
+                id: "sac",
+                label: "SAC",
+                field: "sac",
+                align: "right",
+                sortable: true,
+                tooltip: "Search Acquisition Cost",
+                format: (value) => {
+                    const sac = parseFloat(value || "0");
+                    return sac > 0 ? `$${sac.toFixed(2)}` : "N/A";
+                },
+            },
+            opportunityScore: {
+                id: "opportunityScore",
+                label: "Opportunity Score",
+                field: "opportunityScore",
+                align: "right",
+                sortable: true,
+                tooltip: "Comprehensive opportunity score combining multiple factors (higher = better opportunity)",
+                format: (value) => {
+                    const score = parseFloat(value || "0");
+                    const maxScore = 10;
+                    return (
+                        <span className="font-medium" style={getOrangeGradientText(score, maxScore)}>
+                            {score.toFixed(2)}
+                        </span>
+                    );
+                },
+            },
+        };
+        return configs;
+    }, [onDeleteKeyword, onSearchKeyword, toast]);
+
+    const handleSort = (field: SortField) => {
+        if (sortField === field) {
+            if (sortDirection === "asc") {
+                setSortDirection("desc");
+            } else if (sortDirection === "desc") {
+                setSortDirection(null);
+                setSortField(null);
+                setKeywordIdsAtSort(new Set());
+            } else {
+                setSortDirection("asc");
+                // Capture current keyword IDs when applying sort
+                setKeywordIdsAtSort(new Set(keywords.map(k => k.id)));
+            }
+        } else {
+            setSortField(field);
+            setSortDirection("asc");
+            // Capture current keyword IDs when applying sort
+            setKeywordIdsAtSort(new Set(keywords.map(k => k.id)));
+        }
+    };
+
+    const sortedKeywords = useMemo(() => {
+        if (!sortField || !sortDirection) {
+            return keywords;
+        }
+
+        // Separate keywords into those present at sort time and new ones
+        const keywordsAtSort = keywords.filter(k => keywordIdsAtSort.has(k.id));
+        const newKeywords = keywords.filter(k => !keywordIdsAtSort.has(k.id));
+
+        // Sort only the keywords that were present when sort was applied
+        const sorted = [...keywordsAtSort].sort((a, b) => {
+            let aVal: any;
+            let bVal: any;
+
+            switch (sortField) {
+                case "keyword":
+                    aVal = a.keyword?.toLowerCase() || "";
+                    bVal = b.keyword?.toLowerCase() || "";
+                    break;
+                case "similarityScore":
+                    aVal = parseFloat(a.similarityScore || "0");
+                    bVal = parseFloat(b.similarityScore || "0");
+                    break;
+                case "volume":
+                    aVal = a.volume || 0;
+                    bVal = b.volume || 0;
+                    break;
+                case "competition":
+                    aVal = a.competition || 0;
+                    bVal = b.competition || 0;
+                    break;
+                case "cpc":
+                    aVal = parseFloat(a.cpc || "0");
+                    bVal = parseFloat(b.cpc || "0");
+                    break;
+                case "growth3m":
+                    aVal = parseFloat(a.growth3m || "0");
+                    bVal = parseFloat(b.growth3m || "0");
+                    break;
+                case "growthYoy":
+                    aVal = parseFloat(a.growthYoy || "0");
+                    bVal = parseFloat(b.growthYoy || "0");
+                    break;
+                case "topPageBid":
+                    aVal = parseFloat(a.topPageBid || "0");
+                    bVal = parseFloat(b.topPageBid || "0");
+                    break;
+                case "volatility":
+                    aVal = parseFloat(a.volatility || "0");
+                    bVal = parseFloat(b.volatility || "0");
+                    break;
+                case "trendStrength":
+                    aVal = parseFloat(a.trendStrength || "0");
+                    bVal = parseFloat(b.trendStrength || "0");
+                    break;
+                case "bidEfficiency":
+                    aVal = parseFloat(a.bidEfficiency || "0");
+                    bVal = parseFloat(b.bidEfficiency || "0");
+                    break;
+                case "tac":
+                    aVal = parseFloat(a.tac || "0");
+                    bVal = parseFloat(b.tac || "0");
+                    break;
+                case "sac":
+                    aVal = parseFloat(a.sac || "0");
+                    bVal = parseFloat(b.sac || "0");
+                    break;
+                case "opportunityScore":
+                    aVal = parseFloat(a.opportunityScore || "0");
+                    bVal = parseFloat(b.opportunityScore || "0");
+                    break;
+            }
+
+            if (sortDirection === "asc") {
+                return aVal > bVal ? 1 : -1;
+            } else {
+                return aVal < bVal ? 1 : -1;
+            }
+        });
+
+        // Append new keywords to the end
+        return [...sorted, ...newKeywords];
+    }, [keywords, sortField, sortDirection, keywordIdsAtSort]);
+
+    const SortIcon = ({ field }: { field: SortField }) => {
+        if (sortField !== field) {
+            return <ArrowUpDown className="h-4 w-4 ml-1 text-white/40" />;
+        }
+        if (sortDirection === "asc") {
+            return <ArrowUp className="h-4 w-4 ml-1 text-primary" />;
+        }
+        return <ArrowDown className="h-4 w-4 ml-1 text-primary" />;
+    };
+
+    // Column management functions
+    const handleToggleColumn = (columnId: string) => {
+        const config = columnConfigs[columnId];
+        if (config?.required) return; // Cannot hide required columns
+
+        setVisibleColumns((prev) => {
+            if (prev.includes(columnId)) {
+                // Remove column
+                return prev.filter((id) => id !== columnId);
+            } else {
+                // Add column to end
+                return [...prev, columnId];
+            }
+        });
+    };
+
+    const handleMoveColumn = (columnId: string, direction: "up" | "down") => {
+        setVisibleColumns((prev) => {
+            const index = prev.indexOf(columnId);
+            if (index === -1) return prev;
+
+            const newColumns = [...prev];
+            if (direction === "up" && index > 0) {
+                [newColumns[index - 1], newColumns[index]] = [newColumns[index], newColumns[index - 1]];
+            } else if (direction === "down" && index < newColumns.length - 1) {
+                [newColumns[index], newColumns[index + 1]] = [newColumns[index + 1], newColumns[index]];
+            }
+            return newColumns;
+        });
+    };
+
+    // Get visible and hidden columns
+    const visibleColumnConfigs = visibleColumns.map((id) => columnConfigs[id]).filter(Boolean);
+    const hiddenColumnIds = Object.keys(columnConfigs).filter(
+        (id) => !visibleColumns.includes(id)
+    );
+
+    return (
+        <GlassmorphicCard className="p-8">
+            <div className="flex justify-end mb-4">
+                <Popover open={isColumnSelectorOpen} onOpenChange={setIsColumnSelectorOpen}>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-white/60 hover:text-white"
+                        >
+                            <Columns className="h-4 w-4" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 bg-popover/95 backdrop-blur-xl border-white/10" align="end">
+                        <div className="space-y-4">
+                            <div className="font-semibold text-sm text-white/90">Column Settings</div>
+                            <Separator className="bg-white/10" />
+
+                            {/* Visible columns with reordering */}
+                            <div className="space-y-2">
+                                <div className="text-xs font-medium text-white/60">Visible Columns</div>
+                                {visibleColumnConfigs.map((config, idx) => (
+                                    <div key={config.id} className="flex items-center gap-2 p-2 rounded hover:bg-white/5">
+                                        <Checkbox
+                                            checked={true}
+                                            onCheckedChange={() => handleToggleColumn(config.id)}
+                                            disabled={config.required}
+                                        />
+                                        <span className="flex-1 text-sm text-white/80">{config.label}</span>
+                                        <div className="flex gap-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6"
+                                                onClick={() => handleMoveColumn(config.id, "up")}
+                                                disabled={idx === 0}
+                                            >
+                                                <ChevronUp className="h-3 w-3" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6"
+                                                onClick={() => handleMoveColumn(config.id, "down")}
+                                                disabled={idx === visibleColumnConfigs.length - 1}
+                                            >
+                                                <ChevronDown className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Hidden columns */}
+                            {hiddenColumnIds.length > 0 && (
+                                <>
+                                    <Separator className="bg-white/10" />
+                                    <div className="space-y-2">
+                                        <div className="text-xs font-medium text-white/60">Available Columns</div>
+                                        {hiddenColumnIds.map((id) => {
+                                            const config = columnConfigs[id];
+                                            if (!config) return null;
+                                            return (
+                                                <div key={id} className="flex items-center gap-2 p-2 rounded hover:bg-white/5">
+                                                    <Checkbox
+                                                        checked={false}
+                                                        onCheckedChange={() => handleToggleColumn(id)}
+                                                    />
+                                                    <span className="flex-1 text-sm text-white/80">{config.label}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </PopoverContent>
+                </Popover>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full">
+                    <thead>
+                        <tr className="border-b border-white/10">
+                            {visibleColumnConfigs.map((config) => {
+                                const alignClass =
+                                    config.align === "left"
+                                        ? "text-left"
+                                        : config.align === "center"
+                                            ? "text-center"
+                                            : "text-right";
+                                const justifyClass =
+                                    config.align === "left"
+                                        ? "justify-start"
+                                        : config.align === "center"
+                                            ? "justify-center"
+                                            : "justify-end";
+
+                                return (
+                                    <th
+                                        key={config.id}
+                                        className={`${alignClass} py-3 px-4 text-sm font-semibold text-white/80 ${config.sortable ? "cursor-pointer hover-elevate" : ""
+                                            }`}
+                                        onClick={() => config.sortable && handleSort(config.field as SortField)}
+                                        data-testid={`header-${config.id}`}
+                                    >
+                                        {config.sortable ? (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className={`flex items-center ${justifyClass}`}>
+                                                        {config.label}
+                                                        <SortIcon field={config.field as SortField} />
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p>{config.tooltip}</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        ) : (
+                                            <div className={`flex items-center ${justifyClass}`}>
+                                                {config.label}
+                                            </div>
+                                        )}
+                                    </th>
+                                );
+                            })}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {sortedKeywords.map((keyword, index) => {
+                            return (
+                                <tr
+                                    key={keyword.id}
+                                    onClick={() => onKeywordSelect(keyword.keyword)}
+                                    className={`
                       group border-b border-white/5 cursor-pointer transition-all
                       hover-elevate active-elevate-2
                       ${selectedKeyword === keyword.keyword ? "bg-white/10" : ""}
                     `}
-                    data-testid={`row-keyword-${index}`}
-                  >
-                    <td className="py-4 px-4 text-sm text-white font-medium">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteKeyword?.(keyword.id);
-                          }}
-                          data-testid={`button-delete-${index}`}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                        <span>{keyword.keyword}</span>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(keyword.keyword);
-                              toast({
-                                title: "Copied!",
-                                description: `"${keyword.keyword}" copied to clipboard`,
-                              });
-                            }}
-                            data-testid={`button-copy-${index}`}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSearchKeyword?.(keyword.keyword);
-                              toast({
-                                title: "Keyword added to search",
-                                description: `"${keyword.keyword}" added to input field`,
-                              });
-                            }}
-                            data-testid={`button-search-${index}`}
-                          >
-                            <Search className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-center">
-                      <span
-                        className="font-medium"
-                        style={getBlueGradientText(matchPercentage)}
-                      >
-                        {matchPercentage.toFixed(0)}%
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-white text-right">
-                      {keyword.volume?.toLocaleString() || "N/A"}
-                    </td>
-                    <td className="py-4 px-4 text-sm text-center">
-                      <span
-                        className="font-medium"
-                        style={getRedGradientText(competition)}
-                      >
-                        {competition}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-right">
-                      <span
-                        className="font-medium"
-                        style={getPurpleGradientText(cpc, maxCpc)}
-                      >
-                        ${cpc.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-right">
-                      <span
-                        className="font-medium"
-                        style={getPurpleGradientText(topPageBid, maxTopPageBid)}
-                      >
-                        ${topPageBid.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-right">
-                      <span
-                        className="font-medium"
-                        style={getTrendGradientText(growth3m)}
-                      >
-                        {growth3m >= 0 ? "+" : ""}
-                        {growth3m.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-right">
-                      <span
-                        className="font-medium"
-                        style={getTrendGradientText(growthYoy)}
-                      >
-                        {growthYoy >= 0 ? "+" : ""}
-                        {growthYoy.toFixed(1)}%
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {onLoadMore && (
-                <tr className="border-t border-white/10">
-                  <td colSpan={8} className="py-4 px-4">
-                    <Button
-                      variant="ghost"
-                      onClick={onLoadMore}
-                      disabled={isLoadingMore}
-                      className="w-full text-white/60 hover:text-white transition-colors"
-                      data-testid="button-load-more-keyword"
-                    >
-                      {isLoadingMore ? (
-                        <span className="flex items-center gap-2">
-                          <div className="h-4 w-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
-                          Loading keywords...
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-2">
-                          <span className="text-lg">+</span>
-                          Show 5 more keywords
-                        </span>
-                      )}
-                    </Button>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-      </div>
-    </GlassmorphicCard>
-  );
+                                    data-testid={`row-keyword-${index}`}
+                                >
+                                    {visibleColumnConfigs.map((config) => {
+                                        const alignClass =
+                                            config.align === "left"
+                                                ? "text-left"
+                                                : config.align === "center"
+                                                    ? "text-center"
+                                                    : "text-right";
+                                        const value = keyword[config.field];
+                                        return (
+                                            <td
+                                                key={config.id}
+                                                className={`py-4 px-4 text-sm ${alignClass} ${config.id === "keyword" ? "text-white font-medium" : ""
+                                                    }`}
+                                            >
+                                                {config.format(value, keyword, sortedKeywords)}
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            );
+                        })}
+                        {onLoadMore && (
+                            <tr className="border-t border-white/10">
+                                <td colSpan={visibleColumns.length} className="py-4 px-4">
+                                    <Button
+                                        variant="ghost"
+                                        onClick={onLoadMore}
+                                        disabled={isLoadingMore}
+                                        className="w-full text-white/60 hover:text-white transition-colors"
+                                        data-testid="button-load-more-keyword"
+                                    >
+                                        {isLoadingMore ? (
+                                            <span className="flex items-center gap-2">
+                                                <div className="h-4 w-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                                                Loading keywords...
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center gap-2">
+                                                <span className="text-lg">+</span>
+                                                Show 5 more keywords
+                                            </span>
+                                        )}
+                                    </Button>
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </GlassmorphicCard>
+    );
 }
