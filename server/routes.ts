@@ -7,6 +7,8 @@ import bcrypt from "bcryptjs";
 import { keywordVectorService } from "./keyword-vector-service";
 import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
 import { calculateOpportunityScore } from "./opportunity-score";
+import * as fs from "fs";
+import * as path from "path";
 
 type FilterOperator = ">" | ">=" | "<" | "<=" | "=";
 
@@ -883,6 +885,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("[Delete Keyword Error]:", error);
             res.status(500).json({
                 message: "Failed to delete keyword",
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    });
+
+    // Get aggregated sector metrics
+    app.get("/api/sectors/aggregated", async (req, res) => {
+        try {
+            const sectorsPath = path.join(process.cwd(), "data", "sectors_aggregated_metrics.json");
+            const sectorsStructurePath = path.join(process.cwd(), "data", "sectors.json");
+            
+            if (!fs.existsSync(sectorsPath)) {
+                return res.status(404).json({
+                    message: "Sector metrics not found. Please run the aggregation script first.",
+                });
+            }
+
+            const sectorsData = JSON.parse(fs.readFileSync(sectorsPath, "utf-8"));
+            
+            // Also include sector structure for mapping user_types/product_fits to sectors
+            let sectorsStructure = null;
+            if (fs.existsSync(sectorsStructurePath)) {
+                sectorsStructure = JSON.parse(fs.readFileSync(sectorsStructurePath, "utf-8"));
+            }
+            
+            res.json({
+                ...sectorsData,
+                sectorsStructure,
+            });
+        } catch (error) {
+            console.error("[Sectors Aggregated Error]:", error);
+            res.status(500).json({
+                message: "Failed to load sector metrics",
                 error: error instanceof Error ? error.message : String(error),
             });
         }

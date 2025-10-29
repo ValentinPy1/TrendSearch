@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, History, Loader2, BarChart } from "lucide-react";
+import { Sparkles, History, Loader2, BarChart, Building2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { IdeaWithReport } from "@shared/schema";
 import { KeywordFilters, type KeywordFilter } from "@/components/keyword-filters";
+import { SectorBrowser } from "@/components/sector-browser";
 
 interface IdeaGeneratorProps {
     onIdeaGenerated: (idea: IdeaWithReport) => void;
@@ -27,6 +28,7 @@ export function IdeaGenerator({
     searchKeyword,
 }: IdeaGeneratorProps) {
     const { toast } = useToast();
+    const [showSectorBrowser, setShowSectorBrowser] = useState(false);
 
     const form = useForm({
         defaultValues: {
@@ -215,6 +217,17 @@ export function IdeaGenerator({
                             type="button"
                             variant="ghost"
                             size="icon"
+                            onClick={() => setShowSectorBrowser(true)}
+                            className="h-10 w-10 text-primary hover:bg-transparent"
+                            data-testid="button-browse-sectors"
+                            title="Browse Sectors"
+                        >
+                            <Building2 className="h-5 w-5 stroke-[2.5]" />
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
                             onClick={onShowHistory}
                             className="h-10 w-10 text-secondary hover:bg-transparent"
                             data-testid="button-history"
@@ -250,6 +263,31 @@ export function IdeaGenerator({
                     onFiltersChange={setFilters}
                 />
             </div>
+
+            {/* Sector Browser */}
+            <SectorBrowser
+                open={showSectorBrowser}
+                onOpenChange={setShowSectorBrowser}
+                onSelectItem={(text) => {
+                    form.setValue("idea", text);
+                    // Focus the input so user can see the selection and manually trigger if needed
+                    const inputElement = document.querySelector('[data-testid="input-idea"]') as HTMLInputElement;
+                    if (inputElement) {
+                        setTimeout(() => {
+                            inputElement.focus();
+                            inputElement.select();
+                        }, 100);
+                    }
+                    // If there's a current idea, automatically generate report
+                    // Otherwise, let user generate idea first
+                    if (currentIdea?.id) {
+                        generateReportMutation.mutate({ 
+                            ideaId: currentIdea.id, 
+                            filters 
+                        });
+                    }
+                }}
+            />
         </div>
     );
 }
