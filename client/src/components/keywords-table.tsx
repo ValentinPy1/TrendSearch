@@ -4,9 +4,9 @@ import { ArrowUpDown, ArrowUp, ArrowDown, Copy, Search, Trash2, Columns, Chevron
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
     Popover,
@@ -18,13 +18,13 @@ import { Separator } from "@/components/ui/separator";
 import type { Keyword } from "@shared/schema";
 
 type SortField =
-    | "keyword"
-    | "similarityScore"
-    | "volume"
-    | "competition"
-    | "cpc"
-    | "growth3m"
-    | "growthYoy"
+  | "keyword"
+  | "similarityScore"
+  | "volume"
+  | "competition"
+  | "cpc"
+  | "growth3m"
+  | "growthYoy"
     | "topPageBid"
     | "volatility"
     | "trendStrength"
@@ -59,31 +59,31 @@ const DEFAULT_VISIBLE_COLUMNS = [
 ];
 
 interface KeywordsTableProps {
-    keywords: Keyword[];
-    selectedKeyword: string | null;
-    onKeywordSelect: (keyword: string) => void;
-    onSearchKeyword?: (keyword: string) => void;
-    onDeleteKeyword?: (keywordId: string) => void;
-    onLoadMore?: () => void;
-    isLoadingMore?: boolean;
-    reportId?: string;
+  keywords: Keyword[];
+  selectedKeyword: string | null;
+  onKeywordSelect: (keyword: string) => void;
+  onSearchKeyword?: (keyword: string) => void;
+  onDeleteKeyword?: (keywordId: string) => void;
+  onLoadMore?: () => void;
+  isLoadingMore?: boolean;
+  reportId?: string;
 }
 
 export function KeywordsTable({
-    keywords,
-    selectedKeyword,
-    onKeywordSelect,
-    onSearchKeyword,
-    onDeleteKeyword,
-    onLoadMore,
-    isLoadingMore = false,
-    reportId,
+  keywords,
+  selectedKeyword,
+  onKeywordSelect,
+  onSearchKeyword,
+  onDeleteKeyword,
+  onLoadMore,
+  isLoadingMore = false,
+  reportId,
 }: KeywordsTableProps) {
-    const { toast } = useToast();
-    const [sortField, setSortField] = useState<SortField | null>(null);
-    const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-    const [keywordIdsAtSort, setKeywordIdsAtSort] = useState<Set<string>>(new Set());
-    const previousKeywordCountRef = useRef(0);
+  const { toast } = useToast();
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const [keywordIdsAtSort, setKeywordIdsAtSort] = useState<Set<string>>(new Set());
+  const previousKeywordCountRef = useRef(0);
 
     // Load visible columns from localStorage or use default
     const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
@@ -112,34 +112,34 @@ export function KeywordsTable({
         }
     }, [visibleColumns]);
 
-    // Update keywordIdsAtSort when keywords change (idea switch or initial load)
-    // but NOT when loading more keywords for the same idea
-    useEffect(() => {
-        const currentCount = keywords.length;
-        const previousCount = previousKeywordCountRef.current;
-
-        // If sort is active and keywords changed in a way other than appending
-        // (i.e., different set of IDs), update keywordIdsAtSort
-        if (sortField && sortDirection) {
-            const currentIds = new Set(keywords.map(k => k.id));
-            const hasNewKeywords = keywords.some(k => !keywordIdsAtSort.has(k.id));
-            const hasMissingKeywords = Array.from(keywordIdsAtSort).some(id =>
-                !keywords.find(k => k.id === id)
-            );
-
-            // If keywords were replaced (idea switch) or removed (filtering), update the set
-            // But if keywords only increased (load more), don't update
-            if (hasMissingKeywords) {
-                setKeywordIdsAtSort(currentIds);
-            } else if (hasNewKeywords && currentCount <= previousCount) {
-                // Keywords changed but count didn't increase = replacement, not append
-                setKeywordIdsAtSort(currentIds);
-            }
-        }
-
-        previousKeywordCountRef.current = currentCount;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [keywords, sortField, sortDirection]);
+  // Update keywordIdsAtSort when keywords change (idea switch or initial load)
+  // but NOT when loading more keywords for the same idea
+  useEffect(() => {
+    const currentCount = keywords.length;
+    const previousCount = previousKeywordCountRef.current;
+    
+    // If sort is active and keywords changed in a way other than appending
+    // (i.e., different set of IDs), update keywordIdsAtSort
+    if (sortField && sortDirection) {
+      const currentIds = new Set(keywords.map(k => k.id));
+      const hasNewKeywords = keywords.some(k => !keywordIdsAtSort.has(k.id));
+      const hasMissingKeywords = Array.from(keywordIdsAtSort).some(id => 
+        !keywords.find(k => k.id === id)
+      );
+      
+      // If keywords were replaced (idea switch) or removed (filtering), update the set
+      // But if keywords only increased (load more), don't update
+      if (hasMissingKeywords) {
+        setKeywordIdsAtSort(currentIds);
+      } else if (hasNewKeywords && currentCount <= previousCount) {
+        // Keywords changed but count didn't increase = replacement, not append
+        setKeywordIdsAtSort(currentIds);
+      }
+    }
+    
+    previousKeywordCountRef.current = currentCount;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keywords, sortField, sortDirection]);
 
     // Helper functions for formatting
     const getBlueGradientText = (value: number) => {
@@ -553,74 +553,74 @@ export function KeywordsTable({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [columnConfigs]);
 
-    const handleSort = (field: SortField) => {
-        if (sortField === field) {
-            if (sortDirection === "asc") {
-                setSortDirection("desc");
-            } else if (sortDirection === "desc") {
-                setSortDirection(null);
-                setSortField(null);
-                setKeywordIdsAtSort(new Set());
-            } else {
-                setSortDirection("asc");
-                // Capture current keyword IDs when applying sort
-                setKeywordIdsAtSort(new Set(keywords.map(k => k.id)));
-            }
-        } else {
-            setSortField(field);
-            setSortDirection("asc");
-            // Capture current keyword IDs when applying sort
-            setKeywordIdsAtSort(new Set(keywords.map(k => k.id)));
-        }
-    };
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      if (sortDirection === "asc") {
+        setSortDirection("desc");
+      } else if (sortDirection === "desc") {
+        setSortDirection(null);
+        setSortField(null);
+        setKeywordIdsAtSort(new Set());
+      } else {
+        setSortDirection("asc");
+        // Capture current keyword IDs when applying sort
+        setKeywordIdsAtSort(new Set(keywords.map(k => k.id)));
+      }
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+      // Capture current keyword IDs when applying sort
+      setKeywordIdsAtSort(new Set(keywords.map(k => k.id)));
+    }
+  };
 
-    const sortedKeywords = useMemo(() => {
-        if (!sortField || !sortDirection) {
-            return keywords;
-        }
+  const sortedKeywords = useMemo(() => {
+    if (!sortField || !sortDirection) {
+      return keywords;
+    }
 
-        // Separate keywords into those present at sort time and new ones
-        const keywordsAtSort = keywords.filter(k => keywordIdsAtSort.has(k.id));
-        const newKeywords = keywords.filter(k => !keywordIdsAtSort.has(k.id));
+    // Separate keywords into those present at sort time and new ones
+    const keywordsAtSort = keywords.filter(k => keywordIdsAtSort.has(k.id));
+    const newKeywords = keywords.filter(k => !keywordIdsAtSort.has(k.id));
 
-        // Sort only the keywords that were present when sort was applied
-        const sorted = [...keywordsAtSort].sort((a, b) => {
-            let aVal: any;
-            let bVal: any;
+    // Sort only the keywords that were present when sort was applied
+    const sorted = [...keywordsAtSort].sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
 
-            switch (sortField) {
-                case "keyword":
-                    aVal = a.keyword?.toLowerCase() || "";
-                    bVal = b.keyword?.toLowerCase() || "";
-                    break;
-                case "similarityScore":
-                    aVal = parseFloat(a.similarityScore || "0");
-                    bVal = parseFloat(b.similarityScore || "0");
-                    break;
-                case "volume":
-                    aVal = a.volume || 0;
-                    bVal = b.volume || 0;
-                    break;
-                case "competition":
-                    aVal = a.competition || 0;
-                    bVal = b.competition || 0;
-                    break;
-                case "cpc":
-                    aVal = parseFloat(a.cpc || "0");
-                    bVal = parseFloat(b.cpc || "0");
-                    break;
-                case "growth3m":
-                    aVal = parseFloat(a.growth3m || "0");
-                    bVal = parseFloat(b.growth3m || "0");
-                    break;
-                case "growthYoy":
-                    aVal = parseFloat(a.growthYoy || "0");
-                    bVal = parseFloat(b.growthYoy || "0");
-                    break;
-                case "topPageBid":
-                    aVal = parseFloat(a.topPageBid || "0");
-                    bVal = parseFloat(b.topPageBid || "0");
-                    break;
+      switch (sortField) {
+        case "keyword":
+          aVal = a.keyword?.toLowerCase() || "";
+          bVal = b.keyword?.toLowerCase() || "";
+          break;
+        case "similarityScore":
+          aVal = parseFloat(a.similarityScore || "0");
+          bVal = parseFloat(b.similarityScore || "0");
+          break;
+        case "volume":
+          aVal = a.volume || 0;
+          bVal = b.volume || 0;
+          break;
+        case "competition":
+          aVal = a.competition || 0;
+          bVal = b.competition || 0;
+          break;
+        case "cpc":
+          aVal = parseFloat(a.cpc || "0");
+          bVal = parseFloat(b.cpc || "0");
+          break;
+        case "growth3m":
+          aVal = parseFloat(a.growth3m || "0");
+          bVal = parseFloat(b.growth3m || "0");
+          break;
+        case "growthYoy":
+          aVal = parseFloat(a.growthYoy || "0");
+          bVal = parseFloat(b.growthYoy || "0");
+          break;
+        case "topPageBid":
+          aVal = parseFloat(a.topPageBid || "0");
+          bVal = parseFloat(b.topPageBid || "0");
+          break;
                 case "volatility":
                     aVal = parseFloat(a.volatility || "0");
                     bVal = parseFloat(b.volatility || "0");
@@ -645,28 +645,28 @@ export function KeywordsTable({
                     aVal = parseFloat(a.opportunityScore || "0");
                     bVal = parseFloat(b.opportunityScore || "0");
                     break;
-            }
+      }
 
-            if (sortDirection === "asc") {
-                return aVal > bVal ? 1 : -1;
-            } else {
-                return aVal < bVal ? 1 : -1;
-            }
-        });
+      if (sortDirection === "asc") {
+        return aVal > bVal ? 1 : -1;
+      } else {
+        return aVal < bVal ? 1 : -1;
+      }
+    });
 
-        // Append new keywords to the end
-        return [...sorted, ...newKeywords];
-    }, [keywords, sortField, sortDirection, keywordIdsAtSort]);
+    // Append new keywords to the end
+    return [...sorted, ...newKeywords];
+  }, [keywords, sortField, sortDirection, keywordIdsAtSort]);
 
-    const SortIcon = ({ field }: { field: SortField }) => {
-        if (sortField !== field) {
-            return <ArrowUpDown className="h-4 w-4 ml-1 text-white/40" />;
-        }
-        if (sortDirection === "asc") {
-            return <ArrowUp className="h-4 w-4 ml-1 text-primary" />;
-        }
-        return <ArrowDown className="h-4 w-4 ml-1 text-primary" />;
-    };
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-4 w-4 ml-1 text-white/40" />;
+    }
+    if (sortDirection === "asc") {
+      return <ArrowUp className="h-4 w-4 ml-1 text-primary" />;
+    }
+    return <ArrowDown className="h-4 w-4 ml-1 text-primary" />;
+  };
 
     // Column management functions
     const handleToggleColumn = (columnId: string) => {
@@ -705,8 +705,8 @@ export function KeywordsTable({
         (id) => !visibleColumns.includes(id)
     );
 
-    return (
-        <GlassmorphicCard className="p-8">
+  return (
+    <GlassmorphicCard className="p-8">
             <div className="flex justify-end mb-4">
                 <Popover open={isColumnSelectorOpen} onOpenChange={setIsColumnSelectorOpen}>
                     <PopoverTrigger asChild>
@@ -784,10 +784,10 @@ export function KeywordsTable({
                     </PopoverContent>
                 </Popover>
             </div>
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead>
-                        <tr className="border-b border-white/10">
+      <div className="overflow-x-auto">
+        <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/10">
                             {visibleColumnConfigs.map((config) => {
                                 const alignClass =
                                     config.align === "left"
@@ -811,40 +811,40 @@ export function KeywordsTable({
                                         data-testid={`header-${config.id}`}
                                     >
                                         {config.sortable ? (
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
                                                     <div className={`flex items-center ${justifyClass}`}>
                                                         {config.label}
                                                         <SortIcon field={config.field as SortField} />
-                                                    </div>
-                                                </TooltipTrigger>
-                                                <TooltipContent>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
                                                     <p>{config.tooltip}</p>
-                                                </TooltipContent>
-                                            </Tooltip>
+                    </TooltipContent>
+                  </Tooltip>
                                         ) : (
                                             <div className={`flex items-center ${justifyClass}`}>
                                                 {config.label}
-                                            </div>
+                      </div>
                                         )}
-                                    </th>
+                </th>
                                 );
                             })}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {sortedKeywords.map((keyword, index) => {
-                            return (
-                                <tr
-                                    key={keyword.id}
-                                    onClick={() => onKeywordSelect(keyword.keyword)}
-                                    className={`
+              </tr>
+            </thead>
+            <tbody>
+              {sortedKeywords.map((keyword, index) => {
+                return (
+                  <tr
+                    key={keyword.id}
+                    onClick={() => onKeywordSelect(keyword.keyword)}
+                    className={`
                       group border-b border-white/5 cursor-pointer transition-all
                       hover-elevate active-elevate-2
                       ${selectedKeyword === keyword.keyword ? "bg-white/10" : ""}
                     `}
-                                    data-testid={`row-keyword-${index}`}
-                                >
+                    data-testid={`row-keyword-${index}`}
+                  >
                                     {visibleColumnConfigs.map((config) => {
                                         const alignClass =
                                             config.align === "left"
@@ -860,40 +860,40 @@ export function KeywordsTable({
                                                     }`}
                                             >
                                                 {config.format(value, keyword, sortedKeywords)}
-                                            </td>
+                    </td>
                                         );
                                     })}
-                                </tr>
-                            );
-                        })}
-                        {onLoadMore && (
-                            <tr className="border-t border-white/10">
+                  </tr>
+                );
+              })}
+              {onLoadMore && (
+                <tr className="border-t border-white/10">
                                 <td colSpan={visibleColumns.length} className="py-4 px-4">
-                                    <Button
-                                        variant="ghost"
-                                        onClick={onLoadMore}
-                                        disabled={isLoadingMore}
-                                        className="w-full text-white/60 hover:text-white transition-colors"
-                                        data-testid="button-load-more-keyword"
-                                    >
-                                        {isLoadingMore ? (
-                                            <span className="flex items-center gap-2">
-                                                <div className="h-4 w-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
-                                                Loading keywords...
-                                            </span>
-                                        ) : (
-                                            <span className="flex items-center gap-2">
-                                                <span className="text-lg">+</span>
-                                                Show 5 more keywords
-                                            </span>
-                                        )}
-                                    </Button>
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        </GlassmorphicCard>
-    );
+                    <Button
+                      variant="ghost"
+                      onClick={onLoadMore}
+                      disabled={isLoadingMore}
+                      className="w-full text-white/60 hover:text-white transition-colors"
+                      data-testid="button-load-more-keyword"
+                    >
+                      {isLoadingMore ? (
+                        <span className="flex items-center gap-2">
+                          <div className="h-4 w-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                          Loading keywords...
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-2">
+                          <span className="text-lg">+</span>
+                          Show 5 more keywords
+                        </span>
+                      )}
+                    </Button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+      </div>
+    </GlassmorphicCard>
+  );
 }

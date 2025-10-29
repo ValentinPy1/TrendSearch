@@ -117,8 +117,27 @@ function applyFilters(
 }
 
 /**
- * Process raw keyword data into standardized format
+ * Lookup preprocessed keyword data and merge with raw keyword, falling back to processing if not available
  */
+function lookupOrProcessKeyword(rawKeyword: any): any {
+    // Try to lookup preprocessed data
+    const preprocessed = keywordVectorService.getPreprocessedKeyword(rawKeyword.keyword);
+    
+    if (preprocessed) {
+        // Merge raw keyword data with preprocessed data
+        return {
+            ...preprocessed,
+            keyword: rawKeyword.keyword,
+            similarityScore: rawKeyword.similarityScore?.toFixed(4) || "0.0000",
+            // Preserve precomputed metrics if available
+            precomputedMetrics: rawKeyword.precomputedMetrics,
+        };
+    }
+    
+    // Fallback: process on-the-fly (backward compatibility)
+    return processKeywords([rawKeyword])[0];
+}
+
 function processKeywords(rawKeywords: any[]) {
     // Map CSV columns (2024_10 through 2025_09) to correct month labels in chronological order
     const monthMapping = [
@@ -212,8 +231,8 @@ async function getKeywordsFromVectorDB(
         // Step 1: Get ALL keywords from database
         const allRawKeywords = await keywordVectorService.getAllKeywords();
 
-        // Step 2: Process all keywords
-        const allProcessedKeywords = processKeywords(allRawKeywords);
+        // Step 2: Lookup preprocessed data for all keywords (fallback to processing if not available)
+        const allProcessedKeywords = allRawKeywords.map((kw) => lookupOrProcessKeyword(kw));
 
         // Step 3: Apply filters to get matching keywords
         // Use precomputed metrics if available, otherwise calculate on-the-fly
@@ -303,12 +322,12 @@ async function getKeywordsFromVectorDB(
                 const unique = additional.filter(
                     (kw) => !excludeKeywords.has(kw.keyword) && !excluded.some((e) => e.keyword === kw.keyword),
                 );
-                keywords = processKeywords([...excluded, ...unique].slice(0, topN));
+                keywords = [...excluded, ...unique].slice(0, topN).map((kw) => lookupOrProcessKeyword(kw));
             } else {
-                keywords = processKeywords(excluded.slice(0, topN));
+                keywords = excluded.slice(0, topN).map((kw) => lookupOrProcessKeyword(kw));
             }
         } else {
-            keywords = processKeywords(similarKeywords);
+            keywords = similarKeywords.map((kw) => lookupOrProcessKeyword(kw));
         }
     }
 
