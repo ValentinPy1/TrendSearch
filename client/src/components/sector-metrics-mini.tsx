@@ -27,8 +27,26 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
         const normalizedValue = Math.min(1, value / max);
         const lightness = 100 - normalizedValue * 40;
         return {
-            color: `hsl(270, 70%, ${lightness}%)`,
+            color: `hsl(250, 80%, ${lightness}%)`,
         };
+    };
+
+    const getOrangeGradientText = (value: number, max: number = 100) => {
+        const normalizedValue = Math.min(1, Math.max(0, value / max));
+
+        // Interpolate from white (at 0) to orange (at 100)
+        // White: hsl(0, 0%, 100%) -> Orange: hsl(25, 100%, 60%)
+        if (normalizedValue === 0) {
+            return { color: `hsl(0, 0%, 100%)` }; // Pure white at 0
+        }
+
+        // At 0: white (0% saturation, 100% lightness)
+        // At 100: orange (25 hue, 100% saturation, 60% lightness)
+        const hue = 25;
+        const saturation = normalizedValue * 100; // 0% to 100%
+        const lightness = 100 - (normalizedValue * 40); // 100% to 60%
+
+        return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
     };
 
     const getWhiteGradientText = (value: number, max: number) => {
@@ -49,7 +67,7 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
             label: "Opportunity",
             value: metrics.opportunityScore.toFixed(1),
             icon: Zap,
-            style: getPurpleGradientText(metrics.opportunityScore, Math.max(metrics.opportunityScore, 100)),
+            style: getOrangeGradientText(metrics.opportunityScore, 40),
         },
         {
             label: "YoY Growth",
