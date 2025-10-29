@@ -97,20 +97,10 @@ function applyFilters(
     });
 }
 
-async function getKeywordsFromVectorDB(
-    idea: string,
-    topN: number = 10,
-    filters?: KeywordFilter[],
-) {
-    // When filters are present, fetch a larger pool to ensure we have enough matches
-    const fetchCount = filters && filters.length > 0 ? Math.max(topN * 10, 200) : topN;
-
-    // Use vector similarity search to find most relevant keywords
-    const similarKeywords = await keywordVectorService.findSimilarKeywords(
-        idea,
-        fetchCount,
-    );
-
+/**
+ * Process raw keyword data into standardized format
+ */
+function processKeywords(rawKeywords: any[]) {
     // Map CSV columns (2024_10 through 2025_09) to correct month labels in chronological order
     const monthMapping = [
         { key: "2024_10", label: "Oct" },
@@ -127,7 +117,7 @@ async function getKeywordsFromVectorDB(
         { key: "2025_09", label: "Sep" },
     ];
 
-    const keywords = similarKeywords.map((kw) => {
+    return rawKeywords.map((kw) => {
         // Convert monthly data from CSV format to our format with correct month labels
         // Recharts displays data in the order provided, so keep chronological order
         const monthlyData = monthMapping.map(({ key, label }) => {
@@ -181,6 +171,23 @@ async function getKeywordsFromVectorDB(
             monthlyData,
         };
     });
+}
+
+async function getKeywordsFromVectorDB(
+    idea: string,
+    topN: number = 10,
+    filters?: KeywordFilter[],
+) {
+    // When filters are present, fetch a larger pool to ensure we have enough matches
+    const fetchCount = filters && filters.length > 0 ? Math.max(topN * 10, 200) : topN;
+
+    // Use vector similarity search to find most relevant keywords
+    const similarKeywords = await keywordVectorService.findSimilarKeywords(
+        idea,
+        fetchCount,
+    );
+
+    const keywords = processKeywords(similarKeywords);
 
     // Apply filters if present
     let filteredKeywords = keywords;
@@ -673,16 +680,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     // Preview keyword count with filters (for UI preview)
+    // Counts across ALL keywords in the database, not just top N similar ones
     app.post("/api/preview-filter-count", requireAuth, async (req, res) => {
         try {
             const { ideaText, filters = [] } = req.body;
-            if (!ideaText) {
-                return res.status(400).json({ message: "Idea text is required" });
+            if (!filters || filters.length === 0) {
+                // If no filters, we can't provide an accurate count without an idea
+                // Return null to indicate count is not applicable
+                return res.json({ count: null });
             }
 
-            // Fetch a larger sample to get accurate count
-            const { keywords } = await getKeywordsFromVectorDB(ideaText, 1000, filters);
-            res.json({ count: keywords.length });
+            // Get ALL keywords from the database (not limited by similarity)
+            const allRawKeywords = await keywordVectorService.getAllKeywords();
+
+            // Process all keywords to standardized format
+            const allKeywords = processKeywords(allRawKeywords);
+
+            // Apply filters to all keywords
+            const filteredKeywords = applyFilters(allKeywords, filters, (kw) => {
+                // Calculate opportunity metrics for filtering
+                return calculateOpportunityScore({
+                    volume: kw.volume || 0,
+                    competition: kw.competition || 0,
+                    cpc: parseFloat(kw.cpc?.toString() || "0"),
+                    topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                    growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                    monthlyData: kw.monthlyData || [],
+                });
+            });
+
+            res.json({ count: filteredKeywords.length });
         } catch (error) {
             console.error("[Get Keywords Count Error]:", error);
             res.status(500).json({
