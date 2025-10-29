@@ -132,7 +132,10 @@ export function calculateOpportunityScore(inputs: OpportunityScoreInputs): Oppor
     // Use log10 for readability, add 1 to handle SAC=0 case
     let opportunityScore = 0;
     if (sac > 0) {
-        opportunityScore = Math.pow(Math.log10(sac), 2) * Math.sqrt(trendStrength) * Math.sqrt(bidEfficiency);
+        const sac_factor = Math.pow(Math.log10(sac), 2);
+        const trend_factor = Math.sqrt(trendStrength);
+        const bid_factor = Math.sqrt(bidEfficiency);
+        opportunityScore = sac_factor * trend_factor * bid_factor;
     }
 
     return {
