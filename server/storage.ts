@@ -1,5 +1,5 @@
 import { eq, desc, inArray } from "drizzle-orm";
-import { db } from "./db-sqlite";
+import { db } from "./db";
 import {
     users, ideas, reports, keywords,
     type User, type InsertUser,
@@ -7,12 +7,13 @@ import {
     type Report, type InsertReport,
     type Keyword, type InsertKeyword,
     type IdeaWithReport
-} from "@shared/schema-sqlite";
+} from "@shared/schema";
 
 export interface IStorage {
     // User methods
     getUser(id: string): Promise<User | undefined>;
     getUserByEmail(email: string): Promise<User | undefined>;
+    getUserBySupabaseUserId(supabaseUserId: string): Promise<User | undefined>;
     createUser(user: InsertUser): Promise<User>;
 
     // Idea methods
@@ -45,6 +46,11 @@ export class DatabaseStorage implements IStorage {
 
     async getUserByEmail(email: string): Promise<User | undefined> {
         const result = await db.select().from(users).where(eq(users.email, email));
+        return result[0];
+    }
+
+    async getUserBySupabaseUserId(supabaseUserId: string): Promise<User | undefined> {
+        const result = await db.select().from(users).where(eq(users.supabaseUserId, supabaseUserId));
         return result[0];
     }
 

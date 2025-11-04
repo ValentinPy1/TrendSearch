@@ -1,9 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import session from "express-session";
 import { storage } from "./storage";
-import { insertUserSchema } from "@shared/schema-sqlite";
-import bcrypt from "bcryptjs";
+import { insertUserSchema } from "@shared/schema";
+import { supabaseAdmin } from "./supabase";
 import { keywordVectorService } from "./keyword-vector-service";
 import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
 import { calculateOpportunityScore } from "./opportunity-score";
@@ -522,143 +521,77 @@ async function getKeywordsFromVectorDB(
     };
 }
 
-declare module "express-session" {
-    interface SessionData {
-        userId?: string;
-    }
-}
-
 export async function registerRoutes(app: Express): Promise<Server> {
-    // Session middleware
-    app.use(
-        session({
-            secret: process.env.SESSION_SECRET || "pioneer-idea-finder-secret-key",
-            resave: false,
-            saveUninitialized: false,
-            cookie: {
-                secure: process.env.NODE_ENV === "production",
-                httpOnly: true,
-                maxAge: 24 * 60 * 60 * 1000, // 24 hours
-            },
-        }),
-    );
+    // Auth middleware - verify Supabase JWT token
+    const requireAuth = async (req: any, res: any, next: any) => {
+        try {
+            const authHeader = req.headers.authorization;
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                return res.status(401).json({ message: "Unauthorized" });
+            }
 
-    // Auth middleware
-    const requireAuth = (req: any, res: any, next: any) => {
-        if (!req.session.userId) {
+            const token = authHeader.substring(7);
+            const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+
+            if (error || !user) {
+                return res.status(401).json({ message: "Unauthorized" });
+            }
+
+            // Get local user by Supabase user ID
+            const localUser = await storage.getUserBySupabaseUserId(user.id);
+            if (!localUser) {
+                return res.status(401).json({ message: "User profile not found" });
+            }
+
+            req.user = localUser;
+            req.supabaseUser = user;
+            next();
+        } catch (error) {
+            console.error("Auth middleware error:", error);
             return res.status(401).json({ message: "Unauthorized" });
         }
-        next();
     };
 
     // Auth routes
-    app.post("/api/auth/signup", async (req, res) => {
+    // Note: Signup and login are handled by Supabase Auth on the client side
+    // This endpoint is called after Supabase creates the user to create the local profile
+    
+    app.post("/api/auth/create-profile", requireAuth, async (req, res) => {
         try {
-            console.log("Signup attempt:", {
-                email: req.body?.email,
-                hasFirstName: !!req.body?.firstName,
-                hasLastName: !!req.body?.lastName,
-                hasPassword: !!req.body?.password,
-                bodyKeys: Object.keys(req.body || {}),
-            });
+            const { firstName, lastName } = req.body;
+            const supabaseUser = req.supabaseUser;
 
-            const data = insertUserSchema.parse(req.body);
-
-            console.log("Checking for existing user...");
-            const existingUser = await storage.getUserByEmail(data.email);
+            // Check if profile already exists
+            const existingUser = await storage.getUserBySupabaseUserId(supabaseUser.id);
             if (existingUser) {
-                console.log("User already exists");
-                return res.status(400).json({ message: "Email already exists" });
+                return res.json({ user: { id: existingUser.id, email: existingUser.email } });
             }
 
-            console.log("Hashing password...");
-            const hashedPassword = await bcrypt.hash(data.password, 10);
-
-            console.log("Creating user in database...");
+            // Create user profile
             const user = await storage.createUser({
-                firstName: data.firstName,
-                lastName: data.lastName,
-                email: data.email,
-                password: hashedPassword,
+                supabaseUserId: supabaseUser.id,
+                firstName: firstName || supabaseUser.user_metadata?.first_name || "",
+                lastName: lastName || supabaseUser.user_metadata?.last_name || "",
+                email: supabaseUser.email || "",
             });
 
-            console.log("User created successfully:", user.id);
-            req.session.userId = user.id;
             res.json({ user: { id: user.id, email: user.email } });
         } catch (error) {
-            console.error("Signup error:", error);
-            console.error("Error type:", error?.constructor?.name);
-
-            // Handle database connection errors
-            if (
-                error &&
-                typeof error === "object" &&
-                "type" in error &&
-                error.type === "error"
-            ) {
-                console.error("Database connection error detected");
-                return res.status(500).json({
-                    message: "Database connection failed. Please try again.",
-                });
-            }
-
-            if (error instanceof Error && "issues" in error) {
-                // Zod validation error
-                const zodError = error as any;
-                console.error("Zod validation issues:", zodError.issues);
-                return res.status(400).json({
-                    message: zodError.issues?.[0]?.message || "Validation failed",
-                    errors: zodError.issues,
-                });
-            }
-
+            console.error("Create profile error:", error);
             res.status(500).json({
-                message:
-                    error instanceof Error
-                        ? error.message
-                        : "Failed to create account. Please try again.",
+                message: error instanceof Error ? error.message : "Failed to create profile",
             });
         }
     });
 
-    app.post("/api/auth/login", async (req, res) => {
-        try {
-            const { email, password } = req.body;
-
-            const user = await storage.getUserByEmail(email);
-            if (!user) {
-                return res.status(401).json({ message: "Invalid credentials" });
-            }
-
-            const isValid = await bcrypt.compare(password, user.password);
-            if (!isValid) {
-                return res.status(401).json({ message: "Invalid credentials" });
-            }
-
-            req.session.userId = user.id;
-            res.json({ user: { id: user.id, email: user.email } });
-        } catch (error) {
-            res.status(400).json({ message: "Login failed" });
-        }
-    });
-
-    app.get("/api/auth/me", async (req, res) => {
-        if (!req.session.userId) {
-            return res.json({ user: null });
-        }
-
-        const user = await storage.getUser(req.session.userId);
-        if (!user) {
-            return res.json({ user: null });
-        }
-
+    app.get("/api/auth/me", requireAuth, async (req, res) => {
+        const user = req.user;
         res.json({ user: { id: user.id, email: user.email } });
     });
 
     app.post("/api/auth/logout", (req, res) => {
-        req.session.destroy(() => {
-            res.json({ success: true });
-        });
+        // Logout is handled by Supabase client on frontend
+        res.json({ success: true });
     });
 
     // Health check endpoint for debugging production issues
@@ -684,7 +617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     app.post("/api/generate-idea", requireAuth, async (req, res) => {
         try {
             const { originalIdea } = req.body;
-            const userId = req.session.userId!; // Use session userId instead of client-provided
+            const userId = req.user.id; // Use authenticated user ID
 
             let generatedIdea: string;
 
@@ -712,7 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Get user's ideas
     app.get("/api/ideas", requireAuth, async (req, res) => {
         try {
-            const ideas = await storage.getIdeasByUser(req.session.userId!);
+            const ideas = await storage.getIdeasByUser(req.user.id);
 
             // OPTIMIZATION: Removed expensive isKeyword check that was adding 12+ seconds
             // The isKeyword badge is not critical for initial page load
@@ -733,7 +666,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(404).json({ message: "Idea not found" });
             }
 
-            if (idea.userId !== req.session.userId) {
+            if (idea.userId !== req.user.id) {
                 return res.status(403).json({ message: "Forbidden" });
             }
 
@@ -761,7 +694,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(404).json({ message: "Idea not found" });
             }
 
-            if (idea.userId !== req.session.userId) {
+            if (idea.userId !== req.user.id) {
                 return res.status(403).json({ message: "Forbidden" });
             }
 
@@ -782,7 +715,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Create report
             const report = await storage.createReport({
                 ideaId,
-                userId: req.session.userId!,
+                userId: req.user.id,
                 avgVolume: aggregates.avgVolume,
                 growth3m: parseFloat(aggregates.growth3m),
                 growthYoy: parseFloat(aggregates.growthYoy),
@@ -850,7 +783,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(404).json({ message: "Report not found" });
             }
 
-            if (report.userId !== req.session.userId) {
+            if (report.userId !== req.user.id) {
                 return res.status(403).json({ message: "Forbidden" });
             }
 
@@ -1023,7 +956,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(404).json({ message: "Report not found" });
             }
 
-            if (report.userId !== req.session.userId) {
+            if (report.userId !== req.user.id) {
                 return res.status(403).json({ message: "Forbidden" });
             }
 

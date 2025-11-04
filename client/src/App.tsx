@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { GradientOrbs } from "@/components/gradient-orbs";
+import { supabase } from "./lib/supabase";
 import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
@@ -15,24 +16,67 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.user) {
-          setUser(data.user);
+    // Check for existing Supabase session
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.access_token) {
+          // Get user profile from backend
+          const response = await fetch("/api/auth/me", {
+            headers: {
+              "Authorization": `Bearer ${session.access_token}`,
+            },
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.user) {
+              setUser(data.user);
+            }
+          }
         }
-      })
-      .catch(() => {
-        // Not authenticated
-      })
-      .finally(() => {
+      } catch (error) {
+        console.error("Session check error:", error);
+      } finally {
         setIsLoading(false);
-      });
+      }
+    };
+
+    checkSession();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_OUT" || !session) {
+        setUser(null);
+        queryClient.clear();
+      } else if (session?.access_token) {
+        try {
+          const response = await fetch("/api/auth/me", {
+            headers: {
+              "Authorization": `Bearer ${session.access_token}`,
+            },
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.user) {
+              setUser(data.user);
+            }
+          }
+        } catch (error) {
+          console.error("Auth state change error:", error);
+        }
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await supabase.auth.signOut();
     queryClient.clear(); // Clear all cached queries
     setUser(null);
   };
