@@ -90,14 +90,39 @@ export class DatabaseStorage implements IStorage {
 
         // Group keywords by reportId for efficient lookup and filter out incomplete data
         const keywordsByReportId = new Map<string, Keyword[]>();
+        const filteredCounts = new Map<string, { total: number; filtered: number }>();
+        
         allKeywords.forEach(keyword => {
+            // Track counts for debugging
+            if (!filteredCounts.has(keyword.reportId)) {
+                filteredCounts.set(keyword.reportId, { total: 0, filtered: 0 });
+            }
+            const counts = filteredCounts.get(keyword.reportId)!;
+            counts.total++;
+            
             // Filter out keywords with incomplete data (less than 48 months)
-            if (keyword.monthlyData &&
-                Array.isArray(keyword.monthlyData) &&
-                keyword.monthlyData.length >= 48) {
-                const list = keywordsByReportId.get(keyword.reportId) || [];
-                list.push(keyword);
-                keywordsByReportId.set(keyword.reportId, list);
+            if (!keyword.monthlyData) {
+                counts.filtered++;
+                return;
+            }
+            if (!Array.isArray(keyword.monthlyData)) {
+                counts.filtered++;
+                return;
+            }
+            if (keyword.monthlyData.length < 47) {
+                counts.filtered++;
+                return;
+            }
+            
+            const list = keywordsByReportId.get(keyword.reportId) || [];
+            list.push(keyword);
+            keywordsByReportId.set(keyword.reportId, list);
+        });
+        
+        // Log filtering statistics
+        filteredCounts.forEach((counts, reportId) => {
+            if (counts.total > 0 && counts.filtered === counts.total) {
+                console.warn(`[Storage] All ${counts.total} keywords were filtered out for report ${reportId} in getIdeasByUser`);
             }
         });
 
@@ -158,11 +183,27 @@ export class DatabaseStorage implements IStorage {
     async getKeywordsByReportId(reportId: string): Promise<Keyword[]> {
         const allKeywords = await db.select().from(keywords).where(eq(keywords.reportId, reportId));
         // Filter out keywords with incomplete data (less than 48 months)
-        return allKeywords.filter(keyword =>
-            keyword.monthlyData &&
-            Array.isArray(keyword.monthlyData) &&
-            keyword.monthlyData.length >= 48
-        );
+        const filteredKeywords = allKeywords.filter(keyword => {
+            if (!keyword.monthlyData) {
+                console.warn(`[Storage] Keyword ${keyword.id} has no monthlyData`);
+                return false;
+            }
+            if (!Array.isArray(keyword.monthlyData)) {
+                console.warn(`[Storage] Keyword ${keyword.id} monthlyData is not an array:`, typeof keyword.monthlyData);
+                return false;
+            }
+            if (keyword.monthlyData.length < 47) {
+                console.warn(`[Storage] Keyword ${keyword.id} has only ${keyword.monthlyData.length} months of data (expected 47)`);
+                return false;
+            }
+            return true;
+        });
+        
+        if (allKeywords.length > 0 && filteredKeywords.length === 0) {
+            console.warn(`[Storage] All ${allKeywords.length} keywords were filtered out for report ${reportId}`);
+        }
+        
+        return filteredKeywords;
     }
 
     async getKeyword(id: string): Promise<Keyword | undefined> {
