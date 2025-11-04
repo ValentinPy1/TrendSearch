@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ListInput } from "@/components/ui/list-input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Sparkles, Search } from "lucide-react";
+import { Loader2, Sparkles, Search, ExternalLink, Building2 } from "lucide-react";
 
 interface CustomSearchFormProps {
     open: boolean;
@@ -26,6 +26,12 @@ interface FormData {
     personas: string[];
     painPoints: string[];
     features: string[];
+}
+
+interface Competitor {
+    name: string;
+    description: string;
+    url?: string | null;
 }
 
 export function CustomSearchForm({
@@ -43,6 +49,7 @@ export function CustomSearchForm({
         useState(false);
     const [isGeneratingFeatures, setIsGeneratingFeatures] = useState(false);
     const [isFindingCompetitors, setIsFindingCompetitors] = useState(false);
+    const [competitors, setCompetitors] = useState<Competitor[]>([]);
 
     const form = useForm<FormData>({
         defaultValues: {
@@ -94,11 +101,19 @@ export function CustomSearchForm({
             return res.json();
         },
         onSuccess: (result) => {
-            toast({
-                title: "Competitors Found!",
-                description: `Found ${result.competitors?.length || 0} competitors.`,
-            });
-            // TODO: Display competitors in the UI or trigger keyword generation
+            if (result.competitors && Array.isArray(result.competitors)) {
+                setCompetitors(result.competitors);
+                toast({
+                    title: "Competitors Found!",
+                    description: `Found ${result.competitors.length} competitors.`,
+                });
+            } else {
+                toast({
+                    title: "Competitors Found!",
+                    description: "No competitors data returned.",
+                    variant: "destructive",
+                });
+            }
         },
         onError: (error) => {
             toast({
@@ -246,6 +261,7 @@ export function CustomSearchForm({
         setPersonas([]);
         setPainPoints([]);
         setFeatures([]);
+        setCompetitors([]);
         onOpenChange(false);
     };
 
@@ -293,6 +309,7 @@ export function CustomSearchForm({
                             onGenerate={handleGenerateTopics}
                             isGenerating={isGeneratingTopics}
                             generateLabel="Generate from Pitch"
+                            badgeColor="bg-blue-600/80 text-blue-100 border-blue-500/50"
                         />
                     </div>
 
@@ -308,6 +325,7 @@ export function CustomSearchForm({
                             onGenerate={handleGeneratePersonas}
                             isGenerating={isGeneratingPersonas}
                             generateLabel="Generate from Pitch"
+                            badgeColor="bg-emerald-600/80 text-emerald-100 border-emerald-500/50"
                         />
                     </div>
 
@@ -323,6 +341,7 @@ export function CustomSearchForm({
                             onGenerate={handleGeneratePainPoints}
                             isGenerating={isGeneratingPainPoints}
                             generateLabel="Generate from Pitch"
+                            badgeColor="bg-amber-600/80 text-amber-100 border-amber-500/50"
                         />
                     </div>
 
@@ -338,6 +357,7 @@ export function CustomSearchForm({
                             onGenerate={handleGenerateFeatures}
                             isGenerating={isGeneratingFeatures}
                             generateLabel="Generate from Pitch"
+                            badgeColor="bg-purple-600/80 text-purple-100 border-purple-500/50"
                         />
                     </div>
 
@@ -366,6 +386,52 @@ export function CustomSearchForm({
                             )}
                         </Button>
                     </div>
+
+                    {/* Competitors List */}
+                    {competitors.length > 0 && (
+                        <div className="pt-4 border-t border-white/10">
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Building2 className="h-5 w-5 text-white/60" />
+                                    <h3 className="text-sm font-semibold text-white">
+                                        Found Competitors ({competitors.length})
+                                    </h3>
+                                </div>
+                                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                    {competitors.map((competitor, index) => (
+                                        <div
+                                            key={index}
+                                            className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg p-3 transition-colors"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <h4 className="text-sm font-medium text-white">
+                                                            {competitor.name}
+                                                        </h4>
+                                                        {competitor.url && (
+                                                            <a
+                                                                href={competitor.url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-primary hover:text-primary/80 transition-colors"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <ExternalLink className="h-3.5 w-3.5" />
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-white/60 line-clamp-2">
+                                                        {competitor.description}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </form>
             </DialogContent>
         </Dialog>

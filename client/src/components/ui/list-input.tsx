@@ -13,6 +13,7 @@ interface ListInputProps {
     onGenerate?: () => void;
     isGenerating?: boolean;
     generateLabel?: string;
+    badgeColor?: string; // Custom badge color classes
 }
 
 export function ListInput({
@@ -23,6 +24,7 @@ export function ListInput({
     onGenerate,
     isGenerating = false,
     generateLabel = "Generate",
+    badgeColor,
 }: ListInputProps) {
     const [inputValue, setInputValue] = React.useState("");
 
@@ -86,14 +88,22 @@ export function ListInput({
                     {value.map((item) => (
                         <Badge
                             key={item}
-                            variant="secondary"
-                            className="flex items-center gap-1 pr-1"
+                            variant={badgeColor ? undefined : "secondary"}
+                            className={cn(
+                                "flex items-center gap-1 pr-1",
+                                badgeColor || "bg-secondary text-secondary-foreground"
+                            )}
                         >
                             <span>{item}</span>
                             <button
                                 type="button"
                                 onClick={() => handleRemoveItem(item)}
-                                className="ml-1 rounded-full hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                                className={cn(
+                                    "ml-1 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1",
+                                    badgeColor
+                                        ? "hover:opacity-80"
+                                        : "hover:bg-secondary/80"
+                                )}
                                 aria-label={`Remove ${item}`}
                             >
                                 <X className="h-3 w-3" />
