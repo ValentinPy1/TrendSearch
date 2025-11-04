@@ -534,13 +534,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
 
             if (error || !user) {
+                console.error("JWT verification error:", error);
                 return res.status(401).json({ message: "Unauthorized" });
             }
 
-            // Get local user by Supabase user ID
-            const localUser = await storage.getUserBySupabaseUserId(user.id);
+            // Get local user by Supabase user ID, or create if doesn't exist
+            let localUser;
+            try {
+                localUser = await storage.getUserBySupabaseUserId(user.id);
+            } catch (dbError) {
+                console.error("Database error when fetching user:", dbError);
+                // If database connection fails, still allow auth but without local profile
+                // This is a fallback for when database is temporarily unavailable
+                return res.status(503).json({ 
+                    message: "Database temporarily unavailable. Please try again." 
+                });
+            }
+
             if (!localUser) {
-                return res.status(401).json({ message: "User profile not found" });
+                // Auto-create profile if it doesn't exist (first login after email confirmation)
+                try {
+                    localUser = await storage.createUser({
+                        supabaseUserId: user.id,
+                        firstName: user.user_metadata?.first_name || "",
+                        lastName: user.user_metadata?.last_name || "",
+                        email: user.email || "",
+                    });
+                    console.log("Auto-created user profile for:", user.email);
+                } catch (createError) {
+                    console.error("Failed to auto-create user profile:", createError);
+                    return res.status(500).json({ 
+                        message: "Failed to create user profile. Database connection issue." 
+                    });
+                }
             }
 
             req.user = localUser;
