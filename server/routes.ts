@@ -586,12 +586,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
 
     // Payment middleware - check if user has paid
-    const requirePayment = (req: any, res: any, next: any) => {
+    const requirePayment = async (req: any, res: any, next: any) => {
         if (!req.user) {
             return res.status(401).json({ message: "Unauthorized" });
         }
         
-        if (!req.user.hasPaid) {
+        // Refetch user from database to get latest payment status (req.user might be stale)
+        const freshUser = await storage.getUser(req.user.id);
+        
+        if (!freshUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        
+        // Update req.user with fresh data
+        req.user = freshUser;
+        
+        if (!freshUser.hasPaid) {
             return res.status(402).json({ 
                 message: "Payment required",
                 requiresPayment: true 
@@ -947,11 +957,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const { ideaId, keywordCount = 20, filters = [] } = req.body;
 
             // Check payment requirement if filters are provided
-            if (filters && filters.length > 0 && !req.user.hasPaid) {
-                return res.status(402).json({ 
-                    message: "Payment required to use advanced filters",
-                    requiresPayment: true 
-                });
+            if (filters && filters.length > 0) {
+                // Refetch user from database to get latest payment status (req.user might be stale)
+                const freshUser = await storage.getUser(req.user.id);
+                if (!freshUser || !freshUser.hasPaid) {
+                    return res.status(402).json({ 
+                        message: "Payment required to use advanced filters",
+                        requiresPayment: true 
+                    });
+                }
+                // Update req.user with fresh data
+                req.user = freshUser;
             }
 
             // Validate keywordCount (preload 20 keywords by default)
@@ -1072,11 +1088,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const { filters = [] } = req.body;
             
             // Check payment requirement if filters are provided
-            if (filters && filters.length > 0 && !req.user.hasPaid) {
-                return res.status(402).json({ 
-                    message: "Payment required to use advanced filters",
-                    requiresPayment: true 
-                });
+            if (filters && filters.length > 0) {
+                // Refetch user from database to get latest payment status (req.user might be stale)
+                const freshUser = await storage.getUser(req.user.id);
+                if (!freshUser || !freshUser.hasPaid) {
+                    return res.status(402).json({ 
+                        message: "Payment required to use advanced filters",
+                        requiresPayment: true 
+                    });
+                }
+                // Update req.user with fresh data
+                req.user = freshUser;
             }
             
             const newCount = currentCount + 5;
@@ -1168,12 +1190,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
 
             // Check payment requirement for advanced filters
-            if (!req.user.hasPaid) {
+            // Refetch user from database to get latest payment status (req.user might be stale)
+            const freshUser = await storage.getUser(req.user.id);
+            if (!freshUser || !freshUser.hasPaid) {
                 return res.status(402).json({ 
                     message: "Payment required to use advanced filters",
                     requiresPayment: true 
                 });
             }
+            
+            // Update req.user with fresh data
+            req.user = freshUser;
 
             // Get ALL keywords from the database (not limited by similarity)
             const allRawKeywords = await keywordVectorService.getAllKeywords();

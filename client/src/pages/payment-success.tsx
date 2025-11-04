@@ -31,6 +31,8 @@ export default function PaymentSuccess() {
           if (result.success) {
             // Payment verified, invalidate and refetch
             queryClient.invalidateQueries({ queryKey: ["/api/payment/status"] });
+            // Also invalidate sector data cache so it can refetch with premium access
+            queryClient.invalidateQueries({ queryKey: ["/api/sectors/aggregated"] });
             await refetch();
             
             setIsVerifying(false);
@@ -67,6 +69,8 @@ export default function PaymentSuccess() {
               const currentStatus = queryClient.getQueryData<{ hasPaid: boolean }>(["/api/payment/status"]);
               
               if (currentStatus?.hasPaid) {
+                // Also invalidate sector data cache so it can refetch with premium access
+                queryClient.invalidateQueries({ queryKey: ["/api/sectors/aggregated"] });
                 setIsVerifying(false);
                 toast({
                   title: "Payment Verified!",
