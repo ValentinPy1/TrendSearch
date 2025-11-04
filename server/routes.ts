@@ -1,8 +1,15 @@
+import express from "express";
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { createServer } from "http";
+import type { Server } from "http";
 import { storage } from "./storage";
 import { insertUserSchema } from "@shared/schema";
 import { supabaseAdmin } from "./supabase";
+import { stripe } from "./stripe";
+import Stripe from "stripe";
+import { eq } from "drizzle-orm";
+import { users } from "@shared/schema";
+import { db } from "./db";
 import { keywordVectorService } from "./keyword-vector-service";
 import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
 import { calculateOpportunityScore } from "./opportunity-score";
@@ -578,6 +585,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
     };
 
+    // Payment middleware - check if user has paid
+    const requirePayment = (req: any, res: any, next: any) => {
+        if (!req.user) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
+        
+        if (!req.user.hasPaid) {
+            return res.status(402).json({ 
+                message: "Payment required",
+                requiresPayment: true 
+            });
+        }
+        
+        next();
+    };
+
     // Auth routes
     // Note: Signup and login are handled by Supabase Auth on the client side
     // This endpoint is called after Supabase creates the user to create the local profile
@@ -618,6 +641,127 @@ export async function registerRoutes(app: Express): Promise<Server> {
     app.post("/api/auth/logout", (req, res) => {
         // Logout is handled by Supabase client on frontend
         res.json({ success: true });
+    });
+
+    // Payment status endpoint
+    app.get("/api/payment/status", requireAuth, async (req, res) => {
+        const user = req.user;
+        res.json({ 
+            hasPaid: user.hasPaid,
+            paymentDate: user.paymentDate 
+        });
+    });
+
+    // Stripe checkout endpoint
+    app.post("/api/stripe/create-checkout", requireAuth, async (req, res) => {
+        try {
+            const user = req.user;
+
+            // If user already paid, return success
+            if (user.hasPaid) {
+                return res.json({ 
+                    message: "User already has access",
+                    alreadyPaid: true 
+                });
+            }
+
+            if (!process.env.STRIPE_PRICE_ID) {
+                return res.status(500).json({ 
+                    message: "Stripe price ID not configured" 
+                });
+            }
+
+            // Create Stripe Checkout Session
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: [
+                    {
+                        price: process.env.STRIPE_PRICE_ID,
+                        quantity: 1,
+                    },
+                ],
+                mode: 'payment',
+                success_url: `${req.headers.origin || process.env.FRONTEND_URL || 'http://localhost:5000'}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${req.headers.origin || process.env.FRONTEND_URL || 'http://localhost:5000'}/payment-cancelled`,
+                customer_email: user.email,
+                metadata: {
+                    userId: user.id,
+                },
+            });
+
+            // Store Stripe customer ID if available
+            if (session.customer) {
+                await db.update(users)
+                    .set({ stripeCustomerId: session.customer as string })
+                    .where(eq(users.id, user.id));
+            }
+
+            res.json({ 
+                checkoutUrl: session.url,
+                sessionId: session.id 
+            });
+        } catch (error) {
+            console.error("Stripe checkout error:", error);
+            res.status(500).json({
+                message: error instanceof Error ? error.message : "Failed to create checkout session",
+            });
+        }
+    });
+
+    // Stripe webhook endpoint
+    app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), async (req, res) => {
+        const sig = req.headers['stripe-signature'];
+
+        if (!sig) {
+            return res.status(400).json({ message: "Missing stripe-signature header" });
+        }
+
+        if (!process.env.STRIPE_WEBHOOK_SECRET) {
+            return res.status(500).json({ message: "Stripe webhook secret not configured" });
+        }
+
+        let event;
+
+        try {
+            event = stripe.webhooks.constructEvent(
+                req.body,
+                sig,
+                process.env.STRIPE_WEBHOOK_SECRET
+            );
+        } catch (err) {
+            console.error("Webhook signature verification failed:", err);
+            return res.status(400).json({ message: `Webhook Error: ${err instanceof Error ? err.message : 'Unknown error'}` });
+        }
+
+        // Handle the event
+        if (event.type === 'checkout.session.completed') {
+            const session = event.data.object as Stripe.Checkout.Session;
+
+            // Get user ID from metadata
+            const userId = session.metadata?.userId;
+            if (!userId) {
+                console.error("No userId in checkout session metadata");
+                return res.status(400).json({ message: "Missing userId in session metadata" });
+            }
+
+            // Update user payment status
+            try {
+                await db.update(users)
+                    .set({
+                        hasPaid: true,
+                        paymentDate: new Date(),
+                        stripePaymentIntentId: session.payment_intent as string || null,
+                    })
+                    .where(eq(users.id, userId));
+
+                console.log(`Payment completed for user ${userId}`);
+            } catch (dbError) {
+                console.error("Failed to update user payment status:", dbError);
+                return res.status(500).json({ message: "Failed to update payment status" });
+            }
+        }
+
+        res.json({ received: true });
     });
 
     // Health check endpoint for debugging production issues
@@ -708,6 +852,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     app.post("/api/generate-report", requireAuth, async (req, res) => {
         try {
             const { ideaId, keywordCount = 20, filters = [] } = req.body;
+
+            // Check payment requirement if filters are provided
+            if (filters && filters.length > 0 && !req.user.hasPaid) {
+                return res.status(402).json({ 
+                    message: "Payment required to use advanced filters",
+                    requiresPayment: true 
+                });
+            }
 
             // Validate keywordCount (preload 20 keywords by default)
             const validatedCount = Math.max(
@@ -825,6 +977,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Fetch 5 more keywords (with filters if provided)
             const { filters = [] } = req.body;
+            
+            // Check payment requirement if filters are provided
+            if (filters && filters.length > 0 && !req.user.hasPaid) {
+                return res.status(402).json({ 
+                    message: "Payment required to use advanced filters",
+                    requiresPayment: true 
+                });
+            }
+            
             const newCount = currentCount + 5;
 
             // Use excludeKeywords to avoid fetching already loaded keywords
@@ -913,6 +1074,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.json({ count: null });
             }
 
+            // Check payment requirement for advanced filters
+            if (!req.user.hasPaid) {
+                return res.status(402).json({ 
+                    message: "Payment required to use advanced filters",
+                    requiresPayment: true 
+                });
+            }
+
             // Get ALL keywords from the database (not limited by similarity)
             const allRawKeywords = await keywordVectorService.getAllKeywords();
 
@@ -999,8 +1168,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
     });
 
-    // Get aggregated sector metrics
-    app.get("/api/sectors/aggregated", async (req, res) => {
+    // Get aggregated sector metrics - requires payment
+    app.get("/api/sectors/aggregated", requireAuth, requirePayment, async (req, res) => {
         try {
             const sectorsPath = path.join(process.cwd(), "data", "sectors_aggregated_metrics.json");
             const sectorsStructurePath = path.join(process.cwd(), "data", "sectors.json");

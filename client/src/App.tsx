@@ -7,9 +7,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { GradientOrbs } from "@/components/gradient-orbs";
 import { supabase } from "./lib/supabase";
+import { useToast } from "@/hooks/use-toast";
 import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
+import PaymentSuccess from "@/pages/payment-success";
+import PaymentCancelled from "@/pages/payment-cancelled";
 
 function App() {
   const [user, setUser] = useState<{ id: string; email: string } | null>(null);
@@ -98,6 +101,8 @@ function App() {
             <GradientOrbs />
             <div className="relative z-10">
               <Switch>
+                <Route path="/payment-success" component={PaymentSuccess} />
+                <Route path="/payment-cancelled" component={PaymentCancelled} />
                 <Route path="/">
                   {user ? (
                     <Dashboard user={user} onLogout={handleLogout} />

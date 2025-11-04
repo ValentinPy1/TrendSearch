@@ -1,11 +1,13 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useSectorData, type SectorAggregateResult, type SectorMetricResult } from "@/hooks/use-sector-data";
+import { usePaymentStatus } from "@/hooks/use-payment-status";
 import { SectorCard } from "./sector-card";
 import { GlassmorphicCard } from "./glassmorphic-card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { ArrowLeft, Loader2, Search, X } from "lucide-react";
+import { ArrowLeft, Loader2, Search, X, Lock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { PaywallModal } from "./paywall-modal";
 
 type SortOption = "name" | "volume" | "opportunityScore" | "growthYoy" | "cpc";
 
@@ -17,10 +19,23 @@ interface SectorBrowserProps {
 
 export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowserProps) {
     const { data, isLoading, error } = useSectorData();
+    const { data: paymentStatus } = usePaymentStatus();
     const [selectedSector, setSelectedSector] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<"user_types" | "product_fits">("user_types");
     const [filterQuery, setFilterQuery] = useState("");
     const [sortBy, setSortBy] = useState<SortOption>("opportunityScore");
+    const [showPaywall, setShowPaywall] = useState(false);
+
+    // Check if payment is required
+    const hasPaid = paymentStatus?.hasPaid ?? false;
+    const isPaymentRequired = !hasPaid && (error?.status === 402 || (error as any)?.requiresPayment);
+    
+    // Show paywall if payment is required
+    useEffect(() => {
+        if (isPaymentRequired && open) {
+            setShowPaywall(true);
+        }
+    }, [isPaymentRequired, open]);
 
     const handleSectorClick = (sectorName: string) => {
         setSelectedSector(sectorName);
@@ -119,6 +134,45 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                     </div>
                 </DialogContent>
             </Dialog>
+        );
+    }
+
+    // Show paywall if payment is required
+    if (isPaymentRequired) {
+        return (
+            <>
+                <Dialog open={open} onOpenChange={onOpenChange}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <div className="flex items-center justify-center mb-4">
+                                <div className="p-3 rounded-full bg-primary/10">
+                                    <Lock className="h-8 w-8 text-primary" />
+                                </div>
+                            </div>
+                            <DialogTitle className="text-center text-2xl">
+                                Premium Feature
+                            </DialogTitle>
+                        </DialogHeader>
+                        <GlassmorphicCard className="p-8 text-center space-y-4">
+                            <p className="text-white/90">
+                                Sector browsing is a premium feature. Unlock it with a one-time payment.
+                            </p>
+                            <Button
+                                onClick={() => setShowPaywall(true)}
+                                className="w-full"
+                                size="lg"
+                            >
+                                Unlock Premium Features
+                            </Button>
+                        </GlassmorphicCard>
+                    </DialogContent>
+                </Dialog>
+                <PaywallModal
+                    open={showPaywall}
+                    onOpenChange={setShowPaywall}
+                    feature="sector-browsing"
+                />
+            </>
         );
     }
 

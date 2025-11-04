@@ -9,6 +9,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Missing Supabase environment variables. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
 }
 
-// Create Supabase client for client-side operations
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Create a singleton Supabase client to avoid multiple instances
+let supabaseClient: ReturnType<typeof createClient> | null = null;
+
+export const supabase = (() => {
+    if (!supabaseClient) {
+        supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    }
+    return supabaseClient;
+})();
 

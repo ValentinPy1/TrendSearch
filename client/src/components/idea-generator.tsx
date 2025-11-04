@@ -137,7 +137,17 @@ export function IdeaGenerator({
                 });
             }
         },
-        onError: (error) => {
+        onError: (error: any) => {
+            // Check if it's a payment required error
+            if (error?.message?.includes("402") || error?.status === 402 || error?.requiresPayment) {
+                toast({
+                    title: "Payment Required",
+                    description: "Advanced filters require a one-time payment. Please unlock premium features to use filters.",
+                    variant: "destructive",
+                });
+                return;
+            }
+            
             toast({
                 title: "Error",
                 description:

@@ -43,9 +43,48 @@ VITE_SUPABASE_ANON_KEY=eyJ...
 4. Navigate to Settings > Database
 5. Copy the **Connection string** → `DATABASE_URL`
 
+### Stripe Configuration
+- `STRIPE_SECRET_KEY` - Your Stripe secret key (test mode: `sk_test_...`)
+- `STRIPE_PUBLISHABLE_KEY` - Your Stripe publishable key (test mode: `pk_test_...`)
+- `STRIPE_WEBHOOK_SECRET` - Your Stripe webhook signing secret (from Stripe Dashboard)
+- `STRIPE_PRICE_ID` - Your Stripe Price ID for the one-time payment product
+
+These can be set in your `.env` file:
+
+```env
+# Stripe (for paywall)
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_ID=price_...
+```
+
+## Getting Your Stripe Credentials
+
+1. Go to your Stripe Dashboard (https://dashboard.stripe.com)
+2. Make sure you're in **Test mode** for development
+3. Navigate to **Developers > API keys**
+4. Copy the following:
+   - **Secret key** → `STRIPE_SECRET_KEY` (starts with `sk_test_`)
+   - **Publishable key** → `STRIPE_PUBLISHABLE_KEY` (starts with `pk_test_`)
+5. Create a product and price:
+   - Go to **Products** in Stripe Dashboard
+   - Click **Add product**
+   - Set it as a **One-time payment**
+   - Set your price (e.g., $9.99)
+   - Copy the **Price ID** → `STRIPE_PRICE_ID` (starts with `price_`)
+6. Set up webhook:
+   - Go to **Developers > Webhooks**
+   - Click **Add endpoint**
+   - Set endpoint URL to: `https://your-domain.com/api/stripe/webhook`
+   - Select event: `checkout.session.completed`
+   - Copy the **Signing secret** → `STRIPE_WEBHOOK_SECRET` (starts with `whsec_`)
+
 ## Security Notes
 
 - Never commit the `.env` file to version control
 - The `SUPABASE_SERVICE_ROLE_KEY` should only be used on the server side
 - The `SUPABASE_ANON_KEY` is safe to expose in client-side code
+- The `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` should only be used on the server side
+- The `STRIPE_PUBLISHABLE_KEY` can be used in client-side code (but not needed for this implementation)
 
