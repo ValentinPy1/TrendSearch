@@ -93,10 +93,10 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
                         </Button>
                         <Button
                             onClick={handleCheckout}
-                            disabled={createCheckoutMutation.isPending || isProcessing}
+                            disabled={createCheckoutMutation.isPending}
                             className="flex-1"
                         >
-                            {createCheckoutMutation.isPending || isProcessing ? (
+                            {createCheckoutMutation.isPending ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     Processing...
