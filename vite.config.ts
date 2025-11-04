@@ -29,7 +29,6 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ["react", "react-dom"],
-    exclude: [],
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
