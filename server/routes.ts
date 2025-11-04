@@ -645,11 +645,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Payment status endpoint
     app.get("/api/payment/status", requireAuth, async (req, res) => {
-        const user = req.user;
-        res.json({ 
-            hasPaid: user.hasPaid,
-            paymentDate: user.paymentDate 
+        // Refetch user from database to get latest payment status (req.user might be stale)
+        const freshUser = await storage.getUser(req.user.id);
+        
+        if (!freshUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        
+        // Disable caching to ensure fresh payment status
+        res.set({
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
         });
+        
+        res.json({ 
+            hasPaid: freshUser.hasPaid,
+            paymentDate: freshUser.paymentDate 
+        });
+    });
+
+    // Manual payment verification endpoint (for testing when webhook fails)
+    app.post("/api/payment/verify-session", requireAuth, async (req, res) => {
+        try {
+            const { sessionId } = req.body;
+            
+            console.log(`[Verify Payment] Starting verification for session: ${sessionId}`);
+            
+            if (!sessionId) {
+                return res.status(400).json({ message: "Session ID is required" });
+            }
+
+            // Retrieve the checkout session from Stripe
+            const session = await stripe.checkout.sessions.retrieve(sessionId);
+            
+            console.log(`[Verify Payment] Session retrieved. Payment status: ${session.payment_status}, Metadata:`, session.metadata);
+            
+            if (session.payment_status !== 'paid') {
+                console.log(`[Verify Payment] Payment not completed. Status: ${session.payment_status}`);
+                return res.status(400).json({ 
+                    message: "Payment not completed",
+                    payment_status: session.payment_status 
+                });
+            }
+
+            // Get user ID from metadata
+            const userId = session.metadata?.userId;
+            console.log(`[Verify Payment] User ID from metadata: ${userId}, Current user: ${req.user.id}`);
+            
+            if (!userId || userId !== req.user.id) {
+                console.log(`[Verify Payment] Unauthorized: userId mismatch`);
+                return res.status(403).json({ message: "Unauthorized" });
+            }
+
+            // Update user payment status
+            const updateResult = await db.update(users)
+                .set({
+                    hasPaid: true,
+                    paymentDate: new Date(),
+                    stripePaymentIntentId: session.payment_intent as string || null,
+                })
+                .where(eq(users.id, userId));
+
+            // Verify the update
+            const updatedUser = await storage.getUser(userId);
+            
+            if (!updatedUser) {
+                console.error(`❌ Error: User ${userId} not found after update`);
+                return res.status(500).json({ message: "User not found after update" });
+            }
+            
+            if (updatedUser.hasPaid) {
+                console.log(`✅ Manual payment verification: User ${userId} payment status updated successfully. hasPaid: ${updatedUser.hasPaid}`);
+            } else {
+                console.error(`❌ Error: User ${userId} payment status update failed. hasPaid: ${updatedUser.hasPaid}`);
+                return res.status(500).json({ message: "Payment status update failed" });
+            }
+
+            res.json({ 
+                success: true,
+                message: "Payment verified and status updated",
+                hasPaid: updatedUser.hasPaid
+            });
+        } catch (error) {
+            console.error("Payment verification error:", error);
+            res.status(500).json({
+                message: error instanceof Error ? error.message : "Failed to verify payment",
+            });
+        }
     });
 
     // Stripe checkout endpoint
@@ -754,11 +837,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     })
                     .where(eq(users.id, userId));
 
-                console.log(`Payment completed for user ${userId}`);
+                console.log(`✅ Payment completed for user ${userId} - hasPaid set to true`);
+                
+                // Verify the update was successful
+                const updatedUser = await storage.getUser(userId);
+                if (updatedUser?.hasPaid) {
+                    console.log(`✅ Verified: User ${userId} payment status updated successfully`);
+                } else {
+                    console.error(`❌ Warning: User ${userId} payment status update may have failed`);
+                }
             } catch (dbError) {
                 console.error("Failed to update user payment status:", dbError);
                 return res.status(500).json({ message: "Failed to update payment status" });
             }
+        } else {
+            console.log(`Webhook received event: ${event.type} (not handled)`);
         }
 
         res.json({ received: true });

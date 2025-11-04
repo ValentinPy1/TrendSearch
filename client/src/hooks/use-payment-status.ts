@@ -13,7 +13,9 @@ export function usePaymentStatus() {
             const res = await apiRequest("GET", "/api/payment/status");
             return res.json();
         },
-        staleTime: 1000 * 60 * 5, // 5 minutes - payment status doesn't change often
+        staleTime: 0, // Always refetch to get latest payment status
+        cacheTime: 0, // Don't cache payment status
         retry: false,
+        refetchOnWindowFocus: true, // Refetch when window gains focus
     });
 }

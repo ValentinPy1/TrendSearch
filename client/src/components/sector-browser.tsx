@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSectorData, type SectorAggregateResult, type SectorMetricResult } from "@/hooks/use-sector-data";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
+import { queryClient } from "@/lib/queryClient";
 import { SectorCard } from "./sector-card";
 import { GlassmorphicCard } from "./glassmorphic-card";
 import { Button } from "./ui/button";
@@ -29,6 +30,14 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
     // Check if payment is required
     const hasPaid = paymentStatus?.hasPaid ?? false;
     const isPaymentRequired = !hasPaid && (error?.status === 402 || (error as any)?.requiresPayment);
+    
+    // Refetch payment status when component opens to ensure we have latest status
+    useEffect(() => {
+        if (open) {
+            // Refetch payment status when opening the browser
+            queryClient.invalidateQueries({ queryKey: ["/api/payment/status"] });
+        }
+    }, [open]);
     
     // Show paywall if payment is required
     useEffect(() => {
