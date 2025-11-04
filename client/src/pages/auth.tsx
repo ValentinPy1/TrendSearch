@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,12 +14,26 @@ interface AuthPageProps {
   onAuthSuccess: (user: { id: string; email: string }) => void;
 }
 
+// Form validation schemas
+const signupSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
 export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   const signupForm = useForm<{ firstName: string; lastName: string; email: string; password: string }>({
+    resolver: zodResolver(signupSchema),
     defaultValues: {
       firstName: "",
       lastName: "",
@@ -28,6 +43,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   });
 
   const loginForm = useForm<{ email: string; password: string }>({
+    resolver: zodResolver(loginSchema),
     defaultValues: {
       email: "",
       password: "",

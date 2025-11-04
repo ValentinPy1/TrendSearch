@@ -13,7 +13,6 @@ interface PaywallModalProps {
 }
 
 export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps) {
-    const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
 
     const createCheckoutMutation = useMutation({
