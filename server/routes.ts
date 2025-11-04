@@ -18,6 +18,117 @@ interface KeywordFilter {
     value: number;
 }
 
+// Constants for optimization
+const SIMILARITY_CANDIDATE_POOL_SIZE = 2000; // Number of similar keywords to fetch before filtering
+
+/**
+ * Categorize filters into raw (can filter on raw data) vs processed (need computed metrics)
+ */
+function categorizeFilters(filters: KeywordFilter[]): {
+    rawFilters: KeywordFilter[];
+    processedFilters: KeywordFilter[];
+} {
+    const rawFilterMetrics = new Set([
+        "volume",
+        "competition",
+        "cpc",
+        "topPageBid",
+        "growth3m",
+        "growthYoy",
+        "similarityScore",
+    ]);
+
+    const rawFilters: KeywordFilter[] = [];
+    const processedFilters: KeywordFilter[] = [];
+
+    for (const filter of filters) {
+        if (rawFilterMetrics.has(filter.metric)) {
+            rawFilters.push(filter);
+        } else {
+            processedFilters.push(filter);
+        }
+    }
+
+    return { rawFilters, processedFilters };
+}
+
+/**
+ * Apply filters on raw KeywordData without processing (fast filtering)
+ * This filters on fields that are directly available in raw keyword data
+ */
+function applyRawFilters(
+    rawKeywords: any[],
+    filters: KeywordFilter[],
+): any[] {
+    if (!filters || filters.length === 0) {
+        return rawKeywords;
+    }
+
+    return rawKeywords.filter((kw) => {
+        // Check all filters (AND logic)
+        return filters.every((filter) => {
+            let valueToCompare: number;
+
+            // Map raw keyword fields to filter metrics
+            switch (filter.metric) {
+                case "volume":
+                    valueToCompare = typeof kw.search_volume === "number" 
+                        ? kw.search_volume 
+                        : parseFloat(String(kw.search_volume || "0")) || 0;
+                    break;
+                case "competition":
+                    valueToCompare = typeof kw.competition === "number" 
+                        ? kw.competition 
+                        : parseFloat(String(kw.competition || "0")) || 0;
+                    break;
+                case "cpc":
+                    valueToCompare = parseFloat(String(kw.cpc || "0")) || 0;
+                    break;
+                case "topPageBid":
+                    // Use high_top_of_page_bid or fallback to low_top_of_page_bid
+                    const topBid = kw.high_top_of_page_bid || kw.low_top_of_page_bid || 0;
+                    valueToCompare = parseFloat(String(topBid)) || 0;
+                    break;
+                case "growth3m":
+                    // Map from raw CSV field name
+                    valueToCompare = parseFloat(String(kw["3month_trend_%"] || "0")) || 0;
+                    break;
+                case "growthYoy":
+                    // Map from raw CSV field name
+                    valueToCompare = parseFloat(String(kw["yoy_trend_%"] || "0")) || 0;
+                    break;
+                case "similarityScore":
+                    valueToCompare = parseFloat(String(kw.similarityScore || "0")) || 0;
+                    break;
+                default:
+                    return true; // Unknown metric, don't filter
+            }
+
+            // Ensure filter.value is also a number
+            const filterValue = typeof filter.value === "number" 
+                ? filter.value 
+                : parseFloat(String(filter.value)) || 0;
+
+            // Apply operator with robust numeric comparison
+            switch (filter.operator) {
+                case ">":
+                    return valueToCompare > filterValue;
+                case ">=":
+                    return valueToCompare >= filterValue;
+                case "<":
+                    return valueToCompare < filterValue;
+                case "<=":
+                    return valueToCompare <= filterValue;
+                case "=":
+                    // Floating point comparison with small epsilon
+                    return Math.abs(valueToCompare - filterValue) < 0.0001;
+                default:
+                    return true;
+            }
+        });
+    });
+}
+
 function applyFilters(
     keywords: any[],
     filters: KeywordFilter[],
@@ -229,39 +340,71 @@ async function getKeywordsFromVectorDB(
     let keywords: any[];
 
     if (filters && filters.length > 0) {
-        // NEW ALGORITHM: Filter first, then rank by similarity
-        // Step 1: Get ALL keywords from database
-        const allRawKeywords = await keywordVectorService.getAllKeywords();
+        // OPTIMIZED ALGORITHM: Similarity first, then two-phase filtering
+        // Step 1: Get top-N similar keywords (candidate pool) - much faster than processing all
+        const candidatePool = await keywordVectorService.findSimilarKeywords(
+            idea,
+            SIMILARITY_CANDIDATE_POOL_SIZE,
+        );
 
-        // Step 2: Lookup preprocessed data for all keywords (fallback to processing if not available)
-        const allProcessedKeywords = allRawKeywords.map((kw) => lookupOrProcessKeyword(kw));
-
-        // Step 3: Apply filters to get matching keywords
-        // Use precomputed metrics if available, otherwise calculate on-the-fly
-        let filteredKeywords = applyFilters(allProcessedKeywords, filters, (kw) => {
-            // Fallback: Calculate opportunity metrics only if not precomputed
-            if ((kw as any).precomputedMetrics) {
-                return (kw as any).precomputedMetrics;
-            }
-            // Calculate on-the-fly (backwards compatibility when precomputed metrics not available)
-            return calculateOpportunityScore({
-                volume: kw.volume || 0,
-                competition: kw.competition || 0,
-                cpc: parseFloat(kw.cpc?.toString() || "0"),
-                topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
-                growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
-                monthlyData: kw.monthlyData || [],
-            });
-        });
-
-        // Step 4: Exclude already loaded keywords (for load-more)
+        // Step 2: Exclude already loaded keywords (for load-more)
+        let candidateKeywords = candidatePool;
         if (excludeKeywords && excludeKeywords.size > 0) {
-            filteredKeywords = filteredKeywords.filter(
+            candidateKeywords = candidateKeywords.filter(
                 (kw) => !excludeKeywords.has(kw.keyword),
             );
         }
 
-        // Step 5: If no filtered keywords, return empty result
+        // Step 3: Categorize filters into raw vs processed
+        const { rawFilters, processedFilters } = categorizeFilters(filters);
+
+        // Step 4: Phase 1 - Apply raw filters on raw data (fast, no processing needed)
+        let filteredRawKeywords = candidateKeywords;
+        if (rawFilters.length > 0) {
+            filteredRawKeywords = applyRawFilters(candidateKeywords, rawFilters);
+        }
+
+        // Step 5: If no candidates after raw filtering, return empty result
+        if (filteredRawKeywords.length === 0) {
+            return {
+                keywords: [],
+                aggregates: {
+                    avgVolume: 0,
+                    growth3m: "0",
+                    growthYoy: "0",
+                    competition: "medium",
+                    avgTopPageBid: "0",
+                    avgCpc: "0",
+                },
+                hasMore: false,
+            };
+        }
+
+        // Step 6: Phase 2 - Process only remaining candidates and apply processed filters
+        // Only process keywords that passed raw filters (much smaller set)
+        const processedKeywords = filteredRawKeywords.map((kw) => lookupOrProcessKeyword(kw));
+
+        let filteredKeywords = processedKeywords;
+        if (processedFilters.length > 0) {
+            // Apply filters that require processed/computed metrics
+            filteredKeywords = applyFilters(processedKeywords, processedFilters, (kw) => {
+                // Use precomputed metrics if available, otherwise calculate on-the-fly
+                if ((kw as any).precomputedMetrics) {
+                    return (kw as any).precomputedMetrics;
+                }
+                // Calculate on-the-fly (backwards compatibility when precomputed metrics not available)
+                return calculateOpportunityScore({
+                    volume: kw.volume || 0,
+                    competition: kw.competition || 0,
+                    cpc: parseFloat(kw.cpc?.toString() || "0"),
+                    topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                    growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                    monthlyData: kw.monthlyData || [],
+                });
+            });
+        }
+
+        // Step 7: If no filtered keywords after both phases, return empty result
         if (filteredKeywords.length === 0) {
             return {
                 keywords: [],
@@ -273,24 +416,13 @@ async function getKeywordsFromVectorDB(
                     avgTopPageBid: "0",
                     avgCpc: "0",
                 },
-                hasMore: false, // Indicate no more filtered keywords
+                hasMore: false,
             };
         }
 
-        // Step 6: Get keyword indices for similarity calculation
-        const keywordIndices = filteredKeywords
-            .map((kw) => keywordVectorService.getKeywordIndex(kw.keyword))
-            .filter((idx): idx is number => idx !== null);
-
-        // Step 7: Calculate similarity scores for filtered keywords and sort
-        const keywordsWithSimilarity = await keywordVectorService.calculateSimilarityForKeywords(
-            idea,
-            keywordIndices,
-        );
-
-        // Step 8: Map similarity scores back to processed keywords
+        // Step 8: Map similarity scores (already calculated in findSimilarKeywords)
         const similarityMap = new Map(
-            keywordsWithSimilarity.map((kw) => [kw.keyword, kw.similarityScore]),
+            candidateKeywords.map((kw) => [kw.keyword, kw.similarityScore]),
         );
 
         filteredKeywords.forEach((kw) => {
@@ -825,26 +957,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Get ALL keywords from the database (not limited by similarity)
             const allRawKeywords = await keywordVectorService.getAllKeywords();
 
-            // Process all keywords to standardized format
-            const allKeywords = processKeywords(allRawKeywords);
+            // Categorize filters into raw vs processed
+            const { rawFilters, processedFilters } = categorizeFilters(filters);
 
-            // Apply filters to all keywords
-            // Use precomputed metrics if available, otherwise calculate on-the-fly
-            const filteredKeywords = applyFilters(allKeywords, filters, (kw) => {
-                // Fallback: Calculate opportunity metrics only if not precomputed
-                if ((kw as any).precomputedMetrics) {
-                    return (kw as any).precomputedMetrics;
-                }
-                // Calculate on-the-fly (backwards compatibility when precomputed metrics not available)
-                return calculateOpportunityScore({
-                    volume: kw.volume || 0,
-                    competition: kw.competition || 0,
-                    cpc: parseFloat(kw.cpc?.toString() || "0"),
-                    topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
-                    growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
-                    monthlyData: kw.monthlyData || [],
+            // Phase 1: Apply raw filters on raw data (fast, no processing needed)
+            let filteredRawKeywords = allRawKeywords;
+            if (rawFilters.length > 0) {
+                filteredRawKeywords = applyRawFilters(allRawKeywords, rawFilters);
+            }
+
+            // If no keywords pass raw filters, return 0
+            if (filteredRawKeywords.length === 0) {
+                return res.json({ count: 0 });
+            }
+
+            // Phase 2: Process only remaining candidates and apply processed filters
+            // Only process keywords that passed raw filters (much smaller set)
+            let filteredKeywords = filteredRawKeywords;
+            if (processedFilters.length > 0) {
+                // Process keywords to standardized format
+                const processedKeywords = processKeywords(filteredRawKeywords);
+
+                // Apply filters that require processed/computed metrics
+                filteredKeywords = applyFilters(processedKeywords, processedFilters, (kw) => {
+                    // Use precomputed metrics if available, otherwise calculate on-the-fly
+                    if ((kw as any).precomputedMetrics) {
+                        return (kw as any).precomputedMetrics;
+                    }
+                    // Calculate on-the-fly (backwards compatibility when precomputed metrics not available)
+                    return calculateOpportunityScore({
+                        volume: kw.volume || 0,
+                        competition: kw.competition || 0,
+                        cpc: parseFloat(kw.cpc?.toString() || "0"),
+                        topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                        growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                        monthlyData: kw.monthlyData || [],
+                    });
                 });
-            });
+            }
 
             res.json({ count: filteredKeywords.length });
         } catch (error) {
