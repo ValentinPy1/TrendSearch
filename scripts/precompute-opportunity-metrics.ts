@@ -67,7 +67,7 @@ async function precomputeOpportunityMetrics() {
 
     // Load all keywords from CSV
     console.log('[1/5] Loading keywords from CSV...');
-    const csvPath = path.join(process.cwd(), 'data', 'keywords_all.csv');
+    const csvPath = path.join(process.cwd(), 'new_keywords', 'keywords_data.csv');
 
     if (!fs.existsSync(csvPath)) {
         throw new Error(`Keywords CSV file not found at ${csvPath}`);
@@ -89,23 +89,59 @@ async function precomputeOpportunityMetrics() {
 
     // Process keywords to get monthly data (same logic as processKeywords)
     console.log('[2/5] Processing keywords to generate processed data...');
-    const monthMapping = [
-        { key: "2024_10", label: "Oct" },
-        { key: "2024_11", label: "Nov" },
-        { key: "2024_12", label: "Dec" },
-        { key: "2025_01", label: "Jan" },
-        { key: "2025_02", label: "Feb" },
-        { key: "2025_03", label: "Mar" },
-        { key: "2025_04", label: "Apr" },
-        { key: "2025_05", label: "May" },
-        { key: "2025_06", label: "Jun" },
-        { key: "2025_07", label: "Jul" },
-        { key: "2025_08", label: "Aug" },
-        { key: "2025_09", label: "Sep" },
+    // All 48 months of data (2021_11 to 2025_09)
+    const allMonths = [
+        { key: "2021_11", label: "Nov 2021" },
+        { key: "2021_12", label: "Dec 2021" },
+        { key: "2022_01", label: "Jan 2022" },
+        { key: "2022_02", label: "Feb 2022" },
+        { key: "2022_03", label: "Mar 2022" },
+        { key: "2022_04", label: "Apr 2022" },
+        { key: "2022_05", label: "May 2022" },
+        { key: "2022_06", label: "Jun 2022" },
+        { key: "2022_07", label: "Jul 2022" },
+        { key: "2022_08", label: "Aug 2022" },
+        { key: "2022_09", label: "Sep 2022" },
+        { key: "2022_10", label: "Oct 2022" },
+        { key: "2022_11", label: "Nov 2022" },
+        { key: "2022_12", label: "Dec 2022" },
+        { key: "2023_01", label: "Jan 2023" },
+        { key: "2023_02", label: "Feb 2023" },
+        { key: "2023_03", label: "Mar 2023" },
+        { key: "2023_04", label: "Apr 2023" },
+        { key: "2023_05", label: "May 2023" },
+        { key: "2023_06", label: "Jun 2023" },
+        { key: "2023_07", label: "Jul 2023" },
+        { key: "2023_08", label: "Aug 2023" },
+        { key: "2023_09", label: "Sep 2023" },
+        { key: "2023_10", label: "Oct 2023" },
+        { key: "2023_11", label: "Nov 2023" },
+        { key: "2023_12", label: "Dec 2023" },
+        { key: "2024_01", label: "Jan 2024" },
+        { key: "2024_02", label: "Feb 2024" },
+        { key: "2024_03", label: "Mar 2024" },
+        { key: "2024_04", label: "Apr 2024" },
+        { key: "2024_05", label: "May 2024" },
+        { key: "2024_06", label: "Jun 2024" },
+        { key: "2024_07", label: "Jul 2024" },
+        { key: "2024_08", label: "Aug 2024" },
+        { key: "2024_09", label: "Sep 2024" },
+        { key: "2024_10", label: "Oct 2024" },
+        { key: "2024_11", label: "Nov 2024" },
+        { key: "2024_12", label: "Dec 2024" },
+        { key: "2025_01", label: "Jan 2025" },
+        { key: "2025_02", label: "Feb 2025" },
+        { key: "2025_03", label: "Mar 2025" },
+        { key: "2025_04", label: "Apr 2025" },
+        { key: "2025_05", label: "May 2025" },
+        { key: "2025_06", label: "Jun 2025" },
+        { key: "2025_07", label: "Jul 2025" },
+        { key: "2025_08", label: "Aug 2025" },
+        { key: "2025_09", label: "Sep 2025" },
     ];
 
     const processedKeywords = keywords.map((kw) => {
-        const monthlyData = monthMapping.map(({ key, label }) => {
+        const monthlyData = allMonths.map(({ key, label }) => {
             return {
                 month: label,
                 volume: Math.floor(
@@ -114,21 +150,21 @@ async function precomputeOpportunityMetrics() {
             };
         });
 
-        // Calculate 3M growth: Compare last month (Sep) to 3 months ago (Jun)
+        // Calculate 3M growth: Compare last month (Sep 2025) to 3 months ago (Jun 2025)
         let growth3m = 0;
         if (monthlyData.length >= 4) {
-            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep (index 11)
-            const threeMonthsAgo = monthlyData[monthlyData.length - 4].volume; // Jun (index 8)
+            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025
+            const threeMonthsAgo = monthlyData[monthlyData.length - 4].volume; // Jun 2025
             if (threeMonthsAgo !== 0) {
                 growth3m = ((currentVolume - threeMonthsAgo) / threeMonthsAgo) * 100;
             }
         }
 
-        // Calculate YoY growth: Compare last month (Sep) to first month (Oct)
+        // Calculate YoY growth: Compare last month (Sep 2025) to same month last year (Sep 2024)
         let growthYoy = 0;
         if (monthlyData.length >= 12) {
-            const currentVolume = monthlyData[monthlyData.length - 1].volume;
-            const oneYearAgo = monthlyData[0].volume;
+            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025
+            const oneYearAgo = monthlyData[monthlyData.length - 13].volume; // Sep 2024 (12 months ago)
             if (oneYearAgo !== 0) {
                 growthYoy = ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
             }

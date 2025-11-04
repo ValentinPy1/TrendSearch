@@ -258,26 +258,66 @@ function lookupOrProcessKeyword(rawKeyword: any): any {
 }
 
 function processKeywords(rawKeywords: any[]) {
-    // Map CSV columns (2024_10 through 2025_09) to correct month labels in chronological order
-    const monthMapping = [
-        { key: "2024_10", label: "Oct" },
-        { key: "2024_11", label: "Nov" },
-        { key: "2024_12", label: "Dec" },
-        { key: "2025_01", label: "Jan" },
-        { key: "2025_02", label: "Feb" },
-        { key: "2025_03", label: "Mar" },
-        { key: "2025_04", label: "Apr" },
-        { key: "2025_05", label: "May" },
-        { key: "2025_06", label: "Jun" },
-        { key: "2025_07", label: "Jul" },
-        { key: "2025_08", label: "Aug" },
-        { key: "2025_09", label: "Sep" },
+    // Map CSV columns (2021_11 through 2025_09) to correct month labels in chronological order
+    // This is all 48 months of data
+    const allMonths = [
+        { key: "2021_11", label: "Nov 2021" },
+        { key: "2021_12", label: "Dec 2021" },
+        { key: "2022_01", label: "Jan 2022" },
+        { key: "2022_02", label: "Feb 2022" },
+        { key: "2022_03", label: "Mar 2022" },
+        { key: "2022_04", label: "Apr 2022" },
+        { key: "2022_05", label: "May 2022" },
+        { key: "2022_06", label: "Jun 2022" },
+        { key: "2022_07", label: "Jul 2022" },
+        { key: "2022_08", label: "Aug 2022" },
+        { key: "2022_09", label: "Sep 2022" },
+        { key: "2022_10", label: "Oct 2022" },
+        { key: "2022_11", label: "Nov 2022" },
+        { key: "2022_12", label: "Dec 2022" },
+        { key: "2023_01", label: "Jan 2023" },
+        { key: "2023_02", label: "Feb 2023" },
+        { key: "2023_03", label: "Mar 2023" },
+        { key: "2023_04", label: "Apr 2023" },
+        { key: "2023_05", label: "May 2023" },
+        { key: "2023_06", label: "Jun 2023" },
+        { key: "2023_07", label: "Jul 2023" },
+        { key: "2023_08", label: "Aug 2023" },
+        { key: "2023_09", label: "Sep 2023" },
+        { key: "2023_10", label: "Oct 2023" },
+        { key: "2023_11", label: "Nov 2023" },
+        { key: "2023_12", label: "Dec 2023" },
+        { key: "2024_01", label: "Jan 2024" },
+        { key: "2024_02", label: "Feb 2024" },
+        { key: "2024_03", label: "Mar 2024" },
+        { key: "2024_04", label: "Apr 2024" },
+        { key: "2024_05", label: "May 2024" },
+        { key: "2024_06", label: "Jun 2024" },
+        { key: "2024_07", label: "Jul 2024" },
+        { key: "2024_08", label: "Aug 2024" },
+        { key: "2024_09", label: "Sep 2024" },
+        { key: "2024_10", label: "Oct 2024" },
+        { key: "2024_11", label: "Nov 2024" },
+        { key: "2024_12", label: "Dec 2024" },
+        { key: "2025_01", label: "Jan 2025" },
+        { key: "2025_02", label: "Feb 2025" },
+        { key: "2025_03", label: "Mar 2025" },
+        { key: "2025_04", label: "Apr 2025" },
+        { key: "2025_05", label: "May 2025" },
+        { key: "2025_06", label: "Jun 2025" },
+        { key: "2025_07", label: "Jul 2025" },
+        { key: "2025_08", label: "Aug 2025" },
+        { key: "2025_09", label: "Sep 2025" },
     ];
+    
+    // Last 12 months for non-premium users
+    const last12Months = allMonths.slice(-12);
 
     return rawKeywords.map((kw) => {
         // Convert monthly data from CSV format to our format with correct month labels
         // Recharts displays data in the order provided, so keep chronological order
-        const monthlyData = monthMapping.map(({ key, label }) => {
+        // Store all 48 months - client will filter based on premium status
+        const monthlyData = allMonths.map(({ key, label }) => {
             return {
                 month: label,
                 volume: Math.floor(
@@ -287,21 +327,21 @@ function processKeywords(rawKeywords: any[]) {
         });
 
         // Calculate growth from chronologically ordered monthlyData
-        // 3M Growth: Compare last month (Sep) to 3 months ago (Jun)
+        // 3M Growth: Compare last month (Sep 2025) to 3 months ago (Jun 2025)
         let growth3m = 0;
         if (monthlyData.length >= 4) {
-            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep (index 11)
-            const threeMonthsAgo = monthlyData[monthlyData.length - 4].volume; // Jun (index 8)
+            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025 (last index)
+            const threeMonthsAgo = monthlyData[monthlyData.length - 4].volume; // Jun 2025 (3 months ago)
             if (threeMonthsAgo !== 0) {
                 growth3m = ((currentVolume - threeMonthsAgo) / threeMonthsAgo) * 100;
             }
         }
 
-        // YoY Growth: Compare last month (Sep) to first month (Oct)
+        // YoY Growth: Compare last month (Sep 2025) to same month last year (Sep 2024)
         let growthYoy = 0;
         if (monthlyData.length >= 12) {
-            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep (index 11)
-            const oneYearAgo = monthlyData[0].volume; // Oct (index 0)
+            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025
+            const oneYearAgo = monthlyData[monthlyData.length - 13].volume; // Sep 2024 (12 months ago)
             if (oneYearAgo !== 0) {
                 growthYoy = ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
             }

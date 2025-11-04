@@ -1,12 +1,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { parse } from 'csv-parse/sync';
 import { keywordVectorService } from '../server/keyword-vector-service';
 import { calculateOpportunityScore } from '../server/opportunity-score';
 
-interface SectorData {
-    sector: string;
-    user_types: string[];
-    product_fits: string[];
+interface CompanyData {
+    name: string;
+    description: string;
+    main_industry: string;
+    sub_industry: string;
+    batch: string;
+    url: string;
 }
 
 interface ProcessedKeyword {
@@ -44,7 +48,7 @@ interface AggregatedMetrics {
     opportunityScore: number;
 }
 
-interface SectorMetricResult {
+interface CompanyMetricResult {
     keywordCount: number;
     aggregatedMetrics: AggregatedMetrics;
     monthlyTrendData: Array<{ month: string; volume: number }>;
@@ -58,46 +62,79 @@ interface SectorMetricResult {
     }>;
 }
 
-interface SectorAggregateResult {
-    sector: string;
-    userTypeCount: number;
-    productFitCount: number;
+interface SubIndustryAggregateResult {
+    subIndustry: string;
+    companyCount: number;
     aggregatedMetrics: AggregatedMetrics;
     monthlyTrendData: Array<{ month: string; volume: number }>;
 }
 
 interface OutputData {
-    user_types: Record<string, SectorMetricResult>;
-    product_fits: Record<string, SectorMetricResult>;
-    sectors: Record<string, SectorAggregateResult>;
+    companies: Record<string, CompanyMetricResult>;
+    subIndustries: Record<string, SubIndustryAggregateResult>;
     metadata: {
-        totalUserTypes: number;
-        totalProductFits: number;
-        totalSectors: number;
+        totalCompanies: number;
+        totalSubIndustries: number;
         generatedAt: string;
     };
 }
 
 async function processKeywords(rawKeywords: any[]): Promise<ProcessedKeyword[]> {
-    // Map CSV columns (2024_10 through 2025_09) to correct month labels in chronological order
-    const monthMapping = [
-        { key: "2024_10", label: "Oct" },
-        { key: "2024_11", label: "Nov" },
-        { key: "2024_12", label: "Dec" },
-        { key: "2025_01", label: "Jan" },
-        { key: "2025_02", label: "Feb" },
-        { key: "2025_03", label: "Mar" },
-        { key: "2025_04", label: "Apr" },
-        { key: "2025_05", label: "May" },
-        { key: "2025_06", label: "Jun" },
-        { key: "2025_07", label: "Jul" },
-        { key: "2025_08", label: "Aug" },
-        { key: "2025_09", label: "Sep" },
+    // Map CSV columns (2021_11 through 2025_09) to correct month labels in chronological order
+    // All 48 months of data
+    const allMonths = [
+        { key: "2021_11", label: "Nov 2021" },
+        { key: "2021_12", label: "Dec 2021" },
+        { key: "2022_01", label: "Jan 2022" },
+        { key: "2022_02", label: "Feb 2022" },
+        { key: "2022_03", label: "Mar 2022" },
+        { key: "2022_04", label: "Apr 2022" },
+        { key: "2022_05", label: "May 2022" },
+        { key: "2022_06", label: "Jun 2022" },
+        { key: "2022_07", label: "Jul 2022" },
+        { key: "2022_08", label: "Aug 2022" },
+        { key: "2022_09", label: "Sep 2022" },
+        { key: "2022_10", label: "Oct 2022" },
+        { key: "2022_11", label: "Nov 2022" },
+        { key: "2022_12", label: "Dec 2022" },
+        { key: "2023_01", label: "Jan 2023" },
+        { key: "2023_02", label: "Feb 2023" },
+        { key: "2023_03", label: "Mar 2023" },
+        { key: "2023_04", label: "Apr 2023" },
+        { key: "2023_05", label: "May 2023" },
+        { key: "2023_06", label: "Jun 2023" },
+        { key: "2023_07", label: "Jul 2023" },
+        { key: "2023_08", label: "Aug 2023" },
+        { key: "2023_09", label: "Sep 2023" },
+        { key: "2023_10", label: "Oct 2023" },
+        { key: "2023_11", label: "Nov 2023" },
+        { key: "2023_12", label: "Dec 2023" },
+        { key: "2024_01", label: "Jan 2024" },
+        { key: "2024_02", label: "Feb 2024" },
+        { key: "2024_03", label: "Mar 2024" },
+        { key: "2024_04", label: "Apr 2024" },
+        { key: "2024_05", label: "May 2024" },
+        { key: "2024_06", label: "Jun 2024" },
+        { key: "2024_07", label: "Jul 2024" },
+        { key: "2024_08", label: "Aug 2024" },
+        { key: "2024_09", label: "Sep 2024" },
+        { key: "2024_10", label: "Oct 2024" },
+        { key: "2024_11", label: "Nov 2024" },
+        { key: "2024_12", label: "Dec 2024" },
+        { key: "2025_01", label: "Jan 2025" },
+        { key: "2025_02", label: "Feb 2025" },
+        { key: "2025_03", label: "Mar 2025" },
+        { key: "2025_04", label: "Apr 2025" },
+        { key: "2025_05", label: "May 2025" },
+        { key: "2025_06", label: "Jun 2025" },
+        { key: "2025_07", label: "Jul 2025" },
+        { key: "2025_08", label: "Aug 2025" },
+        { key: "2025_09", label: "Sep 2025" },
     ];
 
     return rawKeywords.map((kw) => {
         // Convert monthly data from CSV format to app format with correct month labels
-        const monthlyData = monthMapping.map(({ key, label }) => {
+        const monthlyData = allMonths.map(({ key, label }) => {
             return {
                 month: label,
                 volume: Math.floor(
@@ -109,8 +146,8 @@ async function processKeywords(rawKeywords: any[]): Promise<ProcessedKeyword[]> 
         // Calculate growth from chronologically ordered monthlyData
         let growth3m = 0;
         if (monthlyData.length >= 4) {
-            const currentVolume = monthlyData[monthlyData.length - 1].volume;
-            const threeMonthsAgo = monthlyData[monthlyData.length - 4].volume;
+            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025
+            const threeMonthsAgo = monthlyData[monthlyData.length - 4].volume; // Jun 2025
             if (threeMonthsAgo !== 0) {
                 growth3m = ((currentVolume - threeMonthsAgo) / threeMonthsAgo) * 100;
             }
@@ -118,8 +155,8 @@ async function processKeywords(rawKeywords: any[]): Promise<ProcessedKeyword[]> 
 
         let growthYoy = 0;
         if (monthlyData.length >= 12) {
-            const currentVolume = monthlyData[monthlyData.length - 1].volume;
-            const oneYearAgo = monthlyData[0].volume;
+            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025
+            const oneYearAgo = monthlyData[monthlyData.length - 13].volume; // Sep 2024 (12 months ago)
             if (oneYearAgo !== 0) {
                 growthYoy = ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
             }
@@ -237,7 +274,7 @@ function aggregateMonthlyTrend(keywords: ProcessedKeyword[]): Array<{ month: str
 }
 
 function aggregateMetricsFromResults(
-    results: SectorMetricResult[]
+    results: CompanyMetricResult[]
 ): AggregatedMetrics {
     if (results.length === 0) {
         return {
@@ -256,8 +293,7 @@ function aggregateMetricsFromResults(
         };
     }
 
-    // Use keywordCount as weight (similar to how volume was used)
-    // Since all user_types/product_fits are equally relevant to sector, use weight = √(keywordCount)
+    // Use keywordCount as weight
     const totalWeight = results.reduce((sum, r) => {
         const keywordCount = r.keywordCount || 0;
         const weight = Math.sqrt(keywordCount);
@@ -281,7 +317,6 @@ function aggregateMetricsFromResults(
         };
     }
 
-    // Weighted average for most metrics
     const getWeightedAverage = (getValue: (m: AggregatedMetrics) => number) => {
         const weightedSum = results.reduce((sum, r) => {
             const keywordCount = r.keywordCount || 0;
@@ -293,7 +328,6 @@ function aggregateMetricsFromResults(
         return weightedSum / totalWeight;
     };
 
-    // Volume: use same formula - average √volumes then square
     const weightedSumOfSqrts = results.reduce((sum, r) => {
         const keywordCount = r.keywordCount || 0;
         const weight = Math.sqrt(keywordCount);
@@ -321,7 +355,7 @@ function aggregateMetricsFromResults(
 }
 
 function aggregateMonthlyTrendFromResults(
-    results: SectorMetricResult[]
+    results: CompanyMetricResult[]
 ): Array<{ month: string; volume: number }> {
     if (!results || results.length === 0) return [];
 
@@ -331,7 +365,6 @@ function aggregateMonthlyTrendFromResults(
     const months = firstResult.monthlyTrendData.map(m => m.month);
 
     return months.map((month, monthIndex) => {
-        // Weight by √(keywordCount)
         const totalWeight = results.reduce((sum, r) => {
             const keywordCount = r.keywordCount || 0;
             const weight = Math.sqrt(keywordCount);
@@ -340,7 +373,6 @@ function aggregateMonthlyTrendFromResults(
 
         if (totalWeight === 0) return { month, volume: 0 };
 
-        // Average √volumes then square
         const weightedSumOfSqrts = results.reduce((sum, r) => {
             const keywordCount = r.keywordCount || 0;
             const weight = Math.sqrt(keywordCount);
@@ -358,7 +390,10 @@ function aggregateMonthlyTrendFromResults(
     });
 }
 
-async function aggregateSectorMetrics(query: string): Promise<SectorMetricResult> {
+async function aggregateCompanyMetrics(company: CompanyData): Promise<CompanyMetricResult> {
+    // Create search query from company name and description
+    const query = `${company.name} ${company.description}`;
+    
     // Find top 100 similar keywords
     const similarKeywords = await keywordVectorService.findSimilarKeywords(query, 100);
     
@@ -421,127 +456,112 @@ async function aggregateSectorMetrics(query: string): Promise<SectorMetricResult
 }
 
 async function aggregateSectorMetricsMain() {
-    console.log('=== Aggregating Sector Metrics ===\n');
+    console.log('=== Aggregating Sector Metrics (Sub-Industries + YC Startups) ===\n');
 
-    // Load sectors.json
-    console.log('[1/4] Loading sectors.json...');
-    const sectorsPath = path.join(process.cwd(), 'data', 'sectors.json');
-    if (!fs.existsSync(sectorsPath)) {
-        throw new Error(`Sectors file not found at ${sectorsPath}`);
+    // Load companies.csv
+    console.log('[1/4] Loading companies.csv...');
+    const companiesPath = path.join(process.cwd(), 'new_keywords', 'companies.csv');
+    if (!fs.existsSync(companiesPath)) {
+        throw new Error(`Companies file not found at ${companiesPath}`);
     }
 
-    const sectors: SectorData[] = JSON.parse(fs.readFileSync(sectorsPath, 'utf-8'));
-    console.log(`✓ Loaded ${sectors.length} sectors\n`);
+    const csvContent = fs.readFileSync(companiesPath, 'utf-8');
+    const companies: CompanyData[] = parse(csvContent, {
+        columns: true,
+        skip_empty_lines: true,
+    }) as CompanyData[];
 
-    // Extract unique user_types and product_fits
-    console.log('[2/4] Extracting unique user_types and product_fits...');
-    const userTypesSet = new Set<string>();
-    const productFitsSet = new Set<string>();
+    // Filter out companies with N/A sub_industry
+    const validCompanies = companies.filter(c => c.sub_industry && c.sub_industry !== 'N/A');
+    console.log(`✓ Loaded ${validCompanies.length} companies (${companies.length - validCompanies.length} excluded with N/A sub-industry)\n`);
 
-    for (const sector of sectors) {
-        sector.user_types.forEach(ut => userTypesSet.add(ut));
-        sector.product_fits.forEach(pf => productFitsSet.add(pf));
+    // Group companies by sub_industry
+    console.log('[2/4] Grouping companies by sub-industry...');
+    const companiesBySubIndustry = new Map<string, CompanyData[]>();
+    
+    for (const company of validCompanies) {
+        const subIndustry = company.sub_industry;
+        if (!companiesBySubIndustry.has(subIndustry)) {
+            companiesBySubIndustry.set(subIndustry, []);
+        }
+        companiesBySubIndustry.get(subIndustry)!.push(company);
     }
 
-    const uniqueUserTypes = Array.from(userTypesSet);
-    const uniqueProductFits = Array.from(productFitsSet);
-
-    console.log(`✓ Found ${uniqueUserTypes.length} unique user_types`);
-    console.log(`✓ Found ${uniqueProductFits.length} unique product_fits\n`);
+    const subIndustries = Array.from(companiesBySubIndustry.keys());
+    console.log(`✓ Found ${subIndustries.length} unique sub-industries\n`);
 
     // Initialize KeywordVectorService
     console.log('[3/4] Initializing KeywordVectorService...');
     await keywordVectorService.initialize();
     console.log('✓ KeywordVectorService initialized\n');
 
-    // Process user_types
-    console.log(`[4/4] Processing ${uniqueUserTypes.length} user_types and ${uniqueProductFits.length} product_fits...`);
+    // Process companies
+    console.log(`[4/4] Processing ${validCompanies.length} companies...`);
     const output: OutputData = {
-        user_types: {},
-        product_fits: {},
-        sectors: {},
+        companies: {},
+        subIndustries: {},
         metadata: {
-            totalUserTypes: uniqueUserTypes.length,
-            totalProductFits: uniqueProductFits.length,
-            totalSectors: sectors.length,
+            totalCompanies: validCompanies.length,
+            totalSubIndustries: subIndustries.length,
             generatedAt: new Date().toISOString(),
         },
     };
 
-    const totalItems = uniqueUserTypes.length + uniqueProductFits.length;
     let processed = 0;
+    const totalCompanies = validCompanies.length;
 
-    // Process user_types
-    for (const userType of uniqueUserTypes) {
+    // Process each company
+    for (const company of validCompanies) {
         try {
-            output.user_types[userType] = await aggregateSectorMetrics(userType);
+            const companyKey = `${company.name} (${company.sub_industry})`;
+            output.companies[companyKey] = await aggregateCompanyMetrics(company);
             processed++;
-            if (processed % 10 === 0 || processed === uniqueUserTypes.length) {
-                console.log(`  User types: ${processed}/${uniqueUserTypes.length} (${Math.round((processed / uniqueUserTypes.length) * 100)}%)`);
+            
+            if (processed % 50 === 0 || processed === totalCompanies) {
+                console.log(`  Companies: ${processed}/${totalCompanies} (${Math.round((processed / totalCompanies) * 100)}%)`);
             }
         } catch (error) {
-            console.error(`  Error processing user_type "${userType}":`, error);
+            console.error(`  Error processing company "${company.name}":`, error);
         }
     }
 
-    // Process product_fits
-    processed = 0;
-    for (const productFit of uniqueProductFits) {
+    // Aggregate sub-industries from their companies
+    console.log(`\n[Aggregating] Processing ${subIndustries.length} sub-industries...`);
+    for (const subIndustry of subIndustries) {
         try {
-            output.product_fits[productFit] = await aggregateSectorMetrics(productFit);
-            processed++;
-            if (processed % 10 === 0 || processed === uniqueProductFits.length) {
-                console.log(`  Product fits: ${processed}/${uniqueProductFits.length} (${Math.round((processed / uniqueProductFits.length) * 100)}%)`);
-            }
-        } catch (error) {
-            console.error(`  Error processing product_fit "${productFit}":`, error);
-        }
-    }
+            const companiesInSubIndustry = companiesBySubIndustry.get(subIndustry)!;
+            const companyResults: CompanyMetricResult[] = [];
 
-    // Aggregate sectors from their user_types and product_fits
-    console.log(`\n[Aggregating] Processing ${sectors.length} sectors...`);
-    for (const sector of sectors) {
-        try {
-            const sectorResults: SectorMetricResult[] = [];
-
-            // Collect all user_types results for this sector
-            for (const userType of sector.user_types) {
-                const result = output.user_types[userType];
+            // Collect all company results for this sub-industry
+            for (const company of companiesInSubIndustry) {
+                const companyKey = `${company.name} (${company.sub_industry})`;
+                const result = output.companies[companyKey];
                 if (result) {
-                    sectorResults.push(result);
+                    companyResults.push(result);
                 }
             }
 
-            // Collect all product_fits results for this sector
-            for (const productFit of sector.product_fits) {
-                const result = output.product_fits[productFit];
-                if (result) {
-                    sectorResults.push(result);
-                }
-            }
-
-            if (sectorResults.length === 0) {
-                console.warn(`  Warning: No results found for sector "${sector.sector}"`);
+            if (companyResults.length === 0) {
+                console.warn(`  Warning: No results found for sub-industry "${subIndustry}"`);
                 continue;
             }
 
-            // Aggregate metrics from all user_types and product_fits
-            const aggregatedMetrics = aggregateMetricsFromResults(sectorResults);
-            const monthlyTrendData = aggregateMonthlyTrendFromResults(sectorResults);
+            // Aggregate metrics from all companies
+            const aggregatedMetrics = aggregateMetricsFromResults(companyResults);
+            const monthlyTrendData = aggregateMonthlyTrendFromResults(companyResults);
 
-            output.sectors[sector.sector] = {
-                sector: sector.sector,
-                userTypeCount: sector.user_types.length,
-                productFitCount: sector.product_fits.length,
+            output.subIndustries[subIndustry] = {
+                subIndustry,
+                companyCount: companiesInSubIndustry.length,
                 aggregatedMetrics,
                 monthlyTrendData,
             };
         } catch (error) {
-            console.error(`  Error aggregating sector "${sector.sector}":`, error);
+            console.error(`  Error aggregating sub-industry "${subIndustry}":`, error);
         }
     }
 
-    console.log(`✓ Aggregated ${Object.keys(output.sectors).length} sectors\n`);
+    console.log(`✓ Aggregated ${Object.keys(output.subIndustries).length} sub-industries\n`);
 
     // Save results
     console.log('\n[Saving] Writing results to file...');
@@ -552,13 +572,11 @@ async function aggregateSectorMetricsMain() {
     console.log(`✓ Saved aggregated metrics to ${path.basename(outputPath)} (${fileSizeMB.toFixed(2)} MB)\n`);
 
     console.log('=== Aggregation Complete ===');
-    console.log(`Total user_types processed: ${Object.keys(output.user_types).length}`);
-    console.log(`Total product_fits processed: ${Object.keys(output.product_fits).length}`);
-    console.log(`Total sectors aggregated: ${Object.keys(output.sectors).length}`);
+    console.log(`Total companies processed: ${Object.keys(output.companies).length}`);
+    console.log(`Total sub-industries aggregated: ${Object.keys(output.subIndustries).length}`);
 }
 
 aggregateSectorMetricsMain().catch(error => {
     console.error('Error:', error);
     process.exit(1);
 });
-

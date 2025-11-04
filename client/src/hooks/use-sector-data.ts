@@ -30,29 +30,33 @@ export interface SectorMetricResult {
     }>;
 }
 
-export interface SectorAggregateResult {
-    sector: string;
-    userTypeCount: number;
-    productFitCount: number;
+export interface CompanyMetricResult {
+    keywordCount: number;
+    aggregatedMetrics: AggregatedMetrics;
+    monthlyTrendData: Array<{ month: string; volume: number }>;
+    topKeywords: Array<{
+        keyword: string;
+        similarityScore: number;
+        volume: number;
+        growth3m: number;
+        growthYoy: number;
+        opportunityScore?: number;
+    }>;
+}
+
+export interface SubIndustryAggregateResult {
+    subIndustry: string;
+    companyCount: number;
     aggregatedMetrics: AggregatedMetrics;
     monthlyTrendData: Array<{ month: string; volume: number }>;
 }
 
-export interface SectorStructure {
-    sector: string;
-    user_types: string[];
-    product_fits: string[];
-}
-
 export interface SectorBrowserData {
-    sectors: Record<string, SectorAggregateResult>;
-    user_types: Record<string, SectorMetricResult>;
-    product_fits: Record<string, SectorMetricResult>;
-    sectorsStructure?: SectorStructure[];
+    companies: Record<string, CompanyMetricResult>;
+    subIndustries: Record<string, SubIndustryAggregateResult>;
     metadata: {
-        totalUserTypes: number;
-        totalProductFits: number;
-        totalSectors: number;
+        totalCompanies: number;
+        totalSubIndustries: number;
         generatedAt: string;
     };
 }
