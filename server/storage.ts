@@ -78,53 +78,9 @@ export class DatabaseStorage implements IStorage {
             .where(eq(ideas.userId, userId))
             .orderBy(desc(ideas.createdAt));
 
-        // Extract report IDs for batch keyword fetching
-        const reportIds = ideasWithReportsData
-            .map(row => row.report?.id)
-            .filter((id): id is string => id != null); // Filters out both null and undefined
-
-        // Query 2: Batch fetch all keywords for all reports at once
-        const allKeywords = reportIds.length > 0
-            ? await db.select().from(keywords).where(inArray(keywords.reportId, reportIds))
-            : [];
-
-        // Group keywords by reportId for efficient lookup and filter out incomplete data
+        // Skip loading keywords from database - always generate fresh from vector service
+        // This avoids loading old incomplete data and ensures we always use the new_keywords CSV
         const keywordsByReportId = new Map<string, Keyword[]>();
-        const filteredCounts = new Map<string, { total: number; filtered: number }>();
-        
-        allKeywords.forEach(keyword => {
-            // Track counts for debugging
-            if (!filteredCounts.has(keyword.reportId)) {
-                filteredCounts.set(keyword.reportId, { total: 0, filtered: 0 });
-            }
-            const counts = filteredCounts.get(keyword.reportId)!;
-            counts.total++;
-            
-            // Filter out keywords with incomplete data (less than 48 months)
-            if (!keyword.monthlyData) {
-                counts.filtered++;
-                return;
-            }
-            if (!Array.isArray(keyword.monthlyData)) {
-                counts.filtered++;
-                return;
-            }
-            if (keyword.monthlyData.length < 47) {
-                counts.filtered++;
-                return;
-            }
-            
-            const list = keywordsByReportId.get(keyword.reportId) || [];
-            list.push(keyword);
-            keywordsByReportId.set(keyword.reportId, list);
-        });
-        
-        // Log filtering statistics
-        filteredCounts.forEach((counts, reportId) => {
-            if (counts.total > 0 && counts.filtered === counts.total) {
-                console.warn(`[Storage] All ${counts.total} keywords were filtered out for report ${reportId} in getIdeasByUser`);
-            }
-        });
 
         // Construct the final result structure
         const ideasWithReports: IdeaWithReport[] = ideasWithReportsData.map(({ idea, report }) => {

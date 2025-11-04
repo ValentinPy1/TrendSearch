@@ -389,14 +389,14 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                 description={company.description}
                                                 url={company.url}
                                                 type="user_type"
-                                                onClick={() => handleItemClick(company.name)}
+                                                onClick={() => handleItemClick(company.description || company.name)}
                                                 compact
                                             />
                                         ))}
                                     </div>
                                 ) : (
                                     <div className="text-center py-12 text-white/60">
-                                        {companyFilterQuery && companyFilterQuery.trim()
+                                        {companyFilterQuery && companyFilterQuery.trim() 
                                             ? `No companies found matching "${companyFilterQuery}"`
                                             : "No companies available"
                                         }

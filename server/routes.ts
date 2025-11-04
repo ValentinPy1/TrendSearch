@@ -1034,17 +1034,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Check if report already exists
             const existingReport = await storage.getReportByIdeaId(ideaId);
-            if (existingReport) {
-                const keywords = await storage.getKeywordsByReportId(existingReport.id);
-                return res.json({
-                    report: existingReport,
-                    keywords,
-                });
-            }
-
-            // Get real keyword data from vector database with filters
+            
+            // Always generate keywords fresh from vector service (new_keywords CSV)
+            // This ensures we always use the latest dataset and avoid old incomplete data
             const { keywords: keywordData, aggregates } =
                 await getKeywordsFromVectorDB(idea.generatedIdea, validatedCount, filters);
+
+            if (existingReport) {
+                // Return existing report but with fresh keywords from vector service
+                return res.json({
+                    report: existingReport,
+                    keywords: keywordData,
+                });
+            }
 
             // Create report
             const report = await storage.createReport({
@@ -1095,9 +1097,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 };
             });
 
-            const keywords = await storage.createKeywords(keywordsToInsert);
+            // Skip storing keywords in database - always generate fresh from vector service
+            // This avoids database bloat and ensures we always use the latest dataset
+            // const keywords = await storage.createKeywords(keywordsToInsert);
 
-            res.json({ report, keywords });
+            res.json({ report, keywords: keywordData });
         } catch (error) {
             console.error("[Generate Report Error]:", error);
             res.status(500).json({
@@ -1126,13 +1130,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(404).json({ message: "Idea not found" });
             }
 
-            // Get current keyword count
-            const existingKeywords = await storage.getKeywordsByReportId(reportId);
-            const currentCount = existingKeywords.length;
-            const existingKeywordSet = new Set(existingKeywords.map((k) => k.keyword));
-
             // Fetch 5 more keywords (with filters if provided)
-            const { filters = [] } = req.body;
+            const { filters = [], existingKeywords = [] } = req.body;
             
             // Check payment requirement if filters are provided
             if (filters && filters.length > 0) {
@@ -1148,8 +1147,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 req.user = freshUser;
             }
             
+            // Track existing keywords from client request (not from database)
+            const existingKeywordSet = new Set(existingKeywords.map((k: any) => k.keyword || k));
+            const currentCount = existingKeywords.length;
             const newCount = currentCount + 5;
 
+            // Always generate keywords fresh from vector service (new_keywords CSV)
             // Use excludeKeywords to avoid fetching already loaded keywords
             const { keywords: keywordData, hasMore } = await getKeywordsFromVectorDB(
                 idea.generatedIdea,
@@ -1158,7 +1161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 existingKeywordSet, // Exclude already loaded keywords
             );
 
-            // Get only new keywords (those not already in database)
+            // Get only new keywords (those not already loaded)
             const newKeywordsData = keywordData.filter(
                 (kw) => !existingKeywordSet.has(kw.keyword),
             );
@@ -1213,9 +1216,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 };
             });
 
-            const newKeywords = await storage.createKeywords(keywordsToInsert);
+            // Skip storing keywords in database - always generate fresh from vector service
+            // This avoids database bloat and ensures we always use the latest dataset
+            // const newKeywords = await storage.createKeywords(keywordsToInsert);
 
-            res.json({ keywords: newKeywords });
+            res.json({ keywords: newKeywordsData });
         } catch (error) {
             console.error("[Load More Keywords Error]:", error);
             res.status(500).json({
