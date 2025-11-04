@@ -69,7 +69,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
   const metrics = [
     {
       label: "Opportunity",
-      value: opportunityScore.toFixed(1),
+      value: Math.round(opportunityScore).toString(),
       subtitle: "opportunity score",
       icon: Zap,
       style: getOrangeGradientText(opportunityScore, maxOpportunityScore),
@@ -77,7 +77,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
     },
     {
       label: "YoY Growth",
-      value: `${growthYoy >= 0 ? "+" : ""}${growthYoy.toFixed(1)}%`,
+      value: `${growthYoy >= 0 ? "+" : ""}${Math.round(growthYoy)}%`,
       subtitle: "annual trend",
       icon: TrendingUp,
       style: getTrendGradientText(growthYoy),

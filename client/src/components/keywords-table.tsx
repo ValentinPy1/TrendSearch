@@ -251,6 +251,26 @@ export function KeywordsTable({
         }
     };
 
+    const formatCurrencyThreeSignificantDigits = (value: number): string => {
+        if (value === 0 || isNaN(value) || !isFinite(value)) {
+            return "N/A";
+        }
+
+        // Round to 3 significant digits
+        const order = Math.floor(Math.log10(Math.abs(value)));
+        const rounded = Math.round(value / Math.pow(10, order - 2)) * Math.pow(10, order - 2);
+
+        // Format with thousands separators
+        // For values >= 1, show as whole numbers
+        // For values < 1, show decimals
+        if (rounded >= 1) {
+            return `$${Math.round(rounded).toLocaleString('en-US')}`;
+        } else {
+            // For small values, show up to 3 decimal places
+            return `$${rounded.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}`;
+        }
+    };
+
     // Column configuration
     const columnConfigs = useMemo<Record<string, ColumnConfig>>(() => {
         const configs: Record<string, ColumnConfig> = {
@@ -398,7 +418,7 @@ export function KeywordsTable({
                     return (
                         <span className="font-medium" style={getTrendGradientText(growth3m)}>
                             {growth3m >= 0 ? "+" : ""}
-                            {growth3m.toFixed(1)}%
+                            {Math.round(growth3m)}%
                         </span>
                     );
                 },
@@ -415,7 +435,7 @@ export function KeywordsTable({
                     return (
                         <span className="font-medium" style={getTrendGradientText(growthYoy)}>
                             {growthYoy >= 0 ? "+" : ""}
-                            {growthYoy.toFixed(1)}%
+                            {Math.round(growthYoy)}%
                         </span>
                     );
                 },
@@ -494,7 +514,7 @@ export function KeywordsTable({
                 tooltip: "Search Acquisition Cost",
                 format: (value) => {
                     const sac = parseFloat(value || "0");
-                    const displayValue = formatCurrencyTwoSignificantDigits(sac);
+                    const displayValue = formatCurrencyThreeSignificantDigits(sac);
                     return (
                         <span className="font-medium" style={getLogarithmicPurpleGradient(sac)}>
                             {displayValue}
@@ -514,7 +534,7 @@ export function KeywordsTable({
                     const maxScore = 25; // Scale gradient from 0 to 100
                     return (
                         <span className="font-medium" style={getOrangeGradientText(score, maxScore)}>
-                            {score.toFixed(2)}
+                            {Math.round(score)}
                         </span>
                     );
                 },

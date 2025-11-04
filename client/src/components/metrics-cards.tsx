@@ -132,10 +132,28 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
         return { color: `hsl(30, 80%, ${lightness}%)` };
     };
 
+    const formatThreeSignificantDigits = (value: number): string => {
+        if (value === 0 || isNaN(value) || !isFinite(value)) {
+            return "$0";
+        }
+
+        // Round to 3 significant digits
+        const order = Math.floor(Math.log10(Math.abs(value)));
+        const rounded = Math.round(value / Math.pow(10, order - 2)) * Math.pow(10, order - 2);
+
+        // Format with thousands separators
+        if (rounded >= 1) {
+            return `$${Math.round(rounded).toLocaleString('en-US')}`;
+        } else {
+            // For small values, show up to 3 decimal places if needed
+            return `$${rounded.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}`;
+        }
+    };
+
     const metrics = [
         {
             label: "Avg Opportunity",
-            value: avgOpportunityScore.toFixed(1),
+            value: Math.round(avgOpportunityScore).toString(),
             subtitle: "opportunity score",
             icon: Zap,
             style: getOrangeGradientText(avgOpportunityScore, maxOpportunityScore),
@@ -143,7 +161,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
         },
         {
             label: "Avg YoY Growth",
-            value: `${avgGrowthYoy >= 0 ? "+" : ""}${avgGrowthYoy.toFixed(1)}%`,
+            value: `${avgGrowthYoy >= 0 ? "+" : ""}${Math.round(avgGrowthYoy)}%`,
             subtitle: "annual trend",
             icon: TrendingUp,
             style: getTrendGradientText(avgGrowthYoy),
@@ -175,7 +193,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
         },
         {
             label: "Avg SAC",
-            value: `$${avgSac.toFixed(2)}`,
+            value: formatThreeSignificantDigits(avgSac),
             subtitle: "seller ad cost",
             icon: DollarSign,
             style: getPurpleGradientText(avgSac, maxSac),
