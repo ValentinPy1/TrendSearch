@@ -9,16 +9,16 @@ interface KeywordMetricsCardsProps {
 }
 
 export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCardsProps) {
+  const opportunityScore = parseFloat(keyword.opportunityScore || "0");
   const growthYoy = parseFloat(keyword.growthYoy || "0");
   const volume = keyword.volume || 0;
   const competition = keyword.competition || 0;
   const cpc = parseFloat(keyword.cpc || "0");
-  const topPageBid = parseFloat(keyword.topPageBid || "0");
 
   // Calculate max values for gradients
   const maxVolume = Math.max(...allKeywords.map(k => k.volume || 0));
   const maxCpc = Math.max(...allKeywords.map(k => parseFloat(k.cpc || "0")));
-  const maxTopPageBid = Math.max(...allKeywords.map(k => parseFloat(k.topPageBid || "0")));
+  const maxOpportunityScore = Math.max(...allKeywords.map(k => parseFloat(k.opportunityScore || "0")));
 
   const getTrendGradientText = (value: number) => {
     // White at 0%, full green at +200%, full red at -100%
@@ -60,7 +60,21 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
     return { color: `hsl(250, 80%, ${lightness}%)` };
   };
 
+  const getOrangeGradientText = (value: number, max: number) => {
+    const normalizedValue = Math.min(1, (value / max));
+    const lightness = 100 - (normalizedValue * 40);
+    return { color: `hsl(30, 80%, ${lightness}%)` };
+  };
+
   const metrics = [
+    {
+      label: "Opportunity",
+      value: opportunityScore.toFixed(1),
+      subtitle: "opportunity score",
+      icon: Zap,
+      style: getOrangeGradientText(opportunityScore, maxOpportunityScore),
+      info: "Comprehensive opportunity score combining multiple factors (higher = better opportunity)",
+    },
     {
       label: "YoY Growth",
       value: `${growthYoy >= 0 ? "+" : ""}${growthYoy.toFixed(1)}%`,
@@ -78,14 +92,6 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       info: "Average monthly search volume - indicates market size and demand",
     },
     {
-      label: "Competition",
-      value: competition.toString(),
-      subtitle: "advertiser density",
-      icon: Users,
-      style: getRedGradientText(competition),
-      info: "Advertiser competition level (0-100) - higher values mean more advertisers bidding",
-    },
-    {
       label: "CPC",
       value: `$${cpc.toFixed(2)}`,
       subtitle: "avg click cost",
@@ -94,12 +100,12 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
       info: "Average cost per click - what advertisers typically pay for each click",
     },
     {
-      label: "Top Page Bid",
-      value: `$${topPageBid.toFixed(2)}`,
-      subtitle: "top placement cost",
-      icon: Zap,
-      style: getPurpleGradientText(topPageBid, maxTopPageBid),
-      info: "Estimated bid to appear at top of search results - indicates premium placement cost",
+      label: "Competition",
+      value: competition.toString(),
+      subtitle: "advertiser density",
+      icon: Users,
+      style: getRedGradientText(competition),
+      info: "Advertiser competition level (0-100) - higher values mean more advertisers bidding",
     },
   ];
 
