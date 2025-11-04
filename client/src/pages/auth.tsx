@@ -92,6 +92,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               first_name: data.firstName,
               last_name: data.lastName,
             },
+            emailRedirectTo: window.location.origin, // Optional: for email confirmation
           },
         });
 
@@ -99,21 +100,24 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
           throw new Error(authError.message);
         }
 
+        // Handle email confirmation requirement
         if (!authData.session) {
-          throw new Error("No session created");
+          // Email confirmation is required
+          toast({
+            title: "Check your email!",
+            description: "Please check your email to confirm your account before signing in.",
+          });
+          // Switch to login mode so user can login after confirming
+          setIsLogin(true);
+          return;
         }
 
-        // Create user profile
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          throw new Error("No session found");
-        }
-
+        // Session exists - create user profile
         const response = await fetch("/api/auth/create-profile", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
+            "Authorization": `Bearer ${authData.session.access_token}`,
           },
           body: JSON.stringify({
             firstName: data.firstName,
