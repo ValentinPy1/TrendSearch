@@ -12,6 +12,7 @@ import { db } from "./db";
 import { keywordVectorService } from "./keyword-vector-service";
 import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
 import { calculateOpportunityScore } from "./opportunity-score";
+import OpenAI from "openai";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -1323,6 +1324,239 @@ export async function registerRoutes(app: Express): Promise<Server> {
             res.status(500).json({
                 message: "Failed to load sector metrics",
                 error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    });
+
+    // Initialize OpenAI client for custom search
+    const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+
+    // Generate items from pitch (topics, personas, pain points, features)
+    app.post("/api/custom-search/generate-items", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { pitch, type } = req.body;
+
+            if (!pitch || typeof pitch !== "string" || pitch.trim().length === 0) {
+                return res.status(400).json({ message: "Pitch is required" });
+            }
+
+            if (!type || !["topics", "personas", "pain-points", "features"].includes(type)) {
+                return res.status(400).json({ message: "Valid type is required (topics, personas, pain-points, or features)" });
+            }
+
+            let prompt = "";
+            let systemMessage = "";
+
+            switch (type) {
+                case "topics":
+                    systemMessage = "You are a business analyst. Generate relevant topics related to the given idea pitch.";
+                    prompt = `Based on this idea pitch, generate 5-10 relevant topics (keywords or phrases) that describe the main themes, industries, or categories related to this idea.
+
+Idea Pitch:
+${pitch}
+
+Generate 5-10 topics as a JSON array of strings. Each topic should be concise (1-3 words). Return ONLY the JSON array, no other text.`;
+                    break;
+
+                case "personas":
+                    systemMessage = "You are a marketing strategist. Generate target personas based on the given idea pitch.";
+                    prompt = `Based on this idea pitch, generate 5-10 target personas (user types) who would benefit from this idea.
+
+Idea Pitch:
+${pitch}
+
+Generate 5-10 personas as a JSON array of strings. Each persona should be a brief description (2-4 words). Return ONLY the JSON array, no other text.`;
+                    break;
+
+                case "pain-points":
+                    systemMessage = "You are a product strategist. Generate pain points that the idea addresses.";
+                    prompt = `Based on this idea pitch, generate 5-10 pain points or problems that this idea addresses.
+
+Idea Pitch:
+${pitch}
+
+Generate 5-10 pain points as a JSON array of strings. Each pain point should be concise (2-5 words). Return ONLY the JSON array, no other text.`;
+                    break;
+
+                case "features":
+                    systemMessage = "You are a product manager. Generate key features based on the given idea pitch.";
+                    prompt = `Based on this idea pitch, generate 5-10 key features or capabilities that this idea would provide.
+
+Idea Pitch:
+${pitch}
+
+Generate 5-10 features as a JSON array of strings. Each feature should be concise (2-4 words). Return ONLY the JSON array, no other text.`;
+                    break;
+            }
+
+            const response = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                    {
+                        role: "system",
+                        content: systemMessage,
+                    },
+                    {
+                        role: "user",
+                        content: prompt,
+                    },
+                ],
+                max_tokens: 300,
+                temperature: 0.7,
+            });
+
+            let content = response.choices[0]?.message?.content?.trim();
+            if (!content) {
+                throw new Error("No content generated from OpenAI");
+            }
+
+            // Strip markdown code blocks (```json and ```) - handle various formats
+            content = content
+                .replace(/^```json\s*/i, "")  // Remove ```json at start
+                .replace(/^```\s*/i, "")      // Remove ``` at start (if no json)
+                .replace(/\s*```$/i, "")      // Remove ``` at end
+                .replace(/```json/gi, "")     // Remove any ```json in middle
+                .replace(/```/g, "")          // Remove any remaining ```
+                .trim();
+
+            // Parse JSON array from response
+            let items: string[] = [];
+            try {
+                // Try to parse as JSON array
+                const parsed = JSON.parse(content);
+                if (Array.isArray(parsed)) {
+                    items = parsed.filter((item) => typeof item === "string" && item.trim().length > 0);
+                } else {
+                    // If not an array, try to split by commas or newlines
+                    items = content.split(/[,\n]/).map((item) => item.trim()).filter((item) => item.length > 0);
+                }
+            } catch (parseError) {
+                // If JSON parsing fails, try to extract items from text
+                // Remove markdown formatting and extract items
+                items = content
+                    .replace(/^\[/g, "")
+                    .replace(/\]$/g, "")
+                    .split(/[,\n]/)
+                    .map((item) => item.trim().replace(/^["']|["']$/g, "").replace(/^[-*]\s*/, ""))
+                    .filter((item) => item.length > 0);
+            }
+
+            if (items.length === 0) {
+                throw new Error("No items generated from OpenAI response");
+            }
+
+            res.json({ items });
+        } catch (error) {
+            console.error("Error generating items:", error);
+            res.status(500).json({
+                message: "Failed to generate items",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Find competitors based on idea description
+    app.post("/api/custom-search/find-competitors", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { pitch, topics, personas, painPoints, features } = req.body;
+
+            if (!pitch || typeof pitch !== "string" || pitch.trim().length === 0) {
+                return res.status(400).json({ message: "Pitch is required" });
+            }
+
+            const additionalContext: string[] = [];
+            if (topics && Array.isArray(topics) && topics.length > 0) {
+                additionalContext.push(`Topics: ${topics.join(", ")}`);
+            }
+            if (personas && Array.isArray(personas) && personas.length > 0) {
+                additionalContext.push(`Target Personas: ${personas.join(", ")}`);
+            }
+            if (painPoints && Array.isArray(painPoints) && painPoints.length > 0) {
+                additionalContext.push(`Pain Points: ${painPoints.join(", ")}`);
+            }
+            if (features && Array.isArray(features) && features.length > 0) {
+                additionalContext.push(`Features: ${features.join(", ")}`);
+            }
+
+            const systemMessage = "You are a competitive intelligence analyst. Analyze ideas and identify real competitors in the market.";
+
+            const prompt = `Based on this idea pitch, identify 5-10 real competitors (existing products, services, or companies) that address similar problems or target similar audiences.
+
+Idea Pitch:
+${pitch}
+
+${additionalContext.length > 0 ? `\nAdditional Context:\n${additionalContext.join("\n")}\n` : ""}
+
+Generate a JSON array of competitor objects. Each object should have:
+- name: string (company or product name)
+- description: string (brief description of what they do, 10-20 words)
+- url: string | null (website URL if known, or null)
+
+Return ONLY the JSON array, no other text. Example format:
+[
+  {"name": "Competitor A", "description": "Brief description here", "url": "https://example.com"},
+  {"name": "Competitor B", "description": "Brief description here", "url": null}
+]`;
+
+            const response = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                    {
+                        role: "system",
+                        content: systemMessage,
+                    },
+                    {
+                        role: "user",
+                        content: prompt,
+                    },
+                ],
+                max_tokens: 800,
+                temperature: 0.7,
+            });
+
+            let content = response.choices[0]?.message?.content?.trim();
+            if (!content) {
+                throw new Error("No content generated from OpenAI");
+            }
+
+            // Strip markdown code blocks (```json and ```) - handle various formats
+            content = content
+                .replace(/^```json\s*/i, "")  // Remove ```json at start
+                .replace(/^```\s*/i, "")      // Remove ``` at start (if no json)
+                .replace(/\s*```$/i, "")      // Remove ``` at end
+                .replace(/```json/gi, "")     // Remove any ```json in middle
+                .replace(/```/g, "")          // Remove any remaining ```
+                .trim();
+
+            // Parse JSON array from response
+            let competitors: Array<{ name: string; description: string; url?: string | null }> = [];
+            try {
+                const parsed = JSON.parse(content);
+                if (Array.isArray(parsed)) {
+                    competitors = parsed.map((comp: any) => ({
+                        name: comp.name || comp.title || "Unknown",
+                        description: comp.description || comp.desc || "",
+                        url: comp.url || null,
+                    })).filter((comp: any) => comp.name !== "Unknown" && comp.description.length > 0);
+                }
+            } catch (parseError) {
+                console.error("Error parsing competitors JSON:", parseError);
+                throw new Error("Failed to parse competitors response");
+            }
+
+            if (competitors.length === 0) {
+                throw new Error("No competitors found");
+            }
+
+            res.json({ competitors });
+        } catch (error) {
+            console.error("Error finding competitors:", error);
+            res.status(500).json({
+                message: "Failed to find competitors",
+                error: error instanceof Error ? error.message : "Unknown error",
             });
         }
     });
