@@ -10,15 +10,44 @@ if (!process.env.DATABASE_URL) {
 
 console.log("[Database] Initializing connection to Supabase PostgreSQL...");
 
-// Create postgres client with better timeout settings and IPv4 forcing
-const sql = postgres(process.env.DATABASE_URL, {
+// Parse and validate DATABASE_URL
+let databaseUrl = process.env.DATABASE_URL;
+
+// Check if the URL might have parsing issues (special characters in password)
+// If the URL doesn't start with postgresql://, it might be malformed
+if (!databaseUrl.startsWith('postgresql://') && !databaseUrl.startsWith('postgres://')) {
+    throw new Error("DATABASE_URL must start with postgresql:// or postgres://");
+}
+
+// Try to parse and fix the URL if it has special characters in the password
+try {
+    const urlObj = new URL(databaseUrl);
+    // Check if password contains special characters that need encoding
+    const password = urlObj.password;
+    if (password) {
+        const decoded = decodeURIComponent(password);
+        if (decoded === password) {
+            // Password is not encoded, encode it
+            const encodedPassword = encodeURIComponent(password);
+            urlObj.password = encodedPassword;
+            databaseUrl = urlObj.toString();
+            console.log("[Database] Fixed URL encoding for password with special characters");
+        }
+    }
+    // Log the connection URL (without password) for debugging
+    const safeUrl = `${urlObj.protocol}//${urlObj.username}@${urlObj.hostname}:${urlObj.port}${urlObj.pathname}`;
+    console.log("[Database] Connecting to:", safeUrl);
+} catch (e) {
+    console.warn("[Database] Could not parse DATABASE_URL, using as-is:", e instanceof Error ? e.message : String(e));
+}
+
+// Create postgres client with better timeout settings
+const sql = postgres(databaseUrl, {
     max: 1, // Use a single connection for simplicity
     idle_timeout: 20,
     connect_timeout: 30, // Increased from 10 to 30 seconds
     max_lifetime: 60 * 30, // 30 minutes
     ssl: 'require', // Ensure SSL is required for Supabase
-    // Force IPv4 to avoid WSL2 IPv6 issues
-    family: 4,
     // Additional connection options for WSL2 compatibility
     prepare: false,
     transform: undefined,

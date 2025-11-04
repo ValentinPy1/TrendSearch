@@ -1,9 +1,14 @@
+import express from "express";
 import type { Express } from "express";
-import { createServer, type Server } from "http";
-import session from "express-session";
+import { createServer } from "http";
+import type { Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema } from "@shared/schema-sqlite";
-import bcrypt from "bcryptjs";
+import { supabaseAdmin } from "./supabase";
+import { stripe } from "./stripe";
+import Stripe from "stripe";
+import { eq } from "drizzle-orm";
+import { users } from "@shared/schema";
+import { db } from "./db";
 import { keywordVectorService } from "./keyword-vector-service";
 import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
 import { calculateOpportunityScore } from "./opportunity-score";
@@ -522,143 +527,350 @@ async function getKeywordsFromVectorDB(
     };
 }
 
-declare module "express-session" {
-    interface SessionData {
-        userId?: string;
-    }
-}
-
 export async function registerRoutes(app: Express): Promise<Server> {
-    // Session middleware
-    app.use(
-        session({
-            secret: process.env.SESSION_SECRET || "pioneer-idea-finder-secret-key",
-            resave: false,
-            saveUninitialized: false,
-            cookie: {
-                secure: process.env.NODE_ENV === "production",
-                httpOnly: true,
-                maxAge: 24 * 60 * 60 * 1000, // 24 hours
-            },
-        }),
-    );
+    // Auth middleware - verify Supabase JWT token
+    const requireAuth = async (req: any, res: any, next: any) => {
+        try {
+            const authHeader = req.headers.authorization;
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                return res.status(401).json({ message: "Unauthorized" });
+            }
 
-    // Auth middleware
-    const requireAuth = (req: any, res: any, next: any) => {
-        if (!req.session.userId) {
+            const token = authHeader.substring(7);
+            const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+
+            if (error || !user) {
+                console.error("JWT verification error:", error);
+                return res.status(401).json({ message: "Unauthorized" });
+            }
+
+            // Get local user by Supabase user ID, or create if doesn't exist
+            let localUser;
+            try {
+                localUser = await storage.getUserBySupabaseUserId(user.id);
+            } catch (dbError) {
+                console.error("Database error when fetching user:", dbError);
+                // If database connection fails, still allow auth but without local profile
+                // This is a fallback for when database is temporarily unavailable
+                return res.status(503).json({ 
+                    message: "Database temporarily unavailable. Please try again." 
+                });
+            }
+
+            if (!localUser) {
+                // Auto-create profile if it doesn't exist (first login after email confirmation)
+                const firstName = user.user_metadata?.first_name;
+                const lastName = user.user_metadata?.last_name;
+                if (!firstName || !lastName || firstName.trim().length < 1 || lastName.trim().length < 1) {
+                    return res.status(400).json({
+                        message: "Missing required profile information: first name and last name must be provided."
+                    });
+                }
+                try {
+                    localUser = await storage.createUser({
+                        supabaseUserId: user.id,
+                        firstName,
+                        lastName,
+                        email: user.email || "",
+                    });
+                    console.log("Auto-created user profile for:", user.email);
+                } catch (createError) {
+                    console.error("Failed to auto-create user profile:", createError);
+                    return res.status(500).json({ 
+                        message: "Failed to create user profile. Database connection issue." 
+                    });
+                }
+            }
+
+            req.user = localUser;
+            req.supabaseUser = user;
+            next();
+        } catch (error) {
+            console.error("Auth middleware error:", error);
             return res.status(401).json({ message: "Unauthorized" });
         }
+    };
+
+    // Payment middleware - check if user has paid
+    const requirePayment = async (req: any, res: any, next: any) => {
+        if (!req.user) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
+        
+        // Refetch user from database to get latest payment status (req.user might be stale)
+        const freshUser = await storage.getUser(req.user.id);
+        
+        if (!freshUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        
+        // Update req.user with fresh data
+        req.user = freshUser;
+        
+        if (!freshUser.hasPaid) {
+            return res.status(402).json({ 
+                message: "Payment required",
+                requiresPayment: true 
+            });
+        }
+        
         next();
     };
 
     // Auth routes
-    app.post("/api/auth/signup", async (req, res) => {
+    // Note: Signup and login are handled by Supabase Auth on the client side
+    // This endpoint is called after Supabase creates the user to create the local profile
+    
+    app.post("/api/auth/create-profile", requireAuth, async (req, res) => {
         try {
-            console.log("Signup attempt:", {
-                email: req.body?.email,
-                hasFirstName: !!req.body?.firstName,
-                hasLastName: !!req.body?.lastName,
-                hasPassword: !!req.body?.password,
-                bodyKeys: Object.keys(req.body || {}),
-            });
+            const { firstName, lastName } = req.body;
+            const supabaseUser = req.supabaseUser;
 
-            const data = insertUserSchema.parse(req.body);
-
-            console.log("Checking for existing user...");
-            const existingUser = await storage.getUserByEmail(data.email);
+            // Check if profile already exists
+            const existingUser = await storage.getUserBySupabaseUserId(supabaseUser.id);
             if (existingUser) {
-                console.log("User already exists");
-                return res.status(400).json({ message: "Email already exists" });
+                return res.json({ user: { id: existingUser.id, email: existingUser.email } });
             }
 
-            console.log("Hashing password...");
-            const hashedPassword = await bcrypt.hash(data.password, 10);
-
-            console.log("Creating user in database...");
+            // Create user profile
             const user = await storage.createUser({
-                firstName: data.firstName,
-                lastName: data.lastName,
-                email: data.email,
-                password: hashedPassword,
+                supabaseUserId: supabaseUser.id,
+                firstName: firstName || supabaseUser.user_metadata?.first_name || "",
+                lastName: lastName || supabaseUser.user_metadata?.last_name || "",
+                email: supabaseUser.email || "",
             });
 
-            console.log("User created successfully:", user.id);
-            req.session.userId = user.id;
             res.json({ user: { id: user.id, email: user.email } });
         } catch (error) {
-            console.error("Signup error:", error);
-            console.error("Error type:", error?.constructor?.name);
-
-            // Handle database connection errors
-            if (
-                error &&
-                typeof error === "object" &&
-                "type" in error &&
-                error.type === "error"
-            ) {
-                console.error("Database connection error detected");
-                return res.status(500).json({
-                    message: "Database connection failed. Please try again.",
-                });
-            }
-
-            if (error instanceof Error && "issues" in error) {
-                // Zod validation error
-                const zodError = error as any;
-                console.error("Zod validation issues:", zodError.issues);
-                return res.status(400).json({
-                    message: zodError.issues?.[0]?.message || "Validation failed",
-                    errors: zodError.issues,
-                });
-            }
-
+            console.error("Create profile error:", error);
             res.status(500).json({
-                message:
-                    error instanceof Error
-                        ? error.message
-                        : "Failed to create account. Please try again.",
+                message: error instanceof Error ? error.message : "Failed to create profile",
             });
         }
     });
 
-    app.post("/api/auth/login", async (req, res) => {
-        try {
-            const { email, password } = req.body;
-
-            const user = await storage.getUserByEmail(email);
-            if (!user) {
-                return res.status(401).json({ message: "Invalid credentials" });
-            }
-
-            const isValid = await bcrypt.compare(password, user.password);
-            if (!isValid) {
-                return res.status(401).json({ message: "Invalid credentials" });
-            }
-
-            req.session.userId = user.id;
-            res.json({ user: { id: user.id, email: user.email } });
-        } catch (error) {
-            res.status(400).json({ message: "Login failed" });
-        }
-    });
-
-    app.get("/api/auth/me", async (req, res) => {
-        if (!req.session.userId) {
-            return res.json({ user: null });
-        }
-
-        const user = await storage.getUser(req.session.userId);
-        if (!user) {
-            return res.json({ user: null });
-        }
-
+    app.get("/api/auth/me", requireAuth, async (req, res) => {
+        const user = req.user;
         res.json({ user: { id: user.id, email: user.email } });
     });
 
     app.post("/api/auth/logout", (req, res) => {
-        req.session.destroy(() => {
-            res.json({ success: true });
+        // Logout is handled by Supabase client on frontend
+        res.json({ success: true });
+    });
+
+    // Payment status endpoint
+    app.get("/api/payment/status", requireAuth, async (req, res) => {
+        // Refetch user from database to get latest payment status (req.user might be stale)
+        const freshUser = await storage.getUser(req.user.id);
+        
+        if (!freshUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        
+        // Disable caching to ensure fresh payment status
+        res.set({
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
         });
+        
+        res.json({ 
+            hasPaid: freshUser.hasPaid,
+            paymentDate: freshUser.paymentDate 
+        });
+    });
+
+    // Manual payment verification endpoint (for testing when webhook fails)
+    app.post("/api/payment/verify-session", requireAuth, async (req, res) => {
+        try {
+            const { sessionId } = req.body;
+            
+            console.log(`[Verify Payment] Starting verification for session: ${sessionId}`);
+            
+            if (!sessionId) {
+                return res.status(400).json({ message: "Session ID is required" });
+            }
+
+            // Retrieve the checkout session from Stripe
+            const session = await stripe.checkout.sessions.retrieve(sessionId);
+            
+            console.log(`[Verify Payment] Session retrieved. Payment status: ${session.payment_status}, Metadata:`, session.metadata);
+            
+            if (session.payment_status !== 'paid') {
+                console.log(`[Verify Payment] Payment not completed. Status: ${session.payment_status}`);
+                return res.status(400).json({ 
+                    message: "Payment not completed",
+                    payment_status: session.payment_status 
+                });
+            }
+
+            // Get user ID from metadata
+            const userId = session.metadata?.userId;
+            console.log(`[Verify Payment] User ID from metadata: ${userId}, Current user: ${req.user.id}`);
+            
+            if (!userId || userId !== req.user.id) {
+                console.log(`[Verify Payment] Unauthorized: userId mismatch`);
+                return res.status(403).json({ message: "Unauthorized" });
+            }
+
+            // Update user payment status
+            await db.update(users)
+                .set({
+                    hasPaid: true,
+                    paymentDate: new Date(),
+                    stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
+                })
+                .where(eq(users.id, userId));
+
+            // Verify the update
+            const updatedUser = await storage.getUser(userId);
+            
+            if (!updatedUser) {
+                console.error(`❌ Error: User ${userId} not found after update`);
+                return res.status(500).json({ message: "User not found after update" });
+            }
+            
+            if (updatedUser.hasPaid) {
+                console.log(`✅ Manual payment verification: User ${userId} payment status updated successfully. hasPaid: ${updatedUser.hasPaid}`);
+            } else {
+                console.error(`❌ Error: User ${userId} payment status update failed. hasPaid: ${updatedUser.hasPaid}`);
+                return res.status(500).json({ message: "Payment status update failed" });
+            }
+
+            res.json({ 
+                success: true,
+                message: "Payment verified and status updated",
+                hasPaid: updatedUser.hasPaid
+            });
+        } catch (error) {
+            console.error("Payment verification error:", error);
+            res.status(500).json({
+                message: error instanceof Error ? error.message : "Failed to verify payment",
+            });
+        }
+    });
+
+    // Stripe checkout endpoint
+    app.post("/api/stripe/create-checkout", requireAuth, async (req, res) => {
+        try {
+            const user = req.user;
+
+            // If user already paid, return success
+            if (user.hasPaid) {
+                return res.json({ 
+                    message: "User already has access",
+                    alreadyPaid: true 
+                });
+            }
+
+            if (!process.env.STRIPE_PRICE_ID) {
+                return res.status(500).json({ 
+                    message: "Stripe price ID not configured" 
+                });
+            }
+
+            // Create Stripe Checkout Session
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: [
+                    {
+                        price: process.env.STRIPE_PRICE_ID,
+                        quantity: 1,
+                    },
+                ],
+                mode: 'payment',
+                success_url: `${req.headers.origin || process.env.FRONTEND_URL || 'http://localhost:5000'}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${req.headers.origin || process.env.FRONTEND_URL || 'http://localhost:5000'}/payment-cancelled`,
+                customer_email: user.email,
+                metadata: {
+                    userId: user.id,
+                },
+            });
+
+            // Store Stripe customer ID if available
+            if (session.customer) {
+                await db.update(users)
+                    .set({ stripeCustomerId: typeof session.customer === 'string' ? session.customer : null })
+                    .where(eq(users.id, user.id));
+            }
+
+            res.json({ 
+                checkoutUrl: session.url,
+                sessionId: session.id 
+            });
+        } catch (error) {
+            console.error("Stripe checkout error:", error);
+            res.status(500).json({
+                message: error instanceof Error ? error.message : "Failed to create checkout session",
+            });
+        }
+    });
+
+    // Stripe webhook endpoint
+    app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), async (req, res) => {
+        const sig = req.headers['stripe-signature'];
+
+        if (!sig) {
+            return res.status(400).json({ message: "Missing stripe-signature header" });
+        }
+
+        if (!process.env.STRIPE_WEBHOOK_SECRET) {
+            return res.status(500).json({ message: "Stripe webhook secret not configured" });
+        }
+
+        let event;
+
+        try {
+            event = stripe.webhooks.constructEvent(
+                req.body,
+                sig,
+                process.env.STRIPE_WEBHOOK_SECRET
+            );
+        } catch (err) {
+            console.error("Webhook signature verification failed:", err);
+            return res.status(400).json({ message: `Webhook Error: ${err instanceof Error ? err.message : 'Unknown error'}` });
+        }
+
+        // Handle the event
+        if (event.type === 'checkout.session.completed') {
+            const session = event.data.object as Stripe.Checkout.Session;
+
+            // Get user ID from metadata
+            const userId = session.metadata?.userId;
+            if (!userId) {
+                console.error("No userId in checkout session metadata");
+                return res.status(400).json({ message: "Missing userId in session metadata" });
+            }
+
+            // Update user payment status
+            try {
+                await db.update(users)
+                    .set({
+                        hasPaid: true,
+                        paymentDate: new Date(),
+                        stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
+                    })
+                    .where(eq(users.id, userId));
+
+                console.log(`✅ Payment completed for user ${userId} - hasPaid set to true`);
+                
+                // Verify the update was successful
+                const updatedUser = await storage.getUser(userId);
+                if (updatedUser?.hasPaid) {
+                    console.log(`✅ Verified: User ${userId} payment status updated successfully`);
+                } else {
+                    console.error(`❌ Warning: User ${userId} payment status update may have failed`);
+                }
+            } catch (dbError) {
+                console.error("Failed to update user payment status:", dbError);
+                return res.status(500).json({ message: "Failed to update payment status" });
+            }
+        } else {
+            console.log(`Webhook received event: ${event.type} (not handled)`);
+        }
+
+        res.json({ received: true });
     });
 
     // Health check endpoint for debugging production issues
@@ -684,7 +896,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     app.post("/api/generate-idea", requireAuth, async (req, res) => {
         try {
             const { originalIdea } = req.body;
-            const userId = req.session.userId!; // Use session userId instead of client-provided
+            const userId = req.user.id; // Use authenticated user ID
 
             let generatedIdea: string;
 
@@ -712,7 +924,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Get user's ideas
     app.get("/api/ideas", requireAuth, async (req, res) => {
         try {
-            const ideas = await storage.getIdeasByUser(req.session.userId!);
+            const ideas = await storage.getIdeasByUser(req.user.id);
 
             // OPTIMIZATION: Removed expensive isKeyword check that was adding 12+ seconds
             // The isKeyword badge is not critical for initial page load
@@ -733,7 +945,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(404).json({ message: "Idea not found" });
             }
 
-            if (idea.userId !== req.session.userId) {
+            if (idea.userId !== req.user.id) {
                 return res.status(403).json({ message: "Forbidden" });
             }
 
@@ -750,6 +962,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
             const { ideaId, keywordCount = 20, filters = [] } = req.body;
 
+            // Check payment requirement if filters are provided
+            if (filters && filters.length > 0) {
+                // Refetch user from database to get latest payment status (req.user might be stale)
+                const freshUser = await storage.getUser(req.user.id);
+                if (!freshUser || !freshUser.hasPaid) {
+                    return res.status(402).json({ 
+                        message: "Payment required to use advanced filters",
+                        requiresPayment: true 
+                    });
+                }
+                // Update req.user with fresh data
+                req.user = freshUser;
+            }
+
             // Validate keywordCount (preload 20 keywords by default)
             const validatedCount = Math.max(
                 1,
@@ -761,7 +987,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(404).json({ message: "Idea not found" });
             }
 
-            if (idea.userId !== req.session.userId) {
+            if (idea.userId !== req.user.id) {
                 return res.status(403).json({ message: "Forbidden" });
             }
 
@@ -782,7 +1008,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Create report
             const report = await storage.createReport({
                 ideaId,
-                userId: req.session.userId!,
+                userId: req.user.id,
                 avgVolume: aggregates.avgVolume,
                 growth3m: parseFloat(aggregates.growth3m),
                 growthYoy: parseFloat(aggregates.growthYoy),
@@ -850,7 +1076,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(404).json({ message: "Report not found" });
             }
 
-            if (report.userId !== req.session.userId) {
+            if (report.userId !== req.user.id) {
                 return res.status(403).json({ message: "Forbidden" });
             }
 
@@ -866,6 +1092,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Fetch 5 more keywords (with filters if provided)
             const { filters = [] } = req.body;
+            
+            // Check payment requirement if filters are provided
+            if (filters && filters.length > 0) {
+                // Refetch user from database to get latest payment status (req.user might be stale)
+                const freshUser = await storage.getUser(req.user.id);
+                if (!freshUser || !freshUser.hasPaid) {
+                    return res.status(402).json({ 
+                        message: "Payment required to use advanced filters",
+                        requiresPayment: true 
+                    });
+                }
+                // Update req.user with fresh data
+                req.user = freshUser;
+            }
+            
             const newCount = currentCount + 5;
 
             // Use excludeKeywords to avoid fetching already loaded keywords
@@ -954,6 +1195,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.json({ count: null });
             }
 
+            // Check payment requirement for advanced filters
+            // Refetch user from database to get latest payment status (req.user might be stale)
+            const freshUser = await storage.getUser(req.user.id);
+            if (!freshUser || !freshUser.hasPaid) {
+                return res.status(402).json({ 
+                    message: "Payment required to use advanced filters",
+                    requiresPayment: true 
+                });
+            }
+            
+            // Update req.user with fresh data
+            req.user = freshUser;
+
             // Get ALL keywords from the database (not limited by similarity)
             const allRawKeywords = await keywordVectorService.getAllKeywords();
 
@@ -1023,7 +1277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(404).json({ message: "Report not found" });
             }
 
-            if (report.userId !== req.session.userId) {
+            if (report.userId !== req.user.id) {
                 return res.status(403).json({ message: "Forbidden" });
             }
 
@@ -1040,8 +1294,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
     });
 
-    // Get aggregated sector metrics
-    app.get("/api/sectors/aggregated", async (req, res) => {
+    // Get aggregated sector metrics - requires payment
+    app.get("/api/sectors/aggregated", requireAuth, requirePayment, async (req, res) => {
         try {
             const sectorsPath = path.join(process.cwd(), "data", "sectors_aggregated_metrics.json");
             const sectorsStructurePath = path.join(process.cwd(), "data", "sectors.json");

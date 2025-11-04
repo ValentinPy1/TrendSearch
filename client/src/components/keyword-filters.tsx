@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/collapsible";
 import { X, Filter, ChevronDown, ChevronUp, Plus, Pencil, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { PaywallModal } from "./paywall-modal";
+import { usePaymentStatus } from "@/hooks/use-payment-status";
 
 export type FilterOperator = ">" | ">=" | "<" | "<=" | "=";
 
@@ -70,6 +72,9 @@ export function KeywordFilters({
     const [editingFilterId, setEditingFilterId] = useState<string | null>(null);
     const [previewCount, setPreviewCount] = useState<number | null>(null);
     const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
+    const { data: paymentStatus } = usePaymentStatus();
+    const hasPaid = paymentStatus?.hasPaid ?? false;
 
     // Get available metrics (not already filtered, except the one being edited)
     const usedMetrics = new Set(
@@ -95,7 +100,11 @@ export function KeywordFilters({
             setPreviewCount(result.count);
             setIsLoadingPreview(false);
         },
-        onError: () => {
+        onError: (error: any) => {
+            // Check if it's a payment required error
+            if (error?.message?.includes("402") || error?.status === 402 || error?.requiresPayment) {
+                setShowPaywall(true);
+            }
             setPreviewCount(null);
             setIsLoadingPreview(false);
         },
@@ -122,6 +131,12 @@ export function KeywordFilters({
 
     const handleAddFilter = () => {
         if (!newFilterMetric || !newFilterValue) return;
+
+        // Check if user has paid before adding filter
+        if (!hasPaid) {
+            setShowPaywall(true);
+            return;
+        }
 
         const numericValue = parseFloat(newFilterValue);
         if (isNaN(numericValue)) return;
@@ -211,6 +226,7 @@ export function KeywordFilters({
     const canAddFilter = newFilterMetric && newFilterValue && !isNaN(parseFloat(newFilterValue));
 
     return (
+        <>
         <Collapsible open={isOpen} onOpenChange={setIsOpen}>
             <div className="flex items-center justify-between">
                 <CollapsibleTrigger asChild>
@@ -398,5 +414,12 @@ export function KeywordFilters({
                 )}
             </CollapsibleContent>
         </Collapsible>
+        
+        <PaywallModal
+            open={showPaywall}
+            onOpenChange={setShowPaywall}
+            feature="advanced-filters"
+        />
+    </>
     );
 }

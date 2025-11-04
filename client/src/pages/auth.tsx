@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertUserSchema, loginSchema, type InsertUser, type LoginUser } from "@shared/schema";
+import { z } from "zod";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,13 +14,26 @@ interface AuthPageProps {
   onAuthSuccess: (user: { id: string; email: string }) => void;
 }
 
+// Form validation schemas
+const signupSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
 export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const signupForm = useForm<InsertUser>({
-    resolver: zodResolver(insertUserSchema),
+  const signupForm = useForm<{ firstName: string; lastName: string; email: string; password: string }>({
+    resolver: zodResolver(signupSchema),
     defaultValues: {
       firstName: "",
       lastName: "",
@@ -28,7 +42,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     },
   });
 
-  const loginForm = useForm<LoginUser>({
+  const loginForm = useForm<{ email: string; password: string }>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
       email: "",
@@ -36,28 +50,110 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     },
   });
 
-  const onSubmit = async (data: InsertUser | LoginUser) => {
+  const onSubmit = async (data: { firstName?: string; lastName?: string; email: string; password: string }) => {
     setIsLoading(true);
     try {
-      const endpoint = isLogin ? "/api/auth/login" : "/api/auth/signup";
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+      if (isLogin) {
+        // Login with Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: data.email,
+          password: data.password,
+        });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Authentication failed");
+        if (authError) {
+          throw new Error(authError.message);
+        }
+
+        if (!authData.session) {
+          throw new Error("No session created");
+        }
+
+        // Get or create user profile
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          throw new Error("No session found");
+        }
+
+        const response = await fetch("/api/auth/create-profile", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            firstName: data.firstName || "",
+            lastName: data.lastName || "",
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Failed to create profile");
+        }
+
+        const result = await response.json();
+        onAuthSuccess(result.user);
+        
+        toast({
+          title: "Welcome back!",
+          description: "You've successfully logged in.",
+        });
+      } else {
+        // Signup with Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: data.email,
+          password: data.password,
+          options: {
+            data: {
+              first_name: data.firstName,
+              last_name: data.lastName,
+            },
+            emailRedirectTo: window.location.origin, // Optional: for email confirmation
+          },
+        });
+
+        if (authError) {
+          throw new Error(authError.message);
+        }
+
+        // Handle email confirmation requirement
+        if (!authData.session) {
+          // Email confirmation is required
+          toast({
+            title: "Check your email!",
+            description: "Please check your email to confirm your account before signing in.",
+          });
+          // Switch to login mode so user can login after confirming
+          setIsLogin(true);
+          return;
+        }
+
+        // Session exists - create user profile
+        const response = await fetch("/api/auth/create-profile", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${authData.session.access_token}`,
+          },
+          body: JSON.stringify({
+            firstName: data.firstName,
+            lastName: data.lastName,
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Failed to create profile");
+        }
+
+        const result = await response.json();
+        onAuthSuccess(result.user);
+        
+        toast({
+          title: "Account created!",
+          description: "Your account has been created successfully.",
+        });
       }
-
-      const result = await response.json();
-      onAuthSuccess(result.user);
-      
-      toast({
-        title: isLogin ? "Welcome back!" : "Account created!",
-        description: isLogin ? "You've successfully logged in." : "Your account has been created successfully.",
-      });
     } catch (error) {
       toast({
         title: "Error",
@@ -93,7 +189,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             </div>
 
             {isLogin ? (
-              <form onSubmit={loginForm.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={loginForm.handleSubmit((data) => onSubmit(data))} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-white/90">
                     Email
@@ -149,7 +245,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                 </Button>
               </form>
             ) : (
-              <form onSubmit={signupForm.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={signupForm.handleSubmit((data) => onSubmit(data))} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName" className="text-white/90">

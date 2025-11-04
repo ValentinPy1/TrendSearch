@@ -1,14 +1,19 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, jsonb, decimal } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, jsonb, decimal, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  supabaseUserId: text("supabase_user_id").notNull().unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   email: text("email").notNull().unique(),
-  password: text("password").notNull(),
+  // One-time payment fields
+  hasPaid: boolean("has_paid").default(false).notNull(),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  paymentDate: timestamp("payment_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -67,16 +72,15 @@ export const keywords = pgTable("keywords", {
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
+  hasPaid: true,
+  stripeCustomerId: true,
+  stripePaymentIntentId: true,
+  paymentDate: true,
 }).extend({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-});
-
-export const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(1, "Password is required"),
+  supabaseUserId: z.string().min(1, "Supabase user ID is required"),
 });
 
 export const insertIdeaSchema = createInsertSchema(ideas).omit({
@@ -96,7 +100,6 @@ export const insertKeywordSchema = createInsertSchema(keywords).omit({
 // Select types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
-export type LoginUser = z.infer<typeof loginSchema>;
 
 export type Idea = typeof ideas.$inferSelect;
 export type InsertIdea = z.infer<typeof insertIdeaSchema>;

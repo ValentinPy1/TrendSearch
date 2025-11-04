@@ -61,10 +61,22 @@ export function useSectorData() {
     return useQuery<SectorBrowserData>({
         queryKey: ["/api/sectors/aggregated"],
         queryFn: async () => {
-            const res = await apiRequest("GET", "/api/sectors/aggregated");
-            return res.json();
+            try {
+                const res = await apiRequest("GET", "/api/sectors/aggregated");
+                return res.json();
+            } catch (error: any) {
+                // Check if it's a payment required error
+                if (error?.message?.includes("402") || error?.status === 402) {
+                    const paymentError = new Error("Payment required");
+                    (paymentError as any).status = 402;
+                    (paymentError as any).requiresPayment = true;
+                    throw paymentError;
+                }
+                throw error;
+            }
         },
         staleTime: 1000 * 60 * 60, // 1 hour - sector data doesn't change often
+        retry: false,
     });
 }
 
