@@ -88,12 +88,17 @@ export class DatabaseStorage implements IStorage {
             ? await db.select().from(keywords).where(inArray(keywords.reportId, reportIds))
             : [];
 
-        // Group keywords by reportId for efficient lookup
+        // Group keywords by reportId for efficient lookup and filter out incomplete data
         const keywordsByReportId = new Map<string, Keyword[]>();
         allKeywords.forEach(keyword => {
-            const list = keywordsByReportId.get(keyword.reportId) || [];
-            list.push(keyword);
-            keywordsByReportId.set(keyword.reportId, list);
+            // Filter out keywords with incomplete data (less than 48 months)
+            if (keyword.monthlyData &&
+                Array.isArray(keyword.monthlyData) &&
+                keyword.monthlyData.length >= 48) {
+                const list = keywordsByReportId.get(keyword.reportId) || [];
+                list.push(keyword);
+                keywordsByReportId.set(keyword.reportId, list);
+            }
         });
 
         // Construct the final result structure
@@ -151,7 +156,13 @@ export class DatabaseStorage implements IStorage {
     }
 
     async getKeywordsByReportId(reportId: string): Promise<Keyword[]> {
-        return await db.select().from(keywords).where(eq(keywords.reportId, reportId));
+        const allKeywords = await db.select().from(keywords).where(eq(keywords.reportId, reportId));
+        // Filter out keywords with incomplete data (less than 48 months)
+        return allKeywords.filter(keyword =>
+            keyword.monthlyData &&
+            Array.isArray(keyword.monthlyData) &&
+            keyword.monthlyData.length >= 48
+        );
     }
 
     async getKeyword(id: string): Promise<Keyword | undefined> {

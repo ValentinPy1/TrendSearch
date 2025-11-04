@@ -60,6 +60,8 @@ interface CompanyMetricResult {
         growthYoy: number;
         opportunityScore?: number;
     }>;
+    description?: string;
+    url?: string;
 }
 
 interface SubIndustryAggregateResult {
@@ -162,8 +164,8 @@ async function processKeywords(rawKeywords: any[]): Promise<ProcessedKeyword[]> 
             }
         }
 
-        const similarityScore = typeof kw.similarityScore === 'number' 
-            ? kw.similarityScore 
+        const similarityScore = typeof kw.similarityScore === 'number'
+            ? kw.similarityScore
             : parseFloat(kw.similarityScore || "0");
 
         const result: ProcessedKeyword = {
@@ -393,13 +395,13 @@ function aggregateMonthlyTrendFromResults(
 async function aggregateCompanyMetrics(company: CompanyData): Promise<CompanyMetricResult> {
     // Create search query from company name and description
     const query = `${company.name} ${company.description}`;
-    
+
     // Find top 100 similar keywords
     const similarKeywords = await keywordVectorService.findSimilarKeywords(query, 100);
-    
+
     // Process keywords to app format
     const processedKeywords = await processKeywords(similarKeywords);
-    
+
     // Ensure opportunity metrics exist for each keyword
     for (const kw of processedKeywords) {
         if (!kw.precomputedMetrics) {
@@ -452,6 +454,8 @@ async function aggregateCompanyMetrics(company: CompanyData): Promise<CompanyMet
         aggregatedMetrics,
         monthlyTrendData,
         topKeywords,
+        description: company.description,
+        url: company.url,
     };
 }
 
@@ -478,7 +482,7 @@ async function aggregateSectorMetricsMain() {
     // Group companies by sub_industry
     console.log('[2/4] Grouping companies by sub-industry...');
     const companiesBySubIndustry = new Map<string, CompanyData[]>();
-    
+
     for (const company of validCompanies) {
         const subIndustry = company.sub_industry;
         if (!companiesBySubIndustry.has(subIndustry)) {
@@ -514,9 +518,15 @@ async function aggregateSectorMetricsMain() {
     for (const company of validCompanies) {
         try {
             const companyKey = `${company.name} (${company.sub_industry})`;
-            output.companies[companyKey] = await aggregateCompanyMetrics(company);
+            const companyMetrics = await aggregateCompanyMetrics(company);
+            // Store company info alongside metrics
+            output.companies[companyKey] = {
+                ...companyMetrics,
+                description: company.description,
+                url: company.url,
+            };
             processed++;
-            
+
             if (processed % 50 === 0 || processed === totalCompanies) {
                 console.log(`  Companies: ${processed}/${totalCompanies} (${Math.round((processed / totalCompanies) * 100)}%)`);
             }

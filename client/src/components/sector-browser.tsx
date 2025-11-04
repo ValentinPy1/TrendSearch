@@ -24,12 +24,14 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
     const [selectedSubIndustry, setSelectedSubIndustry] = useState<string | null>(null);
     const [filterQuery, setFilterQuery] = useState("");
     const [sortBy, setSortBy] = useState<SortOption>("opportunityScore");
+    const [companyFilterQuery, setCompanyFilterQuery] = useState("");
+    const [companySortBy, setCompanySortBy] = useState<SortOption>("opportunityScore");
     const [showPaywall, setShowPaywall] = useState(false);
 
     // Check if payment is required
     const hasPaid = paymentStatus?.hasPaid ?? false;
     const isPaymentRequired = !hasPaid && (error?.status === 402 || (error as any)?.requiresPayment);
-    
+
     // Refetch payment status when component opens to ensure we have latest status
     useEffect(() => {
         if (open) {
@@ -37,7 +39,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
             queryClient.invalidateQueries({ queryKey: ["/api/payment/status"] });
         }
     }, [open]);
-    
+
     // Show paywall if payment is required
     useEffect(() => {
         if (isPaymentRequired && open) {
@@ -48,6 +50,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
     const handleSubIndustryClick = (subIndustryName: string) => {
         setSelectedSubIndustry(subIndustryName);
         setFilterQuery("");
+        setCompanyFilterQuery("");
     };
 
     const handleBack = () => {
@@ -68,17 +71,17 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
         if (!data || !data.subIndustries || Object.keys(data.subIndustries).length === 0) {
             return [];
         }
-        
+
         let subIndustries = Object.values(data.subIndustries);
-        
+
         // Filter only if there's a search query
         if (filterQuery && filterQuery.trim()) {
             const query = filterQuery.toLowerCase().trim();
-            subIndustries = subIndustries.filter(s => 
+            subIndustries = subIndustries.filter(s =>
                 s.subIndustry.toLowerCase().includes(query)
             );
         }
-        
+
         // Sort
         subIndustries = [...subIndustries].sort((a, b) => {
             switch (sortBy) {
@@ -96,25 +99,60 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                     return 0;
             }
         });
-        
+
         return subIndustries;
     }, [data, filterQuery, sortBy]);
 
-    const subIndustryCompanies = useMemo(() => {
+    const subIndustryCompaniesRaw = useMemo(() => {
         if (!selectedSubIndustry || !data) return [];
-        
+
         const subIndustry = data.subIndustries[selectedSubIndustry];
         if (!subIndustry) return [];
-        
+
         // Find all companies that belong to this sub-industry
         // Company keys are in format: "Company Name (Sub Industry)"
         return Object.entries(data.companies)
             .filter(([name]) => name.includes(`(${selectedSubIndustry})`))
-            .map(([name, metrics]) => ({ 
+            .map(([name, companyData]) => ({
                 name: name.split(' (')[0], // Extract company name without sub-industry
-                metrics 
+                ...companyData
             }));
     }, [selectedSubIndustry, data]);
+
+    const subIndustryCompanies = useMemo(() => {
+        if (!subIndustryCompaniesRaw || subIndustryCompaniesRaw.length === 0) return [];
+
+        let companies = [...subIndustryCompaniesRaw];
+
+        // Filter companies
+        if (companyFilterQuery && companyFilterQuery.trim()) {
+            const query = companyFilterQuery.toLowerCase().trim();
+            companies = companies.filter(c =>
+                c.name.toLowerCase().includes(query) ||
+                (c.description && c.description.toLowerCase().includes(query))
+            );
+        }
+
+        // Sort companies
+        companies = companies.sort((a, b) => {
+            switch (companySortBy) {
+                case "name":
+                    return a.name.localeCompare(b.name);
+                case "volume":
+                    return b.aggregatedMetrics.avgVolume - a.aggregatedMetrics.avgVolume;
+                case "opportunityScore":
+                    return b.aggregatedMetrics.opportunityScore - a.aggregatedMetrics.opportunityScore;
+                case "growthYoy":
+                    return b.aggregatedMetrics.avgGrowthYoy - a.aggregatedMetrics.avgGrowthYoy;
+                case "cpc":
+                    return a.aggregatedMetrics.avgCpc - b.aggregatedMetrics.avgCpc;
+                default:
+                    return 0;
+            }
+        });
+
+        return companies;
+    }, [subIndustryCompaniesRaw, companyFilterQuery, companySortBy]);
 
     if (isLoading) {
         return (
@@ -272,7 +310,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
 
                             {subIndustriesList.length === 0 && (
                                 <div className="text-center py-12 text-white/60">
-                                    {filterQuery && filterQuery.trim() 
+                                    {filterQuery && filterQuery.trim()
                                         ? `No sub-industries found matching "${filterQuery}"`
                                         : !data || !data.subIndustries || Object.keys(data.subIndustries).length === 0
                                             ? "No sub-industries available. Please run the aggregation script first."
@@ -299,20 +337,71 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                 <h3 className="text-lg font-semibold text-white mb-4">
                                     YC Companies ({subIndustryCompanies.length})
                                 </h3>
-                                
-                                {/* Companies Grid */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {subIndustryCompanies.map(({ name, metrics }) => (
-                                        <SectorCard
-                                            key={name}
-                                            name={name}
-                                            metrics={metrics.aggregatedMetrics}
-                                            type="user_type"
-                                            onClick={() => handleItemClick(name)}
-                                            compact
+
+                                {/* Search and Sort Controls */}
+                                <div className="flex gap-4 items-center mb-4">
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+                                        <Input
+                                            placeholder="Search companies..."
+                                            value={companyFilterQuery}
+                                            onChange={(e) => setCompanyFilterQuery(e.target.value)}
+                                            className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/40"
                                         />
-                                    ))}
+                                        {companyFilterQuery && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                                                onClick={() => setCompanyFilterQuery("")}
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                    <select
+                                        value={companySortBy}
+                                        onChange={(e) => setCompanySortBy(e.target.value as SortOption)}
+                                        className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary appearance-none cursor-pointer"
+                                        style={{
+                                            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.5)' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+                                            backgroundRepeat: 'no-repeat',
+                                            backgroundPosition: 'right 0.75rem center',
+                                            paddingRight: '2.5rem',
+                                        }}
+                                    >
+                                        <option value="opportunityScore" className="bg-background">Sort by Opportunity Score</option>
+                                        <option value="volume" className="bg-background">Sort by Volume</option>
+                                        <option value="growthYoy" className="bg-background">Sort by Growth YoY</option>
+                                        <option value="cpc" className="bg-background">Sort by Avg CPC</option>
+                                        <option value="name" className="bg-background">Sort by Name</option>
+                                    </select>
                                 </div>
+
+                                {/* Companies Grid */}
+                                {subIndustryCompanies.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {subIndustryCompanies.map((company) => (
+                                            <SectorCard
+                                                key={company.name}
+                                                name={company.name}
+                                                metrics={company.aggregatedMetrics}
+                                                description={company.description}
+                                                url={company.url}
+                                                type="user_type"
+                                                onClick={() => handleItemClick(company.name)}
+                                                compact
+                                            />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12 text-white/60">
+                                        {companyFilterQuery && companyFilterQuery.trim()
+                                            ? `No companies found matching "${companyFilterQuery}"`
+                                            : "No companies available"
+                                        }
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

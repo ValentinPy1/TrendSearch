@@ -42,6 +42,8 @@ export interface CompanyMetricResult {
         growthYoy: number;
         opportunityScore?: number;
     }>;
+    description?: string;
+    url?: string;
 }
 
 export interface SubIndustryAggregateResult {
