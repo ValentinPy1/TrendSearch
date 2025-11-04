@@ -7,7 +7,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { GradientOrbs } from "@/components/gradient-orbs";
 import { supabase } from "./lib/supabase";
-import { useToast } from "@/hooks/use-toast";
 import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";

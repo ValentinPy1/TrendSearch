@@ -3,7 +3,6 @@ import type { Express } from "express";
 import { createServer } from "http";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema } from "@shared/schema";
 import { supabaseAdmin } from "./supabase";
 import { stripe } from "./stripe";
 import Stripe from "stripe";
@@ -560,11 +559,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             if (!localUser) {
                 // Auto-create profile if it doesn't exist (first login after email confirmation)
+                const firstName = user.user_metadata?.first_name;
+                const lastName = user.user_metadata?.last_name;
+                if (!firstName || !lastName || firstName.trim().length < 1 || lastName.trim().length < 1) {
+                    return res.status(400).json({
+                        message: "Missing required profile information: first name and last name must be provided."
+                    });
+                }
                 try {
                     localUser = await storage.createUser({
                         supabaseUserId: user.id,
-                        firstName: user.user_metadata?.first_name || "",
-                        lastName: user.user_metadata?.last_name || "",
+                        firstName,
+                        lastName,
                         email: user.email || "",
                     });
                     console.log("Auto-created user profile for:", user.email);
@@ -709,11 +715,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
 
             // Update user payment status
-            const updateResult = await db.update(users)
+            await db.update(users)
                 .set({
                     hasPaid: true,
                     paymentDate: new Date(),
-                    stripePaymentIntentId: session.payment_intent as string || null,
+                    stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
                 })
                 .where(eq(users.id, userId));
 
@@ -785,7 +791,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Store Stripe customer ID if available
             if (session.customer) {
                 await db.update(users)
-                    .set({ stripeCustomerId: session.customer as string })
+                    .set({ stripeCustomerId: typeof session.customer === 'string' ? session.customer : null })
                     .where(eq(users.id, user.id));
             }
 
@@ -843,7 +849,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     .set({
                         hasPaid: true,
                         paymentDate: new Date(),
-                        stripePaymentIntentId: session.payment_intent as string || null,
+                        stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
                     })
                     .where(eq(users.id, userId));
 

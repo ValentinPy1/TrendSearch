@@ -12,9 +12,6 @@ console.log("[Database] Initializing connection to Supabase PostgreSQL...");
 
 // Parse and validate DATABASE_URL
 let databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-    throw new Error("DATABASE_URL must be set");
-}
 
 // Check if the URL might have parsing issues (special characters in password)
 // If the URL doesn't start with postgresql://, it might be malformed
@@ -27,12 +24,15 @@ try {
     const urlObj = new URL(databaseUrl);
     // Check if password contains special characters that need encoding
     const password = urlObj.password;
-    if (password && (password.includes('?') || password.includes('*') || password.includes('&') || password.includes('#'))) {
-        // Reconstruct the URL with properly encoded password
-        const encodedPassword = encodeURIComponent(password);
-        urlObj.password = encodedPassword;
-        databaseUrl = urlObj.toString();
-        console.log("[Database] Fixed URL encoding for password with special characters");
+    if (password) {
+        const decoded = decodeURIComponent(password);
+        if (decoded === password) {
+            // Password is not encoded, encode it
+            const encodedPassword = encodeURIComponent(password);
+            urlObj.password = encodedPassword;
+            databaseUrl = urlObj.toString();
+            console.log("[Database] Fixed URL encoding for password with special characters");
+        }
     }
     // Log the connection URL (without password) for debugging
     const safeUrl = `${urlObj.protocol}//${urlObj.username}@${urlObj.hostname}:${urlObj.port}${urlObj.pathname}`;

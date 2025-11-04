@@ -14,7 +14,7 @@ export function usePaymentStatus() {
             return res.json();
         },
         staleTime: 0, // Always refetch to get latest payment status
-        cacheTime: 0, // Don't cache payment status
+        gcTime: 0, // Don't cache payment status
         retry: false,
         refetchOnWindowFocus: true, // Refetch when window gains focus
     });

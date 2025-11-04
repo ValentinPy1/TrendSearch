@@ -15,7 +15,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { X, Filter, ChevronDown, ChevronUp, Plus, Pencil, Check, Lock } from "lucide-react";
+import { X, Filter, ChevronDown, ChevronUp, Plus, Pencil, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PaywallModal } from "./paywall-modal";
 import { usePaymentStatus } from "@/hooks/use-payment-status";

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 export default function PaymentSuccess() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { data: paymentStatus, refetch } = usePaymentStatus();
+  const { refetch } = usePaymentStatus();
   const [isVerifying, setIsVerifying] = useState(true);
 
   useEffect(() => {
