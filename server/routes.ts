@@ -1878,6 +1878,60 @@ Return ONLY the JSON array, no other text. Example format:
         }
     });
 
+    // Generate keywords for a custom search project
+    app.post("/api/custom-search/generate-keywords", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { projectId, pitch, topics, personas, painPoints, features } = req.body;
+
+            // Verify project exists and user owns it
+            if (projectId) {
+                const project = await storage.getCustomSearchProject(projectId);
+                if (!project) {
+                    return res.status(404).json({ message: "Project not found" });
+                }
+                if (project.userId !== req.user.id) {
+                    return res.status(403).json({ message: "Forbidden" });
+                }
+            }
+
+            // Use provided inputs or project data
+            const project = projectId ? await storage.getCustomSearchProject(projectId) : null;
+            const input = {
+                pitch: pitch || project?.pitch || "",
+                topics: topics || project?.topics || [],
+                personas: personas || project?.personas || [],
+                painPoints: painPoints || project?.painPoints || [],
+                features: features || project?.features || [],
+                competitors: project?.competitors || [],
+            };
+
+            // Set up Server-Sent Events for progress updates
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+            res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+            // Progress callback
+            const progressCallback = (progress: any) => {
+                res.write(`data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`);
+            };
+
+            // Import keyword collector
+            const { collectKeywords } = await import("./keyword-collector");
+
+            // Generate keywords
+            const result = await collectKeywords(input, progressCallback, 1000);
+
+            // Send final result
+            res.write(`data: ${JSON.stringify({ type: 'complete', data: { keywords: result.keywords } })}\n\n`);
+            res.end();
+        } catch (error) {
+            console.error("Error generating keywords:", error);
+            res.write(`data: ${JSON.stringify({ type: 'error', error: error instanceof Error ? error.message : "Unknown error" })}\n\n`);
+            res.end();
+        }
+    });
+
     const httpServer = createServer(app);
     return httpServer;
 }

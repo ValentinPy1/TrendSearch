@@ -1,13 +1,15 @@
 import { eq, desc, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-    users, ideas, reports, keywords, customSearchProjects,
+    users, ideas, reports, keywords, customSearchProjects, globalKeywords, customSearchProjectKeywords,
     type User, type InsertUser,
     type Idea, type InsertIdea,
     type Report, type InsertReport,
     type Keyword, type InsertKeyword,
     type IdeaWithReport,
-    type CustomSearchProject, type InsertCustomSearchProject
+    type CustomSearchProject, type InsertCustomSearchProject,
+    type GlobalKeyword, type InsertGlobalKeyword,
+    type CustomSearchProjectKeyword, type InsertCustomSearchProjectKeyword
 } from "@shared/schema";
 
 export interface IStorage {
@@ -41,6 +43,12 @@ export interface IStorage {
     createCustomSearchProject(project: InsertCustomSearchProject): Promise<CustomSearchProject>;
     updateCustomSearchProject(id: string, project: Partial<InsertCustomSearchProject>): Promise<CustomSearchProject>;
     deleteCustomSearchProject(id: string): Promise<void>;
+
+    // Global Keywords methods
+    getGlobalKeywordByText(keyword: string): Promise<GlobalKeyword | undefined>;
+    getGlobalKeywordsByTexts(keywords: string[]): Promise<GlobalKeyword[]>;
+    createGlobalKeywords(keywords: InsertGlobalKeyword[]): Promise<GlobalKeyword[]>;
+    linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[]): Promise<void>;
 
     // Health check
     healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }>;
@@ -226,6 +234,60 @@ export class DatabaseStorage implements IStorage {
 
     async deleteCustomSearchProject(id: string): Promise<void> {
         await db.delete(customSearchProjects).where(eq(customSearchProjects.id, id));
+    }
+
+    async getGlobalKeywordByText(keywordText: string): Promise<GlobalKeyword | undefined> {
+        // Case-insensitive lookup using LOWER()
+        const result = await db
+            .select()
+            .from(globalKeywords)
+            .where(sql`LOWER(${globalKeywords.keyword}) = LOWER(${keywordText})`)
+            .limit(1);
+        return result[0];
+    }
+
+    async getGlobalKeywordsByTexts(keywordTexts: string[]): Promise<GlobalKeyword[]> {
+        if (keywordTexts.length === 0) return [];
+        // Case-insensitive lookup for multiple keywords
+        // For now, we'll fetch all and filter (can be optimized later with raw SQL)
+        // This is acceptable for the initial implementation since global keywords table will start small
+        const allKeywords = await db.select().from(globalKeywords);
+        const lowerKeywords = new Set(keywordTexts.map(kw => kw.toLowerCase()));
+        return allKeywords.filter(kw => lowerKeywords.has(kw.keyword.toLowerCase()));
+    }
+
+    async createGlobalKeywords(insertKeywords: InsertGlobalKeyword[]): Promise<GlobalKeyword[]> {
+        if (insertKeywords.length === 0) return [];
+        // Filter out keywords that already exist (case-insensitive)
+        const keywordTexts = insertKeywords.map(kw => kw.keyword);
+        const existingKeywords = await this.getGlobalKeywordsByTexts(keywordTexts);
+        const existingKeywordsSet = new Set(existingKeywords.map(kw => kw.keyword.toLowerCase()));
+        
+        const newKeywords = insertKeywords.filter(kw => !existingKeywordsSet.has(kw.keyword.toLowerCase()));
+        
+        if (newKeywords.length === 0) return [];
+        
+        // Insert only new keywords
+        const result = await db
+            .insert(globalKeywords)
+            .values(newKeywords as any)
+            .returning();
+        return result;
+    }
+
+    async linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[]): Promise<void> {
+        if (keywordIds.length === 0) return;
+        if (keywordIds.length !== similarityScores.length) {
+            throw new Error("keywordIds and similarityScores arrays must have the same length");
+        }
+
+        const links: InsertCustomSearchProjectKeyword[] = keywordIds.map((keywordId, index) => ({
+            customSearchProjectId: projectId,
+            globalKeywordId: keywordId,
+            similarityScore: similarityScores[index] ? similarityScores[index].toString() : null,
+        }));
+
+        await db.insert(customSearchProjectKeywords).values(links as any);
     }
 
     async healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }> {

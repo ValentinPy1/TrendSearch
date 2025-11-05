@@ -82,6 +82,43 @@ export const customSearchProjects = pgTable("custom_search_projects", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const globalKeywords = pgTable("global_keywords", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  keyword: text("keyword").notNull(),
+  volume: integer("volume"),
+  competition: integer("competition"),
+  cpc: decimal("cpc", { precision: 10, scale: 2 }),
+  topPageBid: decimal("top_page_bid", { precision: 10, scale: 2 }),
+  growth3m: decimal("growth_3m", { precision: 10, scale: 2 }),
+  growthYoy: decimal("growth_yoy", { precision: 10, scale: 2 }),
+  similarityScore: decimal("similarity_score", { precision: 5, scale: 4 }),
+  // Additional growth metrics
+  growthSlope: decimal("growth_slope", { precision: 10, scale: 2 }),
+  growthR2: decimal("growth_r2", { precision: 10, scale: 4 }),
+  growthConsistency: decimal("growth_consistency", { precision: 10, scale: 4 }),
+  growthStability: decimal("growth_stability", { precision: 10, scale: 4 }),
+  sustainedGrowthScore: decimal("sustained_growth_score", { precision: 10, scale: 4 }),
+  // Derived metrics
+  volatility: decimal("volatility", { precision: 10, scale: 4 }),
+  trendStrength: decimal("trend_strength", { precision: 10, scale: 4 }),
+  bidEfficiency: decimal("bid_efficiency", { precision: 10, scale: 4 }),
+  tac: decimal("tac", { precision: 15, scale: 2 }),
+  sac: decimal("sac", { precision: 15, scale: 2 }),
+  opportunityScore: decimal("opportunity_score", { precision: 10, scale: 4 }),
+  // Monthly search volume data (48 months)
+  monthlyData: jsonb("monthly_data").$type<{ month: string; volume: number }[]>(),
+  source: text("source"), // "dataforseo", "vector_db", etc.
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const customSearchProjectKeywords = pgTable("custom_search_project_keywords", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customSearchProjectId: varchar("custom_search_project_id").notNull().references(() => customSearchProjects.id, { onDelete: 'cascade' }),
+  globalKeywordId: varchar("global_keyword_id").notNull().references(() => globalKeywords.id, { onDelete: 'cascade' }),
+  similarityScore: decimal("similarity_score", { precision: 5, scale: 4 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -127,6 +164,16 @@ export const insertCustomSearchProjectSchema = createInsertSchema(customSearchPr
   })).default([]),
 });
 
+export const insertGlobalKeywordSchema = createInsertSchema(globalKeywords).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCustomSearchProjectKeywordSchema = createInsertSchema(customSearchProjectKeywords).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Select types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -142,6 +189,12 @@ export type InsertKeyword = z.infer<typeof insertKeywordSchema>;
 
 export type CustomSearchProject = typeof customSearchProjects.$inferSelect;
 export type InsertCustomSearchProject = z.infer<typeof insertCustomSearchProjectSchema>;
+
+export type GlobalKeyword = typeof globalKeywords.$inferSelect;
+export type InsertGlobalKeyword = z.infer<typeof insertGlobalKeywordSchema>;
+
+export type CustomSearchProjectKeyword = typeof customSearchProjectKeywords.$inferSelect;
+export type InsertCustomSearchProjectKeyword = z.infer<typeof insertCustomSearchProjectKeywordSchema>;
 
 // Combined types for frontend
 export type IdeaWithReport = Idea & {

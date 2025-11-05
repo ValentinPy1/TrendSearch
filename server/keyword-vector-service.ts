@@ -296,6 +296,26 @@ class KeywordVectorService {
         return false;
     }
 
+    /**
+     * Calculate cosine similarity between two text strings
+     * Returns a value between -1 and 1, where 1 is most similar
+     */
+    async calculateTextSimilarity(text1: string, text2: string): Promise<number> {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+
+        // Generate embeddings for both texts
+        const output1 = await this.extractor(text1, { pooling: 'mean', normalize: true });
+        const embedding1 = new Float32Array(output1.data);
+
+        const output2 = await this.extractor(text2, { pooling: 'mean', normalize: true });
+        const embedding2 = new Float32Array(output2.data);
+
+        // Calculate cosine similarity
+        return this.cosineSimilarity(embedding1, embedding2);
+    }
+
     async findSimilarKeywords(query: string, topN: number = 10): Promise<KeywordWithScore[]> {
         if (!this.initialized) {
             await this.initialize();
