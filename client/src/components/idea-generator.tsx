@@ -3,15 +3,14 @@ import { useMutation } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, History, Loader2, BarChart, Building2, Search } from "lucide-react";
+import { Sparkles, History, Loader2, Building2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { IdeaWithReport } from "@shared/schema";
 import { KeywordFilters, type KeywordFilter } from "@/components/keyword-filters";
 import { SectorBrowser } from "@/components/sector-browser";
 import { CustomSearchForm } from "@/components/custom-search-form";
-import { PaywallModal } from "@/components/paywall-modal";
-import { usePaymentStatus } from "@/hooks/use-payment-status";
 
 interface IdeaGeneratorProps {
     onIdeaGenerated: (idea: IdeaWithReport) => void;
@@ -32,9 +31,7 @@ export function IdeaGenerator({
 }: IdeaGeneratorProps) {
     const { toast } = useToast();
     const [showSectorBrowser, setShowSectorBrowser] = useState(false);
-    const [showCustomSearch, setShowCustomSearch] = useState(false);
-    const [showPaywall, setShowPaywall] = useState(false);
-    const { data: paymentStatus } = usePaymentStatus();
+    const [activeTab, setActiveTab] = useState("standard");
 
     const form = useForm({
         defaultValues: {
@@ -220,82 +217,81 @@ export function IdeaGenerator({
                     </p>
                 </div>
 
-                <div className="relative">
-                    <Input
-                        placeholder="Write your idea brief (short is better) / keyword here or let AI generate one for you clicking the sparkles icon"
-                        className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-24 rounded-full"
-                        data-testid="input-idea"
-                        onKeyDown={handleKeyDown}
-                        {...form.register("idea")}
-                    />
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                                const hasPaid = paymentStatus?.hasPaid ?? false;
-                                if (hasPaid) {
-                                    setShowCustomSearch(true);
-                                } else {
-                                    setShowPaywall(true);
-                                }
-                            }}
-                            className="h-10 w-10 text-primary hover:bg-transparent"
-                            data-testid="button-custom-search"
-                            title="Custom Search"
-                        >
-                            <Search className="h-5 w-5 stroke-[2.5]" />
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setShowSectorBrowser(true)}
-                            className="h-10 w-10 text-primary hover:bg-transparent"
-                            data-testid="button-browse-sectors"
-                            title="Browse Sectors"
-                        >
-                            <Building2 className="h-5 w-5 stroke-[2.5]" />
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={onShowHistory}
-                            className="h-10 w-10 text-secondary hover:bg-transparent"
-                            data-testid="button-history"
-                        >
-                            <History className="h-5 w-5 stroke-[2.5]" />
-                        </Button>
-                        <Button
-                            type="button"
-                            onClick={handleGenerateIdea}
-                            disabled={
-                                generateIdeaMutation.isPending ||
-                                generateReportMutation.isPending
-                            }
-                            variant="ghost"
-                            size="icon"
-                            className="h-10 w-10 text-yellow-300 hover:bg-transparent"
-                            data-testid="button-generate"
-                        >
-                            {generateIdeaMutation.isPending ||
-                                generateReportMutation.isPending ? (
-                                <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
-                            ) : (
-                                <Sparkles className="h-5 w-5 stroke-[2.5]" />
-                            )}
-                        </Button>
-                    </div>
-                </div>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 bg-white/5 border-white/10">
+                        <TabsTrigger value="standard" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">
+                            Standard Search
+                        </TabsTrigger>
+                        <TabsTrigger value="custom" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">
+                            Custom Search
+                        </TabsTrigger>
+                    </TabsList>
 
-                {/* Keyword Filters */}
-                <KeywordFilters
-                    ideaText={form.watch("idea") || null}
-                    filters={filters}
-                    onFiltersChange={setFilters}
-                />
+                    <TabsContent value="standard" className="space-y-6 mt-6">
+                        <div className="relative">
+                            <Input
+                                placeholder="Write your idea brief (short is better) / keyword here or let AI generate one for you clicking the sparkles icon"
+                                className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-24 rounded-full"
+                                data-testid="input-idea"
+                                onKeyDown={handleKeyDown}
+                                {...form.register("idea")}
+                            />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setShowSectorBrowser(true)}
+                                    className="h-10 w-10 text-primary hover:bg-transparent"
+                                    data-testid="button-browse-sectors"
+                                    title="Browse Sectors"
+                                >
+                                    <Building2 className="h-5 w-5 stroke-[2.5]" />
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={onShowHistory}
+                                    className="h-10 w-10 text-secondary hover:bg-transparent"
+                                    data-testid="button-history"
+                                >
+                                    <History className="h-5 w-5 stroke-[2.5]" />
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleGenerateIdea}
+                                    disabled={
+                                        generateIdeaMutation.isPending ||
+                                        generateReportMutation.isPending
+                                    }
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-10 w-10 text-yellow-300 hover:bg-transparent"
+                                    data-testid="button-generate"
+                                >
+                                    {generateIdeaMutation.isPending ||
+                                        generateReportMutation.isPending ? (
+                                        <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
+                                    ) : (
+                                        <Sparkles className="h-5 w-5 stroke-[2.5]" />
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Keyword Filters */}
+                        <KeywordFilters
+                            ideaText={form.watch("idea") || null}
+                            filters={filters}
+                            onFiltersChange={setFilters}
+                        />
+                    </TabsContent>
+
+                    <TabsContent value="custom" className="mt-6">
+                        <CustomSearchForm />
+                    </TabsContent>
+                </Tabs>
             </div>
 
             {/* Sector Browser */}
@@ -323,18 +319,6 @@ export function IdeaGenerator({
                 }}
             />
 
-            {/* Custom Search Form */}
-            <CustomSearchForm
-                open={showCustomSearch}
-                onOpenChange={setShowCustomSearch}
-            />
-
-            {/* Paywall Modal */}
-            <PaywallModal
-                open={showPaywall}
-                onOpenChange={setShowPaywall}
-                feature="custom-search"
-            />
         </div>
     );
 }

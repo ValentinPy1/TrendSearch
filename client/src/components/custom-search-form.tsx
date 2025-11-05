@@ -1,24 +1,14 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation } from "@tanstack/react-query";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ListInput } from "@/components/ui/list-input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Sparkles, Search, ExternalLink, Building2 } from "lucide-react";
+import { Loader2, Search, ExternalLink, Building2 } from "lucide-react";
 
-interface CustomSearchFormProps {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-}
+interface CustomSearchFormProps {}
 
 interface FormData {
     pitch: string;
@@ -34,10 +24,7 @@ interface Competitor {
     url?: string | null;
 }
 
-export function CustomSearchForm({
-    open,
-    onOpenChange,
-}: CustomSearchFormProps) {
+export function CustomSearchForm({}: CustomSearchFormProps) {
     const { toast } = useToast();
     const [topics, setTopics] = useState<string[]>([]);
     const [personas, setPersonas] = useState<string[]>([]);
@@ -255,31 +242,21 @@ export function CustomSearchForm({
         }
     };
 
-    const handleClose = () => {
-        form.reset();
-        setTopics([]);
-        setPersonas([]);
-        setPainPoints([]);
-        setFeatures([]);
-        setCompetitors([]);
-        onOpenChange(false);
-    };
-
     return (
-        <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Search className="h-5 w-5 text-white" />
-                        Custom Search
-                    </DialogTitle>
-                    <DialogDescription>
-                        Provide detailed information about your idea to generate
-                        targeted keywords and competitor analysis.
-                    </DialogDescription>
-                </DialogHeader>
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="space-y-2">
+                <h3 className="flex items-center gap-2 text-xl font-semibold text-white">
+                    <Search className="h-5 w-5 text-white" />
+                    Custom Search
+                </h3>
+                <p className="text-sm text-white/60">
+                    Provide detailed information about your idea to generate
+                    targeted keywords and competitor analysis.
+                </p>
+            </div>
 
-                <form className="space-y-6">
+            <form className="space-y-6">
                     {/* Idea Pitch */}
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-white">
@@ -432,8 +409,7 @@ export function CustomSearchForm({
                             </div>
                         </div>
                     )}
-                </form>
-            </DialogContent>
-        </Dialog>
+            </form>
+        </div>
     );
 }
