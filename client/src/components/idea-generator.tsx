@@ -19,6 +19,7 @@ interface IdeaGeneratorProps {
     currentIdea?: IdeaWithReport | null;
     onGeneratingChange?: (isGenerating: boolean) => void;
     searchKeyword?: string | null;
+    onActiveTabChange?: (tab: string) => void;
 }
 
 export function IdeaGenerator({
@@ -28,10 +29,16 @@ export function IdeaGenerator({
     currentIdea,
     onGeneratingChange,
     searchKeyword,
+    onActiveTabChange,
 }: IdeaGeneratorProps) {
     const { toast } = useToast();
     const [showSectorBrowser, setShowSectorBrowser] = useState(false);
     const [activeTab, setActiveTab] = useState("standard");
+
+    // Notify parent when tab changes
+    useEffect(() => {
+        onActiveTabChange?.(activeTab);
+    }, [activeTab, onActiveTabChange]);
 
     const form = useForm({
         defaultValues: {
