@@ -1761,13 +1761,19 @@ Return ONLY the JSON array, no other text. Example format:
             let projectName = name;
             if (!projectName || projectName.trim().length === 0) {
                 if (pitch && pitch.trim().length > 0) {
-                    // Use first sentence of pitch (up to 50 chars)
-                    const firstSentence = pitch.split(/[.!?]/)[0].trim();
-                    projectName = firstSentence.length > 50 
-                        ? firstSentence.substring(0, 47) + "..."
-                        : firstSentence || "Untitled Project";
+                    // Generate AI-powered name from pitch
+                    try {
+                        projectName = await microSaaSIdeaGenerator.generateProjectName(pitch);
+                    } catch (error) {
+                        console.error("Error generating project name, using fallback:", error);
+                        // Fallback to first sentence of pitch (up to 50 chars)
+                        const firstSentence = pitch.split(/[.!?]/)[0].trim();
+                        projectName = firstSentence.length > 50 
+                            ? firstSentence.substring(0, 47) + "..."
+                            : firstSentence || "Untitled Project";
+                    }
                 } else {
-                    // Use timestamp
+                    // Use timestamp for blank projects
                     const date = new Date();
                     projectName = `Project - ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
                 }
@@ -1811,6 +1817,24 @@ Return ONLY the JSON array, no other text. Example format:
 
             // Build update data (only include provided fields)
             const updateData: any = {};
+            
+            // If pitch is being updated and name wasn't explicitly provided, regenerate name
+            // Only regenerate if current name looks like a default/timestamp name
+            if (pitch !== undefined && name === undefined) {
+                const currentName = existingProject.name || "";
+                const isDefaultName = currentName.startsWith("Project - ") || 
+                                     currentName === "Untitled Project" ||
+                                     currentName.trim().length === 0;
+                
+                if (isDefaultName && pitch && pitch.trim().length > 0) {
+                    try {
+                        updateData.name = await microSaaSIdeaGenerator.generateProjectName(pitch);
+                    } catch (error) {
+                        console.error("Error generating project name during update, keeping existing name:", error);
+                    }
+                }
+            }
+            
             if (name !== undefined) updateData.name = name;
             if (pitch !== undefined) updateData.pitch = pitch;
             if (topics !== undefined) updateData.topics = topics;

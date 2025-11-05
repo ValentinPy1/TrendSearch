@@ -216,6 +216,79 @@ Your idea (15-25 words):`;
       throw new Error('Failed to generate longer idea with AI: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   }
+
+  async generateProjectName(pitch: string): Promise<string> {
+    console.log('[MicroSaaS Generator] Generating project name from pitch...');
+    
+    if (!pitch || pitch.trim().length === 0) {
+      return "Untitled Project";
+    }
+
+    const prompt = `Generate a concise, catchy project name (3-5 words) based on this idea pitch:
+
+${pitch}
+
+Requirements:
+- 3 to 5 words maximum
+- Capture the core concept or value proposition
+- Be memorable and descriptive
+- No quotes or extra text, just the name
+
+Examples:
+- AI Expense Tracker
+- Fitness Trainer Scheduler
+- Content Calendar Planner
+- Storytelling Coach Tool
+
+Your project name (3-5 words):`;
+
+    try {
+      console.log('[MicroSaaS Generator] Calling OpenAI API for project name...');
+      
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a naming expert. Generate concise, memorable project names (3-5 words) based on idea pitches.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 30,
+        temperature: 0.8,
+      });
+
+      let projectName = response.choices[0]?.message?.content?.trim();
+      
+      if (!projectName) {
+        console.error('[MicroSaaS Generator] No project name in response');
+        // Fallback to first few words of pitch
+        const words = pitch.split(/\s+/).slice(0, 5).join(' ');
+        return words.length > 50 ? words.substring(0, 47) + "..." : words;
+      }
+
+      // Remove quotes and extra whitespace
+      projectName = this.stripQuotes(projectName).trim();
+      
+      // Limit to 50 characters
+      if (projectName.length > 50) {
+        projectName = projectName.substring(0, 47) + "...";
+      }
+
+      console.log('[MicroSaaS Generator] Successfully generated project name:', projectName);
+      return projectName;
+    } catch (error) {
+      console.error('[MicroSaaS Generator] Error generating project name with OpenAI:', error);
+      // Fallback to first sentence of pitch
+      const firstSentence = pitch.split(/[.!?]/)[0].trim();
+      return firstSentence.length > 50 
+        ? firstSentence.substring(0, 47) + "..."
+        : firstSentence || "Untitled Project";
+    }
+  }
 }
 
 export const microSaaSIdeaGenerator = new MicroSaaSIdeaGenerator();
