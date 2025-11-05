@@ -390,7 +390,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 </div>
 
                 {/* Find Competitors Button */}
-                <div className="pt-4 border-t border-white/10">
+                <div className="pt-4 border-t border-white/10 flex justify-center">
                     <Button
                         type="button"
                         onClick={handleFindCompetitors}
@@ -399,7 +399,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             pitch.trim().length === 0 ||
                             isFindingCompetitors
                         }
-                        className="w-full"
+                        className="w-1/2"
                     >
                         {isFindingCompetitors ? (
                             <>
@@ -409,7 +409,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         ) : (
                             <>
                                 <Search className="mr-2 h-4 w-4" />
-                                Find All Competitors Automatically
+                                Find Competitors
                             </>
                         )}
                     </Button>
@@ -425,7 +425,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     Found Competitors ({competitors.length})
                                 </h3>
                             </div>
-                            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                            <div className="grid grid-cols-3 gap-3">
                                 {competitors.map((competitor, index) => (
                                     <div
                                         key={index}

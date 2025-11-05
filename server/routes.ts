@@ -1634,7 +1634,7 @@ Generate 5-10 features as a JSON array of strings. Each feature should be concis
 
             const systemMessage = "You are a competitive intelligence analyst. Analyze ideas and identify real competitors in the market.";
 
-            const prompt = `Based on this idea pitch, identify 5-10 real competitors (existing products, services, or companies) that address similar problems or target similar audiences.
+            const prompt = `Based on this idea pitch, identify exactly 12 real competitors (existing products, services, or companies) that address similar problems or target similar audiences.
 
 Idea Pitch:
 ${pitch}
