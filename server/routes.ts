@@ -967,11 +967,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
             const ideas = await storage.getIdeasByUser(req.user.id);
 
+            // Generate keywords for each report if they don't exist
+            // This ensures keywords are always available when displaying reports
+            const ideasWithKeywords = await Promise.all(
+                ideas.map(async (idea) => {
+                    if (idea.report && idea.generatedIdea) {
+                        // Generate initial 10 keywords (no filters) for display
+                        try {
+                            const { keywords: keywordData } = await getKeywordsFromVectorDB(
+                                idea.generatedIdea,
+                                10, // Initial 10 keywords
+                                [], // No filters
+                            );
+                            
+                            // Attach opportunity metrics to all keywords before returning
+                            const keywordsWithMetrics = keywordData.map((kw) => {
+                                // Use precomputed metrics if available, otherwise calculate on-the-fly
+                                let metrics: any = null;
+                                if ((kw as any).precomputedMetrics) {
+                                    metrics = (kw as any).precomputedMetrics;
+                                } else {
+                                    // Calculate opportunity metrics on-the-fly
+                                    metrics = calculateOpportunityScore({
+                                        volume: kw.volume || 0,
+                                        competition: kw.competition || 0,
+                                        cpc: parseFloat(kw.cpc?.toString() || "0"),
+                                        topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                                        growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                                        monthlyData: kw.monthlyData || [],
+                                    });
+                                }
+
+                                // Attach opportunity metrics to the keyword object
+                                return {
+                                    ...kw,
+                                    volatility: metrics.volatility,
+                                    trendStrength: metrics.trendStrength,
+                                    bidEfficiency: metrics.bidEfficiency,
+                                    tac: metrics.tac,
+                                    sac: metrics.sac,
+                                    opportunityScore: metrics.opportunityScore,
+                                };
+                            });
+                            
+                            return {
+                                ...idea,
+                                report: {
+                                    ...idea.report,
+                                    keywords: keywordsWithMetrics,
+                                },
+                            };
+                        } catch (error) {
+                            console.error(`[Get Ideas] Error generating keywords for report ${idea.report.id}:`, error);
+                            // Return idea with empty keywords if generation fails
+                            return idea;
+                        }
+                    }
+                    return idea;
+                })
+            );
+
             // OPTIMIZATION: Removed expensive isKeyword check that was adding 12+ seconds
             // The isKeyword badge is not critical for initial page load
             // If needed, this can be computed lazily or cached in the database
-            res.json(ideas);
+            res.json(ideasWithKeywords);
         } catch (error) {
+            console.error("[Get Ideas Error]:", error);
             res.status(500).json({ message: "Failed to fetch ideas" });
         }
     });
@@ -1040,11 +1101,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const { keywords: keywordData, aggregates } =
                 await getKeywordsFromVectorDB(idea.generatedIdea, validatedCount, filters);
 
+            // Attach opportunity metrics to all keywords before returning
+            const keywordsWithMetrics = keywordData.map((kw) => {
+                // Use precomputed metrics if available, otherwise calculate on-the-fly
+                let metrics: any = null;
+                if ((kw as any).precomputedMetrics) {
+                    metrics = (kw as any).precomputedMetrics;
+                } else {
+                    // Calculate opportunity metrics on-the-fly
+                    metrics = calculateOpportunityScore({
+                        volume: kw.volume || 0,
+                        competition: kw.competition || 0,
+                        cpc: parseFloat(kw.cpc?.toString() || "0"),
+                        topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                        growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                        monthlyData: kw.monthlyData || [],
+                    });
+                }
+
+                // Attach opportunity metrics to the keyword object
+                return {
+                    ...kw,
+                    volatility: metrics.volatility,
+                    trendStrength: metrics.trendStrength,
+                    bidEfficiency: metrics.bidEfficiency,
+                    tac: metrics.tac,
+                    sac: metrics.sac,
+                    opportunityScore: metrics.opportunityScore,
+                };
+            });
+
             if (existingReport) {
                 // Return existing report but with fresh keywords from vector service
                 return res.json({
                     report: existingReport,
-                    keywords: keywordData,
+                    keywords: keywordsWithMetrics,
                 });
             }
 
@@ -1061,17 +1152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
 
             // Create keywords with opportunity scores and derived metrics
-            const keywordsToInsert = keywordData.map((kw) => {
-                // Calculate all metrics including opportunity score
-                const metrics = calculateOpportunityScore({
-                    volume: kw.volume || 0,
-                    competition: kw.competition || 0,
-                    cpc: parseFloat(kw.cpc?.toString() || "0"),
-                    topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
-                    growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
-                    monthlyData: kw.monthlyData || [],
-                });
-
+            const keywordsToInsert = keywordsWithMetrics.map((kw) => {
                 return {
                     reportId: report.id,
                     keyword: kw.keyword,
@@ -1087,12 +1168,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     growthConsistency: kw.growthConsistency,
                     growthStability: kw.growthStability,
                     sustainedGrowthScore: kw.sustainedGrowthScore,
-                    volatility: metrics.volatility,
-                    trendStrength: metrics.trendStrength,
-                    bidEfficiency: metrics.bidEfficiency,
-                    tac: metrics.tac,
-                    sac: metrics.sac,
-                    opportunityScore: metrics.opportunityScore,
+                    volatility: kw.volatility,
+                    trendStrength: kw.trendStrength,
+                    bidEfficiency: kw.bidEfficiency,
+                    tac: kw.tac,
+                    sac: kw.sac,
+                    opportunityScore: kw.opportunityScore,
                     monthlyData: kw.monthlyData,
                 };
             });
@@ -1101,7 +1182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // This avoids database bloat and ensures we always use the latest dataset
             // const keywords = await storage.createKeywords(keywordsToInsert);
 
-            res.json({ report, keywords: keywordData });
+            res.json({ report, keywords: keywordsWithMetrics });
         } catch (error) {
             console.error("[Generate Report Error]:", error);
             res.status(500).json({
@@ -1179,18 +1260,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(400).json({ message: "No more keywords available" });
             }
 
-            // Create the new keywords with opportunity scores and derived metrics
-            const keywordsToInsert = newKeywordsData.map((kw: any) => {
-                // Calculate all metrics including opportunity score
-                const metrics = calculateOpportunityScore({
-                    volume: kw.volume || 0,
-                    competition: kw.competition || 0,
-                    cpc: parseFloat(kw.cpc?.toString() || "0"),
-                    topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
-                    growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
-                    monthlyData: kw.monthlyData || [],
-                });
+            // Attach opportunity metrics to all new keywords before returning
+            const newKeywordsWithMetrics = newKeywordsData.map((kw: any) => {
+                // Use precomputed metrics if available, otherwise calculate on-the-fly
+                let metrics: any = null;
+                if ((kw as any).precomputedMetrics) {
+                    metrics = (kw as any).precomputedMetrics;
+                } else {
+                    // Calculate opportunity metrics on-the-fly
+                    metrics = calculateOpportunityScore({
+                        volume: kw.volume || 0,
+                        competition: kw.competition || 0,
+                        cpc: parseFloat(kw.cpc?.toString() || "0"),
+                        topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                        growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                        monthlyData: kw.monthlyData || [],
+                    });
+                }
 
+                // Attach opportunity metrics to the keyword object
+                return {
+                    ...kw,
+                    volatility: metrics.volatility,
+                    trendStrength: metrics.trendStrength,
+                    bidEfficiency: metrics.bidEfficiency,
+                    tac: metrics.tac,
+                    sac: metrics.sac,
+                    opportunityScore: metrics.opportunityScore,
+                };
+            });
+
+            // Create the new keywords with opportunity scores and derived metrics (for potential database storage)
+            const keywordsToInsert = newKeywordsWithMetrics.map((kw: any) => {
                 return {
                     reportId: report.id,
                     keyword: kw.keyword,
@@ -1206,12 +1307,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     growthConsistency: kw.growthConsistency,
                     growthStability: kw.growthStability,
                     sustainedGrowthScore: kw.sustainedGrowthScore,
-                    volatility: metrics.volatility,
-                    trendStrength: metrics.trendStrength,
-                    bidEfficiency: metrics.bidEfficiency,
-                    tac: metrics.tac,
-                    sac: metrics.sac,
-                    opportunityScore: metrics.opportunityScore,
+                    volatility: kw.volatility,
+                    trendStrength: kw.trendStrength,
+                    bidEfficiency: kw.bidEfficiency,
+                    tac: kw.tac,
+                    sac: kw.sac,
+                    opportunityScore: kw.opportunityScore,
                     monthlyData: kw.monthlyData,
                 };
             });
@@ -1220,7 +1321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // This avoids database bloat and ensures we always use the latest dataset
             // const newKeywords = await storage.createKeywords(keywordsToInsert);
 
-            res.json({ keywords: newKeywordsData });
+            res.json({ keywords: newKeywordsWithMetrics });
         } catch (error) {
             console.error("[Load More Keywords Error]:", error);
             res.status(500).json({

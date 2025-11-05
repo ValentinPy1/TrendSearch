@@ -857,7 +857,7 @@ export function KeywordsTable({
               {sortedKeywords.map((keyword, index) => {
                 return (
                   <tr
-                    key={keyword.id}
+                    key={keyword.id || `keyword-${index}`}
                     onClick={() => onKeywordSelect(keyword.keyword)}
                     className={`
                       group border-b border-white/5 cursor-pointer transition-all
