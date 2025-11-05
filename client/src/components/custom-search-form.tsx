@@ -65,7 +65,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         newKeywords?: string[];
     } | null>(null);
     const [generatedKeywords, setGeneratedKeywords] = useState<string[]>([]);
-    const [expandedQuadrant, setExpandedQuadrant] = useState<string | null>(null);
+    const [showQuadrantPopup, setShowQuadrantPopup] = useState(false);
+    const [quadrantPopupType, setQuadrantPopupType] = useState<'seeds' | 'keywords' | 'duplicates' | 'existing' | null>(null);
     const [savedProgress, setSavedProgress] = useState<any>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -571,7 +572,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
         setIsGeneratingKeywords(true);
         setShowKeywordProgress(true);
-        setExpandedQuadrant(null);
+        setShowQuadrantPopup(false);
         
         // If resuming, restore progress state
         if (resume && savedProgress) {
@@ -1106,96 +1107,58 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             <div className="grid grid-cols-2 gap-4">
                                 {/* Seeds Generated */}
                                 <div 
-                                    className={`bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10 ${
-                                        expandedQuadrant === 'seeds' ? 'bg-white/10 border border-white/20' : ''
-                                    }`}
-                                    onClick={() => setExpandedQuadrant(expandedQuadrant === 'seeds' ? null : 'seeds')}
+                                    className="bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10"
+                                    onClick={() => {
+                                        setQuadrantPopupType('seeds');
+                                        setShowQuadrantPopup(true);
+                                    }}
                                 >
                                     <div className="text-xs text-white/60 mb-1">Seeds Generated</div>
                                     <div className="text-2xl font-semibold text-white">
                                         {keywordProgress.seedsGenerated}
                                     </div>
-                                    {expandedQuadrant === 'seeds' && keywordProgress.seeds && keywordProgress.seeds.length > 0 && (
-                                        <div className="mt-3 max-h-48 overflow-y-auto space-y-1">
-                                            {keywordProgress.seeds.map((seed, index) => (
-                                                <div key={index} className="text-xs text-white/70 bg-white/5 rounded px-2 py-1">
-                                                    {seed}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
                                 </div>
 
                                 {/* Keywords Generated */}
                                 <div 
-                                    className={`bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10 ${
-                                        expandedQuadrant === 'keywords' ? 'bg-white/10 border border-white/20' : ''
-                                    }`}
-                                    onClick={() => setExpandedQuadrant(expandedQuadrant === 'keywords' ? null : 'keywords')}
+                                    className="bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10"
+                                    onClick={() => {
+                                        setQuadrantPopupType('keywords');
+                                        setShowQuadrantPopup(true);
+                                    }}
                                 >
                                     <div className="text-xs text-white/60 mb-1">Keywords Generated</div>
                                     <div className="text-2xl font-semibold text-white">
                                         {keywordProgress.keywordsGenerated}
                                     </div>
-                                    {expandedQuadrant === 'keywords' && keywordProgress.allKeywords && keywordProgress.allKeywords.length > 0 && (
-                                        <div className="mt-3 max-h-48 overflow-y-auto">
-                                            <div className="flex flex-wrap gap-1">
-                                                {keywordProgress.allKeywords.map((keyword, index) => (
-                                                    <span key={index} className="text-xs bg-white/10 text-white/70 px-2 py-1 rounded">
-                                                        {keyword}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
 
                                 {/* Duplicates Found */}
                                 <div 
-                                    className={`bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10 ${
-                                        expandedQuadrant === 'duplicates' ? 'bg-white/10 border border-white/20' : ''
-                                    }`}
-                                    onClick={() => setExpandedQuadrant(expandedQuadrant === 'duplicates' ? null : 'duplicates')}
+                                    className="bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10"
+                                    onClick={() => {
+                                        setQuadrantPopupType('duplicates');
+                                        setShowQuadrantPopup(true);
+                                    }}
                                 >
                                     <div className="text-xs text-white/60 mb-1">Duplicates Found</div>
                                     <div className="text-2xl font-semibold text-white">
                                         {keywordProgress.duplicatesFound}
                                     </div>
-                                    {expandedQuadrant === 'duplicates' && keywordProgress.duplicates && keywordProgress.duplicates.length > 0 && (
-                                        <div className="mt-3 max-h-48 overflow-y-auto">
-                                            <div className="flex flex-wrap gap-1">
-                                                {keywordProgress.duplicates.map((duplicate, index) => (
-                                                    <span key={index} className="text-xs bg-white/10 text-white/70 px-2 py-1 rounded">
-                                                        {duplicate}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
 
                                 {/* Existing Keywords */}
                                 <div 
-                                    className={`bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10 ${
-                                        expandedQuadrant === 'existing' ? 'bg-white/10 border border-white/20' : ''
-                                    }`}
-                                    onClick={() => setExpandedQuadrant(expandedQuadrant === 'existing' ? null : 'existing')}
+                                    className="bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10"
+                                    onClick={() => {
+                                        setQuadrantPopupType('existing');
+                                        setShowQuadrantPopup(true);
+                                    }}
                                 >
                                     <div className="text-xs text-white/60 mb-1">Existing Keywords</div>
                                     <div className="text-2xl font-semibold text-white">
                                         {keywordProgress.existingKeywordsFound}
                                     </div>
-                                    {expandedQuadrant === 'existing' && keywordProgress.existingKeywords && keywordProgress.existingKeywords.length > 0 && (
-                                        <div className="mt-3 max-h-48 overflow-y-auto">
-                                            <div className="flex flex-wrap gap-1">
-                                                {keywordProgress.existingKeywords.map((keyword, index) => (
-                                                    <span key={index} className="text-xs bg-white/10 text-white/70 px-2 py-1 rounded">
-                                                        {keyword}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
 
@@ -1261,6 +1224,74 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             <Loader2 className="h-6 w-6 animate-spin text-white/60" />
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Quadrant Popup Dialog */}
+            <Dialog open={showQuadrantPopup} onOpenChange={setShowQuadrantPopup}>
+                <DialogContent className="max-w-2xl max-h-[80vh] bg-gray-900 border-gray-700">
+                    <DialogHeader>
+                        <DialogTitle className="text-white">
+                            {quadrantPopupType === 'seeds' && 'Seeds Generated'}
+                            {quadrantPopupType === 'keywords' && 'Keywords Generated'}
+                            {quadrantPopupType === 'duplicates' && 'Duplicates Found'}
+                            {quadrantPopupType === 'existing' && 'Existing Keywords'}
+                        </DialogTitle>
+                        <DialogDescription className="text-white/60">
+                            {quadrantPopupType === 'seeds' && `Total: ${keywordProgress?.seedsGenerated || 0} seeds`}
+                            {quadrantPopupType === 'keywords' && `Total: ${keywordProgress?.keywordsGenerated || 0} keywords`}
+                            {quadrantPopupType === 'duplicates' && `Total: ${keywordProgress?.duplicatesFound || 0} duplicates`}
+                            {quadrantPopupType === 'existing' && `Total: ${keywordProgress?.existingKeywordsFound || 0} existing keywords`}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="mt-4 max-h-[60vh] overflow-y-auto">
+                        {quadrantPopupType === 'seeds' && keywordProgress?.seeds && keywordProgress.seeds.length > 0 && (
+                            <div className="space-y-2">
+                                {keywordProgress.seeds.map((seed, index) => (
+                                    <div key={index} className="text-sm text-white/90 bg-white/5 rounded-lg px-4 py-3 border border-white/10">
+                                        {seed}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {quadrantPopupType === 'keywords' && keywordProgress?.allKeywords && keywordProgress.allKeywords.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                                {keywordProgress.allKeywords.map((keyword, index) => (
+                                    <span key={index} className="text-sm bg-white/10 text-white/90 px-3 py-2 rounded-lg border border-white/20">
+                                        {keyword}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {quadrantPopupType === 'duplicates' && keywordProgress?.duplicates && keywordProgress.duplicates.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                                {keywordProgress.duplicates.map((duplicate, index) => (
+                                    <span key={index} className="text-sm bg-orange-500/20 text-orange-200 px-3 py-2 rounded-lg border border-orange-500/30">
+                                        {duplicate}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {quadrantPopupType === 'existing' && keywordProgress?.existingKeywords && keywordProgress.existingKeywords.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                                {keywordProgress.existingKeywords.map((keyword, index) => (
+                                    <span key={index} className="text-sm bg-blue-500/20 text-blue-200 px-3 py-2 rounded-lg border border-blue-500/30">
+                                        {keyword}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {(!keywordProgress || 
+                            (quadrantPopupType === 'seeds' && (!keywordProgress.seeds || keywordProgress.seeds.length === 0)) ||
+                            (quadrantPopupType === 'keywords' && (!keywordProgress.allKeywords || keywordProgress.allKeywords.length === 0)) ||
+                            (quadrantPopupType === 'duplicates' && (!keywordProgress.duplicates || keywordProgress.duplicates.length === 0)) ||
+                            (quadrantPopupType === 'existing' && (!keywordProgress.existingKeywords || keywordProgress.existingKeywords.length === 0))
+                        ) && (
+                            <div className="text-center text-white/60 py-8">
+                                No items to display yet.
+                            </div>
+                        )}
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>
