@@ -891,10 +891,27 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     description: `Successfully generated full report with ${data.report?.totalKeywords || 0} keywords`,
                                 });
                             } else if (data.type === "error") {
-                                throw new Error(data.error || "Unknown error");
+                                const errorMessage = data.error || "Unknown error";
+                                console.error("Error from server:", errorMessage);
+                                toast({
+                                    title: "Error",
+                                    description: errorMessage,
+                                    variant: "destructive",
+                                });
+                                setIsGeneratingKeywords(false);
+                                return; // Stop processing SSE events
                             }
                         } catch (e) {
                             console.error("Error parsing SSE data:", e);
+                            if (e instanceof Error) {
+                                toast({
+                                    title: "Error",
+                                    description: e.message,
+                                    variant: "destructive",
+                                });
+                            }
+                            setIsGeneratingKeywords(false);
+                            return; // Stop processing SSE events
                         }
                     }
                 }
