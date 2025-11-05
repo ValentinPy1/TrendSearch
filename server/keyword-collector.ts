@@ -131,23 +131,37 @@ export async function collectKeywords(
 
     // Step 2: Collect keywords from seeds (or continue from resume point) with concurrent processing
     progress.stage = 'generating-keywords';
+    console.log(`[KeywordCollector] Starting keyword collection: ${seedsWithSimilarity.length} seeds, targetCount=${targetCount}, startSeedIndex=${startSeedIndex}`);
+    console.log(`[KeywordCollector] Current progress: newKeywordsCollected=${progress.newKeywordsCollected}, keywordsGenerated=${progress.keywordsGenerated}`);
 
     const CONCURRENT_BATCH_SIZE = 20; // Process 20 seeds concurrently
 
     // Process seeds in batches of 20 concurrently
     for (let batchStart = startSeedIndex; batchStart < seedsWithSimilarity.length; batchStart += CONCURRENT_BATCH_SIZE) {
+        const batchStartTime = Date.now();
+        console.log(`[KeywordCollector] Starting batch: batchStart=${batchStart}, batchEnd=${Math.min(batchStart + CONCURRENT_BATCH_SIZE, seedsWithSimilarity.length)}, remaining=${seedsWithSimilarity.length - batchStart} seeds`);
+        
         if (progress.newKeywordsCollected >= targetCount) {
+            console.log(`[KeywordCollector] Target count reached: ${progress.newKeywordsCollected} >= ${targetCount}, breaking`);
             break; // We have enough new keywords
         }
 
         const batchEnd = Math.min(batchStart + CONCURRENT_BATCH_SIZE, seedsWithSimilarity.length);
         const batch = seedsWithSimilarity.slice(batchStart, batchEnd);
+        console.log(`[KeywordCollector] Processing batch of ${batch.length} seeds: ${batch.map(b => b.seed).join(', ')}`);
 
         // Process all seeds in this batch concurrently
         const batchPromises = batch.map(async ({ seed, similarityScore }) => {
+            const seedStartTime = Date.now();
+            console.log(`[KeywordCollector] Starting seed processing: "${seed}" at ${new Date().toISOString()}`);
+            
             try {
                 // Generate keywords from this seed (~50 per seed)
+                console.log(`[KeywordCollector] Calling generateKeywordsFromSeed for: "${seed}"`);
+                const generateStartTime = Date.now();
                 const generatedKeywords = await keywordGenerator.generateKeywordsFromSeed(seed, 50);
+                const generateDuration = Date.now() - generateStartTime;
+                console.log(`[KeywordCollector] generateKeywordsFromSeed completed for "${seed}" in ${generateDuration}ms, got ${generatedKeywords.length} keywords`);
                 
                 // Deduplicate within this batch
                 const deduplicated = deduplicateKeywords(generatedKeywords);
@@ -155,10 +169,18 @@ export async function collectKeywords(
                     const normalized = kw.toLowerCase();
                     return !deduplicated.some(d => d.toLowerCase() === normalized);
                 });
+                console.log(`[KeywordCollector] Deduplication for "${seed}": ${generatedKeywords.length} -> ${deduplicated.length} (${duplicatesInBatch.length} duplicates)`);
 
                 // Check for existing keywords (vector DB + global DB)
+                console.log(`[KeywordCollector] Checking existing keywords for "${seed}", ${deduplicated.length} keywords to check`);
+                const checkStartTime = Date.now();
                 const checkResult = await checkKeywords(deduplicated);
+                const checkDuration = Date.now() - checkStartTime;
+                console.log(`[KeywordCollector] checkKeywords completed for "${seed}" in ${checkDuration}ms: ${checkResult.newKeywords.length} new, ${checkResult.existingKeywords.length} existing`);
 
+                const seedDuration = Date.now() - seedStartTime;
+                console.log(`[KeywordCollector] Seed processing complete for "${seed}" in ${seedDuration}ms`);
+                
                 return {
                     seed,
                     generatedKeywords,
@@ -168,7 +190,11 @@ export async function collectKeywords(
                     success: true,
                 };
             } catch (error) {
-                console.error(`[KeywordCollector] Failed to generate keywords from seed: ${seed}`, error);
+                const seedDuration = Date.now() - seedStartTime;
+                console.error(`[KeywordCollector] Failed to generate keywords from seed: "${seed}" after ${seedDuration}ms`, error);
+                if (error instanceof Error) {
+                    console.error(`[KeywordCollector] Error details: ${error.message}, stack: ${error.stack}`);
+                }
                 return {
                     seed,
                     generatedKeywords: [],
@@ -181,16 +207,26 @@ export async function collectKeywords(
         });
 
         // Wait for all seeds in batch to complete, with timeout protection
+        console.log(`[KeywordCollector] Waiting for batch promises to settle (${batchPromises.length} promises) at ${new Date().toISOString()}`);
+        const settleStartTime = Date.now();
+        
         let batchResults;
         try {
             batchResults = await Promise.allSettled(batchPromises);
+            const settleDuration = Date.now() - settleStartTime;
+            console.log(`[KeywordCollector] Promise.allSettled completed in ${settleDuration}ms: ${batchResults.length} results`);
+            
             // Convert settled results to regular results format
             batchResults = batchResults.map((result, index) => {
                 if (result.status === 'fulfilled') {
+                    console.log(`[KeywordCollector] Promise ${index} fulfilled for seed: "${result.value.seed}", success=${result.value.success}`);
                     return result.value;
                 } else {
                     const seed = batch[index]?.seed || 'unknown';
-                    console.error(`[KeywordCollector] Promise rejected for seed: ${seed}`, result.reason);
+                    console.error(`[KeywordCollector] Promise ${index} rejected for seed: "${seed}"`, result.reason);
+                    if (result.reason instanceof Error) {
+                        console.error(`[KeywordCollector] Rejection error: ${result.reason.message}, stack: ${result.reason.stack}`);
+                    }
                     return {
                         seed,
                         generatedKeywords: [],
@@ -201,8 +237,16 @@ export async function collectKeywords(
                     };
                 }
             });
+            
+            const successful = batchResults.filter(r => r.success).length;
+            const failed = batchResults.filter(r => !r.success).length;
+            console.log(`[KeywordCollector] Batch results: ${successful} successful, ${failed} failed`);
         } catch (error) {
-            console.error(`[KeywordCollector] Error processing batch starting at ${batchStart}:`, error);
+            const settleDuration = Date.now() - settleStartTime;
+            console.error(`[KeywordCollector] Error processing batch starting at ${batchStart} after ${settleDuration}ms:`, error);
+            if (error instanceof Error) {
+                console.error(`[KeywordCollector] Batch error details: ${error.message}, stack: ${error.stack}`);
+            }
             // Create failed results for all seeds in batch
             batchResults = batch.map(({ seed }) => ({
                 seed,
@@ -215,16 +259,23 @@ export async function collectKeywords(
         }
 
         // Process results and update progress
-        for (const result of batchResults) {
+        console.log(`[KeywordCollector] Processing ${batchResults.length} batch results`);
+        for (let i = 0; i < batchResults.length; i++) {
+            const result = batchResults[i];
+            console.log(`[KeywordCollector] Processing result ${i + 1}/${batchResults.length} for seed: "${result.seed}", success=${result.success}`);
+            
             if (progress.newKeywordsCollected >= targetCount) {
+                console.log(`[KeywordCollector] Target count reached during result processing: ${progress.newKeywordsCollected} >= ${targetCount}`);
                 break; // We have enough new keywords
             }
 
             if (!result.success) {
+                console.log(`[KeywordCollector] Skipping failed seed: "${result.seed}"`);
                 continue; // Skip failed seeds
             }
 
             progress.currentSeed = result.seed;
+            const beforeCount = progress.keywordsGenerated;
             progress.keywordsGenerated += result.generatedKeywords.length;
             allKeywordsList.push(...result.generatedKeywords);
 
@@ -235,6 +286,7 @@ export async function collectKeywords(
             existingKeywordsList.push(...result.checkResult.existingKeywords);
 
             // Add new keywords to collection
+            const beforeNewKeywords = allGeneratedKeywords.length;
             const newKeywords = result.checkResult.newKeywords.filter(kw => {
                 const normalized = kw.toLowerCase();
                 if (!seenKeywords.has(normalized)) {
@@ -248,6 +300,8 @@ export async function collectKeywords(
 
             allGeneratedKeywords.push(...newKeywords);
             progress.newKeywordsCollected = allGeneratedKeywords.length;
+            
+            console.log(`[KeywordCollector] Seed "${result.seed}": generated=${result.generatedKeywords.length}, new=${newKeywords.length}, totalNew=${progress.newKeywordsCollected}, keywordsGenerated=${beforeCount} -> ${progress.keywordsGenerated}`);
 
             // Update lists in progress
             progress.allKeywords = [...allKeywordsList];
@@ -257,20 +311,26 @@ export async function collectKeywords(
 
             // Call progress callback with error handling
             try {
+                console.log(`[KeywordCollector] Calling progress callback for seed "${result.seed}"`);
                 progressCallback?.(progress);
             } catch (callbackError) {
-                console.error(`[KeywordCollector] Error in progress callback:`, callbackError);
+                console.error(`[KeywordCollector] Error in progress callback for seed "${result.seed}":`, callbackError);
                 // Continue processing even if callback fails
             }
 
             // If we have enough, break early
             if (progress.newKeywordsCollected >= targetCount) {
+                console.log(`[KeywordCollector] Target count reached: ${progress.newKeywordsCollected} >= ${targetCount}`);
                 break;
             }
         }
         
         // Send progress update after each batch completes
+        const batchDuration = Date.now() - batchStartTime;
+        console.log(`[KeywordCollector] Batch completed in ${batchDuration}ms: newKeywordsCollected=${progress.newKeywordsCollected}, keywordsGenerated=${progress.keywordsGenerated}`);
+        
         try {
+            console.log(`[KeywordCollector] Calling progress callback after batch completion`);
             progressCallback?.(progress);
         } catch (callbackError) {
             console.error(`[KeywordCollector] Error in progress callback after batch:`, callbackError);

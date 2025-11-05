@@ -2033,44 +2033,61 @@ Return ONLY the JSON array, no other text. Example format:
 
             // STEP 2: Generate keywords (with concurrent processing)
             if (!savedProgress || !savedProgress.newKeywords || savedProgress.newKeywords.length < 1000) {
+                console.log(`[KeywordGeneration] Starting keyword generation at ${new Date().toISOString()}`);
+                console.log(`[KeywordGeneration] Resume from progress: ${!!savedProgress}, existing keywords: ${savedProgress?.newKeywords?.length || 0}`);
+                
                 sendProgress('generating-keywords', { message: 'Generating 1000 keywords with 20 concurrent calls...' });
                 
                 const { collectKeywords, progressToSaveFormat } = await import("./keyword-collector");
                 
                 // Track progress for saving
                 let accumulatedNewKeywords: string[] = [];
+                let lastProgressLog = Date.now();
                 
                 const progressCallback = async (progress: any) => {
+                    const now = Date.now();
+                    const timeSinceLastLog = now - lastProgressLog;
+                    
                     try {
+                        console.log(`[KeywordGeneration] Progress callback: stage=${progress.stage}, newKeywords=${progress.newKeywordsCollected}, keywordsGenerated=${progress.keywordsGenerated}, currentSeed=${progress.currentSeed || 'none'}, timeSinceLastLog=${timeSinceLastLog}ms`);
+                        
                         sendProgress('generating-keywords', progress);
                         accumulatedNewKeywords = progress.newKeywords || accumulatedNewKeywords;
                         
                         // Save progress periodically
-                        const now = Date.now();
                         if (now - lastSaveTime > SAVE_INTERVAL || (progress.newKeywordsCollected > 0 && progress.newKeywordsCollected % 50 === 0)) {
                             try {
+                                console.log(`[KeywordGeneration] Saving progress: ${progress.newKeywordsCollected} keywords collected`);
                                 await saveProgress({
                                     currentStage: 'generating-keywords',
                                     ...progress,
                                     newKeywords: accumulatedNewKeywords
                                 });
                             } catch (saveError) {
-                                console.error("Error saving progress in callback:", saveError);
+                                console.error("[KeywordGeneration] Error saving progress in callback:", saveError);
                                 // Continue even if saving fails
                             }
                         }
+                        
+                        lastProgressLog = now;
                     } catch (callbackError) {
-                        console.error("Error in progress callback:", callbackError);
+                        console.error("[KeywordGeneration] Error in progress callback:", callbackError);
                         // Continue processing even if callback fails
                     }
                 };
 
+                console.log(`[KeywordGeneration] Calling collectKeywords at ${new Date().toISOString()}`);
+                const startTime = Date.now();
+                
                 const result = await collectKeywords(
                     input,
                     progressCallback,
                     1000,
                     savedProgress && savedProgress.newKeywords ? savedProgress : undefined
                 );
+                
+                const duration = Date.now() - startTime;
+                console.log(`[KeywordGeneration] collectKeywords completed in ${duration}ms, returned ${result.keywords.length} keywords at ${new Date().toISOString()}`);
 
                 finalKeywords = result.keywords;
                 accumulatedNewKeywords = finalKeywords;

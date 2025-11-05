@@ -44,7 +44,11 @@ Return ONLY the keywords, one per line, without numbers, bullets, or explanation
 Do not include quotes around keywords.
 Each keyword must be 2-4 words only.`;
 
+        const apiCallStartTime = Date.now();
+        console.log(`[KeywordGenerator] Starting API call for seed: "${seed}" at ${new Date().toISOString()}`);
+        
         try {
+            console.log(`[KeywordGenerator] Creating OpenAI API request for seed: "${seed}"`);
             const response = await this.openai.chat.completions.create({
                 model: 'gpt-4o-mini',
                 messages: [
@@ -61,17 +65,26 @@ Each keyword must be 2-4 words only.`;
                 max_tokens: 2000,
             });
 
+            const apiCallDuration = Date.now() - apiCallStartTime;
+            console.log(`[KeywordGenerator] API call completed for seed: "${seed}" in ${apiCallDuration}ms`);
+
             const content = response.choices[0]?.message?.content || '';
             if (!content) {
-                console.warn(`[KeywordGenerator] Empty response for seed: ${seed}`);
+                console.warn(`[KeywordGenerator] Empty response for seed: "${seed}"`);
                 return [];
             }
 
+            console.log(`[KeywordGenerator] Parsing keywords from response for seed: "${seed}", content length=${content.length}`);
             // Parse keywords from response
             const keywords = this.parseKeywords(content);
+            console.log(`[KeywordGenerator] Parsed ${keywords.length} keywords for seed: "${seed}"`);
             return keywords;
         } catch (error) {
-            console.error(`[KeywordGenerator] Failed to generate keywords for seed: ${seed}`, error);
+            const apiCallDuration = Date.now() - apiCallStartTime;
+            console.error(`[KeywordGenerator] Failed to generate keywords for seed: "${seed}" after ${apiCallDuration}ms`, error);
+            if (error instanceof Error) {
+                console.error(`[KeywordGenerator] Error details: ${error.message}, stack: ${error.stack}`);
+            }
             throw error;
         }
     }

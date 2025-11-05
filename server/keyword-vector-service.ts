@@ -125,6 +125,7 @@ class KeywordVectorService {
     private initializationPromise: Promise<void> | null = null;
     private precomputedMetrics: Map<string, PrecomputedOpportunityMetrics> | null = null;
     private preprocessedKeywords: Map<string, ProcessedKeywordData> | null = null;
+    private keywordSet: Set<string> | null = null; // Fast O(1) exact match lookup
 
     async initialize() {
         if (this.initialized) return;
@@ -180,6 +181,10 @@ class KeywordVectorService {
             }
 
             console.log(`[KeywordVectorService] Loaded ${this.keywords.length} keywords from CSV`);
+
+            // Build Set for fast exact match lookups
+            this.keywordSet = new Set(this.keywords.map(k => k.keyword.toLowerCase().trim()));
+            console.log(`[KeywordVectorService] Built keyword Set for fast lookups (${this.keywordSet.size} keywords)`);
 
             // Load precomputed opportunity metrics (if available)
             this.loadPrecomputedMetrics();
@@ -277,17 +282,25 @@ class KeywordVectorService {
         return dotProduct;
     }
 
-    async isKeyword(text: string, threshold: number = 0.95): Promise<boolean> {
+    async isKeyword(text: string, threshold: number = 0.95, exactMatchOnly: boolean = false): Promise<boolean> {
         if (!this.initialized) {
             await this.initialize();
         }
 
-        // First check for exact match (fast path)
+        // Fast exact match check using Set (O(1) lookup)
         const normalizedText = text.toLowerCase().trim();
-        const exactMatch = this.keywords.some(k => k.keyword.toLowerCase() === normalizedText);
-        if (exactMatch) return true;
+        if (this.keywordSet && this.keywordSet.has(normalizedText)) {
+            return true;
+        }
+
+        // For keyword generation/deduplication, we only care about exact matches
+        // Skip expensive similarity search for non-existing keywords
+        if (exactMatchOnly) {
+            return false;
+        }
 
         // Check similarity score (slower but catches near-matches)
+        // Only do this for fuzzy matching scenarios, not for keyword generation
         const results = await this.findSimilarKeywords(text, 1);
         if (results.length > 0 && results[0].similarityScore >= threshold) {
             return true;
