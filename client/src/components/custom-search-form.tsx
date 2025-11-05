@@ -75,6 +75,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [quadrantPopupType, setQuadrantPopupType] = useState<'seeds' | 'keywords' | 'duplicates' | 'existing' | null>(null);
     const [savedProgress, setSavedProgress] = useState<any>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const isInitialLoadRef = useRef(false); // Track if we're in the initial load phase
     const [isFetchingDataForSEO, setIsFetchingDataForSEO] = useState(false);
     const [isComputingMetrics, setIsComputingMetrics] = useState(false);
     const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -175,14 +176,24 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
     // Auto-save function with debouncing
     const autoSave = () => {
-        // Skip auto-save if we're loading a project or creating initial project
-        if (isLoadingProject || createProjectMutation.isPending) return;
+        // Skip auto-save if we're loading a project, creating initial project, or in initial load phase
+        if (isLoadingProject || createProjectMutation.isPending || isInitialLoadRef.current) {
+            // Clear any pending save operations
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+                saveTimeoutRef.current = null;
+            }
+            return;
+        }
 
         if (saveTimeoutRef.current) {
             clearTimeout(saveTimeoutRef.current);
         }
 
         saveTimeoutRef.current = setTimeout(() => {
+            // Double-check we're still not loading (race condition protection)
+            if (isLoadingProject || createProjectMutation.isPending || isInitialLoadRef.current) return;
+            
             if (!currentProjectId) {
                 // Create new project if none exists
                 createProjectMutation.mutate({
@@ -220,6 +231,15 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
     // Auto-save on form changes
     useEffect(() => {
+        // Clear any pending auto-save when loading a project
+        if (isLoadingProject) {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+                saveTimeoutRef.current = null;
+            }
+            return;
+        }
+        
         autoSave();
         return () => {
             if (saveTimeoutRef.current) {
@@ -227,15 +247,26 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [name, pitch, topics, personas, painPoints, features, competitors, isLoadingProject]);
+    }, [name, pitch, topics, personas, painPoints, features, competitors, isLoadingProject, currentProjectId]);
 
     // Auto-create project on first mount if no projects exist
+    const hasAutoLoadedRef = useRef(false); // Track if we've already auto-loaded a project
     useEffect(() => {
-        if (!projectsData) return;
+        // Don't run if projects are still loading or we've already auto-loaded
+        if (!projectsData || hasAutoLoadedRef.current) return;
 
         // Only auto-create/load if we don't have a current project and we're not manually creating one
         if (projectsData.projects.length === 0 && !currentProjectId && !createProjectMutation.isPending && !isLoadingProject) {
+            // Clear any pending auto-save
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+                saveTimeoutRef.current = null;
+            }
+            
+            hasAutoLoadedRef.current = true; // Mark as auto-loaded
             setIsLoadingProject(true);
+            isInitialLoadRef.current = true; // Prevent auto-save during creation
+            
             createProjectMutation.mutate({
                 name: "",
                 pitch: "",
@@ -248,11 +279,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 onSuccess: () => {
                     setTimeout(() => {
                         setIsLoadingProject(false);
-                    }, 100);
+                        isInitialLoadRef.current = false;
+                    }, 200);
                 },
             });
         } else if (projectsData.projects.length > 0 && !currentProjectId && !isLoadingProject) {
             // Load most recent project
+            hasAutoLoadedRef.current = true; // Mark as auto-loaded
             const mostRecent = projectsData.projects[0];
             loadProject(mostRecent);
         }
@@ -261,8 +294,22 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
     // Load project data into form
     const loadProject = async (project: CustomSearchProject) => {
+        // Clear any pending auto-save operations first
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+        }
+        
+        // Set flag to prevent auto-save during loading
+        isInitialLoadRef.current = true;
+        
+        // Set currentProjectId FIRST before updating form values
         setIsLoadingProject(true);
         setCurrentProjectId(project.id);
+        
+        // Wait a tick to ensure currentProjectId state is set before updating form values
+        await new Promise(resolve => setTimeout(resolve, 0));
+        
         form.setValue("name", project.name || "");
         form.setValue("pitch", project.pitch || "");
         setTopics(project.topics || []);
@@ -332,7 +379,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         // Allow auto-save after a short delay to ensure form is fully updated
         setTimeout(() => {
             setIsLoadingProject(false);
-        }, 100);
+            isInitialLoadRef.current = false; // Re-enable auto-save after loading is complete
+        }, 200); // Increased delay to ensure all state updates are complete
     };
 
     // Handle new project creation
@@ -380,7 +428,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     // Allow auto-save after project is created
                     setTimeout(() => {
                         setIsLoadingProject(false);
-                    }, 100);
+                        isInitialLoadRef.current = false; // Re-enable auto-save
+                    }, 200);
                 },
                 onError: () => {
                     setIsLoadingProject(false);

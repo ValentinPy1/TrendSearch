@@ -2293,14 +2293,12 @@ Return ONLY the JSON array, no other text. Example format:
                     continue; // Need at least 2 months for calculations
                 }
 
-                // Calculate YoY growth
+                // Calculate YoY growth (add 1 to denominator to avoid division by zero and provide smoothing)
                 const lastMonth = sortedMonthlyData[sortedMonthlyData.length - 1];
                 let yoyGrowth: number | null = null;
                 if (sortedMonthlyData.length >= 12) {
                     const sameMonthLastYear = sortedMonthlyData[sortedMonthlyData.length - 12];
-                    if (sameMonthLastYear.volume > 0) {
-                        yoyGrowth = ((lastMonth.volume - sameMonthLastYear.volume) / sameMonthLastYear.volume) * 100;
-                    }
+                    yoyGrowth = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
                 }
 
                 // Calculate 3mo growth
@@ -2371,23 +2369,9 @@ Return ONLY the JSON array, no other text. Example format:
                 return res.status(400).json({ message: "No keywords with data found. Please fetch DataForSEO metrics first." });
             }
 
-            // Calculate aggregated metrics
+            // Calculate aggregated PRIMARY metrics (averages of individual keyword metrics)
             const totalVolume = keywordsWithData.reduce((sum, kw) => sum + (kw.volume || 0), 0);
             const avgVolume = Math.round(totalVolume / keywordsWithData.length);
-
-            const validGrowthYoy = keywordsWithData
-                .map(kw => kw.growthYoy ? parseFloat(kw.growthYoy) : null)
-                .filter((g): g is number => g !== null);
-            const avgGrowthYoy = validGrowthYoy.length > 0
-                ? validGrowthYoy.reduce((sum, g) => sum + g, 0) / validGrowthYoy.length
-                : null;
-
-            const validGrowth3m = keywordsWithData
-                .map(kw => kw.growth3m ? parseFloat(kw.growth3m) : null)
-                .filter((g): g is number => g !== null);
-            const avgGrowth3m = validGrowth3m.length > 0
-                ? validGrowth3m.reduce((sum, g) => sum + g, 0) / validGrowth3m.length
-                : null;
 
             const validCpc = keywordsWithData
                 .map(kw => kw.cpc ? parseFloat(kw.cpc) : null)
@@ -2423,9 +2407,90 @@ Return ONLY the JSON array, no other text. Example format:
                 ? Object.entries(competitionCounts).sort((a, b) => b[1] - a[1])[0][0]
                 : null;
 
+            // Convert competition to number for calculations (high=100, medium=50, low=0)
+            const competitionNumber = competition === "high" ? 100 : competition === "medium" ? 50 : 0;
+
+            // Calculate aggregated monthly data (average volume per month across all keywords)
+            const monthlyDataMap = new Map<string, { sum: number; count: number }>();
+            keywordsWithData.forEach(kw => {
+                if (kw.monthlyData && Array.isArray(kw.monthlyData)) {
+                    kw.monthlyData.forEach((md: any) => {
+                        if (md.month && md.volume !== null && md.volume !== undefined) {
+                            const existing = monthlyDataMap.get(md.month) || { sum: 0, count: 0 };
+                            monthlyDataMap.set(md.month, {
+                                sum: existing.sum + md.volume,
+                                count: existing.count + 1
+                            });
+                        }
+                    });
+                }
+            });
+
+            // Convert to array format and sort chronologically
+            const aggregatedMonthlyData = Array.from(monthlyDataMap.entries())
+                .map(([month, data]) => ({
+                    month,
+                    volume: Math.round(data.sum / data.count),
+                    sortKey: month // For sorting
+                }))
+                .sort((a, b) => {
+                    // Sort chronologically by parsing month string
+                    const dateA = new Date(a.month);
+                    const dateB = new Date(b.month);
+                    return dateA.getTime() - dateB.getTime();
+                })
+                .map(({ sortKey, ...rest }) => rest);
+
+            // Calculate aggregated SECONDARY metrics from aggregated primary metrics
+            const { calculateVolatility, calculateTrendStrength, calculateOpportunityScore } = await import("./opportunity-score");
+
+            // Calculate aggregated YoY growth from aggregated monthly data
+            let aggregatedGrowthYoy: number | null = null;
+            if (aggregatedMonthlyData.length >= 12) {
+                const lastMonth = aggregatedMonthlyData[aggregatedMonthlyData.length - 1];
+                const sameMonthLastYear = aggregatedMonthlyData[aggregatedMonthlyData.length - 12];
+                aggregatedGrowthYoy = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
+            }
+
+            // Calculate aggregated 3-month growth from aggregated monthly data
+            let aggregatedGrowth3m: number | null = null;
+            if (aggregatedMonthlyData.length >= 3) {
+                const lastMonth = aggregatedMonthlyData[aggregatedMonthlyData.length - 1];
+                const threeMonthsAgo = aggregatedMonthlyData[aggregatedMonthlyData.length - 3];
+                aggregatedGrowth3m = ((lastMonth.volume - threeMonthsAgo.volume) / (threeMonthsAgo.volume + 1)) * 100;
+            }
+
+            // Calculate aggregated volatility from aggregated monthly data
+            const aggregatedVolatility = calculateVolatility(aggregatedMonthlyData);
+
+            // Calculate aggregated trend strength from aggregated YoY growth and volatility
+            const aggregatedTrendStrength = aggregatedGrowthYoy !== null
+                ? calculateTrendStrength(aggregatedGrowthYoy, aggregatedVolatility)
+                : 0;
+
+            // Calculate aggregated opportunity score from aggregated primary metrics
+            let aggregatedOpportunityScore = null;
+            let aggregatedBidEfficiency = null;
+            let aggregatedTac = null;
+            let aggregatedSac = null;
+
+            if (avgVolume && avgCpc !== null && avgTopPageBid !== null && aggregatedGrowthYoy !== null && aggregatedMonthlyData.length > 0) {
+                const oppResult = calculateOpportunityScore({
+                    volume: avgVolume,
+                    competition: competitionNumber,
+                    cpc: avgCpc,
+                    topPageBid: avgTopPageBid,
+                    growthYoy: aggregatedGrowthYoy,
+                    monthlyData: aggregatedMonthlyData
+                });
+                aggregatedOpportunityScore = oppResult.opportunityScore;
+                aggregatedBidEfficiency = oppResult.bidEfficiency;
+                aggregatedTac = oppResult.tac;
+                aggregatedSac = oppResult.sac;
+            }
+
             // Format keywords for response (matching Keyword type from schema)
-            // Need to calculate opportunity score and other derived metrics
-            const { calculateOpportunityScore } = await import("./opportunity-score");
+            // Need to calculate opportunity score and other derived metrics for individual keywords
 
             // Get all similarity scores for keywords in one query
             const keywordIds = keywordsWithData.map(kw => kw.id);
@@ -2575,11 +2640,18 @@ Return ONLY the JSON array, no other text. Example format:
                 report: {
                     aggregated: {
                         avgVolume,
-                        growth3m: avgGrowth3m,
-                        growthYoy: avgGrowthYoy,
+                        growth3m: aggregatedGrowth3m !== null ? aggregatedGrowth3m.toString() : null,
+                        growthYoy: aggregatedGrowthYoy !== null ? aggregatedGrowthYoy.toString() : null,
                         competition,
-                        avgTopPageBid,
-                        avgCpc
+                        avgTopPageBid: avgTopPageBid !== null ? avgTopPageBid.toString() : null,
+                        avgCpc: avgCpc !== null ? avgCpc.toString() : null,
+                        // Secondary metrics computed from aggregated primary metrics
+                        volatility: aggregatedVolatility.toString(),
+                        trendStrength: aggregatedTrendStrength.toString(),
+                        bidEfficiency: aggregatedBidEfficiency !== null ? aggregatedBidEfficiency.toString() : null,
+                        tac: aggregatedTac !== null ? aggregatedTac.toString() : null,
+                        sac: aggregatedSac !== null ? aggregatedSac.toString() : null,
+                        opportunityScore: aggregatedOpportunityScore !== null ? aggregatedOpportunityScore.toString() : null
                     },
                     keywords: formattedKeywords,
                     totalKeywords: keywordsWithData.length
