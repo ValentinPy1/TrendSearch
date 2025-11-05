@@ -17,6 +17,22 @@ export interface ProgressUpdate {
     allKeywords?: string[];
     duplicates?: string[];
     existingKeywords?: string[];
+    newKeywords?: string[]; // Track new keywords for saving
+}
+
+export interface KeywordGenerationProgress {
+    stage: string; // 'generating-seeds' | 'generating-keywords' | 'selecting-top-keywords' | 'complete'
+    seedsGenerated: number;
+    keywordsGenerated: number;
+    duplicatesFound: number;
+    existingKeywordsFound: number;
+    newKeywordsCollected: number;
+    seeds?: string[];
+    allKeywords?: string[];
+    duplicates?: string[];
+    existingKeywords?: string[];
+    newKeywords?: string[]; // Final list of new keywords
+    completedAt?: string; // ISO timestamp
 }
 
 export interface KeywordCollectionResult {
@@ -31,35 +47,86 @@ export interface KeywordCollectionResult {
 export async function collectKeywords(
     input: SeedGenerationInput,
     progressCallback?: (progress: ProgressUpdate) => void,
-    targetCount: number = 1000
+    targetCount: number = 1000,
+    resumeFromProgress?: KeywordGenerationProgress
 ): Promise<KeywordCollectionResult> {
-    const progress: ProgressUpdate = {
-        stage: 'initializing',
-        seedsGenerated: 0,
-        keywordsGenerated: 0,
-        duplicatesFound: 0,
-        existingKeywordsFound: 0,
-        newKeywordsCollected: 0,
-    };
+    // If resuming, restore state from saved progress
+    let progress: ProgressUpdate;
+    let seedsWithSimilarity: Array<{ seed: string; similarityScore: number }>;
+    let allGeneratedKeywords: string[];
+    let seenKeywords: Set<string>;
+    let allKeywordsList: string[];
+    let duplicatesList: string[];
+    let existingKeywordsList: string[];
+    let startSeedIndex = 0;
 
-    // Step 1: Generate seeds with similarity ranking
-    progress.stage = 'generating-seeds';
-    progressCallback?.(progress);
-    
-    const seedsWithSimilarity = await generateSeeds(input);
-    progress.seedsGenerated = seedsWithSimilarity.length;
-    progress.seeds = seedsWithSimilarity.map(s => s.seed);
-    progressCallback?.(progress);
+    if (resumeFromProgress) {
+        // Restore from saved progress
+        progress = {
+            stage: resumeFromProgress.stage,
+            seedsGenerated: resumeFromProgress.seedsGenerated,
+            keywordsGenerated: resumeFromProgress.keywordsGenerated,
+            duplicatesFound: resumeFromProgress.duplicatesFound,
+            existingKeywordsFound: resumeFromProgress.existingKeywordsFound,
+            newKeywordsCollected: resumeFromProgress.newKeywordsCollected,
+            seeds: resumeFromProgress.seeds || [],
+            allKeywords: resumeFromProgress.allKeywords || [],
+            duplicates: resumeFromProgress.duplicates || [],
+            existingKeywords: resumeFromProgress.existingKeywords || [],
+        };
 
-    // Step 2: Collect keywords from seeds
+        // Restore lists
+        allGeneratedKeywords = resumeFromProgress.newKeywords ? [...resumeFromProgress.newKeywords] : [];
+        seenKeywords = new Set(allGeneratedKeywords.map(kw => kw.toLowerCase()));
+        allKeywordsList = resumeFromProgress.allKeywords ? [...resumeFromProgress.allKeywords] : [];
+        duplicatesList = resumeFromProgress.duplicates ? [...resumeFromProgress.duplicates] : [];
+        existingKeywordsList = resumeFromProgress.existingKeywords ? [...resumeFromProgress.existingKeywords] : [];
+
+        // Create seeds from saved list (we'll need to regenerate similarity scores or use saved ones)
+        seedsWithSimilarity = (resumeFromProgress.seeds || []).map(seed => ({
+            seed,
+            similarityScore: 0.8, // Default score when resuming
+        }));
+
+        // Find where to resume (skip seeds that were already processed)
+        // We'll estimate based on how many keywords we've collected
+        // This is approximate - we'll continue from where we left off
+        startSeedIndex = Math.floor((resumeFromProgress.newKeywordsCollected || 0) / 50);
+
+        progress.stage = 'generating-keywords'; // Resume in keyword generation stage
+        progressCallback?.(progress);
+    } else {
+        // Fresh start
+        progress = {
+            stage: 'initializing',
+            seedsGenerated: 0,
+            keywordsGenerated: 0,
+            duplicatesFound: 0,
+            existingKeywordsFound: 0,
+            newKeywordsCollected: 0,
+        };
+
+        allGeneratedKeywords = [];
+        seenKeywords = new Set<string>();
+        allKeywordsList = [];
+        duplicatesList = [];
+        existingKeywordsList = [];
+
+        // Step 1: Generate seeds with similarity ranking
+        progress.stage = 'generating-seeds';
+        progressCallback?.(progress);
+        
+        seedsWithSimilarity = await generateSeeds(input);
+        progress.seedsGenerated = seedsWithSimilarity.length;
+        progress.seeds = seedsWithSimilarity.map(s => s.seed);
+        progressCallback?.(progress);
+    }
+
+    // Step 2: Collect keywords from seeds (or continue from resume point)
     progress.stage = 'generating-keywords';
-    const allGeneratedKeywords: string[] = [];
-    const seenKeywords = new Set<string>(); // Track duplicates
-    const allKeywordsList: string[] = []; // Track all keywords generated
-    const duplicatesList: string[] = []; // Track all duplicates
-    const existingKeywordsList: string[] = []; // Track all existing keywords
 
-    for (const { seed, similarityScore } of seedsWithSimilarity) {
+    for (let i = startSeedIndex; i < seedsWithSimilarity.length; i++) {
+        const { seed, similarityScore } = seedsWithSimilarity[i];
         if (progress.newKeywordsCollected >= targetCount) {
             break; // We have enough new keywords
         }
@@ -106,6 +173,7 @@ export async function collectKeywords(
             progress.allKeywords = [...allKeywordsList];
             progress.duplicates = [...duplicatesList];
             progress.existingKeywords = [...existingKeywordsList];
+            progress.newKeywords = [...allGeneratedKeywords]; // Track new keywords for saving
 
             progressCallback?.(progress);
 
@@ -158,6 +226,26 @@ export async function collectKeywords(
     return {
         keywords: finalKeywords,
         progress,
+    };
+}
+
+/**
+ * Convert ProgressUpdate to KeywordGenerationProgress for saving
+ */
+export function progressToSaveFormat(progress: ProgressUpdate, newKeywords: string[]): KeywordGenerationProgress {
+    return {
+        stage: progress.stage,
+        seedsGenerated: progress.seedsGenerated,
+        keywordsGenerated: progress.keywordsGenerated,
+        duplicatesFound: progress.duplicatesFound,
+        existingKeywordsFound: progress.existingKeywordsFound,
+        newKeywordsCollected: progress.newKeywordsCollected,
+        seeds: progress.seeds,
+        allKeywords: progress.allKeywords,
+        duplicates: progress.duplicates,
+        existingKeywords: progress.existingKeywords,
+        newKeywords: newKeywords,
+        completedAt: progress.stage === 'complete' ? new Date().toISOString() : undefined,
     };
 }
 

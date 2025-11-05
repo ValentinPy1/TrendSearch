@@ -9,7 +9,8 @@ import {
     type IdeaWithReport,
     type CustomSearchProject, type InsertCustomSearchProject,
     type GlobalKeyword, type InsertGlobalKeyword,
-    type CustomSearchProjectKeyword, type InsertCustomSearchProjectKeyword
+    type CustomSearchProjectKeyword, type InsertCustomSearchProjectKeyword,
+    type KeywordGenerationProgress
 } from "@shared/schema";
 
 export interface IStorage {
@@ -49,6 +50,9 @@ export interface IStorage {
     getGlobalKeywordsByTexts(keywords: string[]): Promise<GlobalKeyword[]>;
     createGlobalKeywords(keywords: InsertGlobalKeyword[]): Promise<GlobalKeyword[]>;
     linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[]): Promise<void>;
+
+    // Keyword Generation Progress methods
+    saveKeywordGenerationProgress(projectId: string, progress: KeywordGenerationProgress): Promise<void>;
 
     // Health check
     healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }>;
@@ -288,6 +292,16 @@ export class DatabaseStorage implements IStorage {
         }));
 
         await db.insert(customSearchProjectKeywords).values(links as any);
+    }
+
+    async saveKeywordGenerationProgress(projectId: string, progress: KeywordGenerationProgress): Promise<void> {
+        await db
+            .update(customSearchProjects)
+            .set({
+                keywordGenerationProgress: progress as any,
+                updatedAt: sql`now()`,
+            })
+            .where(eq(customSearchProjects.id, projectId));
     }
 
     async healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }> {

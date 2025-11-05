@@ -62,9 +62,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         allKeywords?: string[];
         duplicates?: string[];
         existingKeywords?: string[];
+        newKeywords?: string[];
     } | null>(null);
     const [generatedKeywords, setGeneratedKeywords] = useState<string[]>([]);
     const [expandedQuadrant, setExpandedQuadrant] = useState<string | null>(null);
+    const [savedProgress, setSavedProgress] = useState<any>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const form = useForm<FormData>({
@@ -85,6 +87,20 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             return res.json();
         },
     });
+
+    // Update saved progress when project data changes
+    useEffect(() => {
+        if (currentProjectId && projectsData?.projects) {
+            const currentProject = projectsData.projects.find(p => p.id === currentProjectId);
+            if (currentProject?.keywordGenerationProgress) {
+                setSavedProgress(currentProject.keywordGenerationProgress);
+                // If complete, update generated keywords
+                if (currentProject.keywordGenerationProgress.stage === 'complete' && currentProject.keywordGenerationProgress.newKeywords) {
+                    setGeneratedKeywords(currentProject.keywordGenerationProgress.newKeywords);
+                }
+            }
+        }
+    }, [projectsData, currentProjectId]);
 
     // Create project mutation
     const createProjectMutation = useMutation({
@@ -238,6 +254,18 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setPainPoints(project.painPoints || []);
         setFeatures(project.features || []);
         setCompetitors(project.competitors || []);
+        
+        // Load saved keyword generation progress
+        if (project.keywordGenerationProgress) {
+            setSavedProgress(project.keywordGenerationProgress);
+            // If progress exists and is complete, show the keywords
+            if (project.keywordGenerationProgress.stage === 'complete' && project.keywordGenerationProgress.newKeywords) {
+                setGeneratedKeywords(project.keywordGenerationProgress.newKeywords);
+            }
+        } else {
+            setSavedProgress(null);
+        }
+        
         // Allow auto-save after a short delay to ensure form is fully updated
         setTimeout(() => {
             setIsLoadingProject(false);
@@ -255,6 +283,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         // Set loading flag first to prevent auto-save
         setIsLoadingProject(true);
         setIsSaving(false);
+        setSavedProgress(null);
+        setGeneratedKeywords([]);
+        setKeywordProgress(null);
 
         // Clear all form state
         form.reset({ name: "", pitch: "" });
@@ -519,7 +550,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     };
 
-    const handleGenerateKeywords = async () => {
+    const handleGenerateKeywords = async (resume: boolean = false) => {
         if (!pitch || pitch.trim().length === 0) {
             toast({
                 title: "Error",
@@ -529,18 +560,47 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             return;
         }
 
+        if (!currentProjectId) {
+            toast({
+                title: "Error",
+                description: "Please save your project first",
+                variant: "destructive",
+            });
+            return;
+        }
+
         setIsGeneratingKeywords(true);
         setShowKeywordProgress(true);
         setExpandedQuadrant(null);
-        setKeywordProgress({
-            stage: 'initializing',
-            seedsGenerated: 0,
-            keywordsGenerated: 0,
-            duplicatesFound: 0,
-            existingKeywordsFound: 0,
-            newKeywordsCollected: 0,
-        });
-        setGeneratedKeywords([]);
+        
+        // If resuming, restore progress state
+        if (resume && savedProgress) {
+            setKeywordProgress({
+                stage: savedProgress.stage,
+                seedsGenerated: savedProgress.seedsGenerated,
+                keywordsGenerated: savedProgress.keywordsGenerated,
+                duplicatesFound: savedProgress.duplicatesFound,
+                existingKeywordsFound: savedProgress.existingKeywordsFound,
+                newKeywordsCollected: savedProgress.newKeywordsCollected,
+                seeds: savedProgress.seeds,
+                allKeywords: savedProgress.allKeywords,
+                duplicates: savedProgress.duplicates,
+                existingKeywords: savedProgress.existingKeywords,
+            });
+            if (savedProgress.newKeywords) {
+                setGeneratedKeywords(savedProgress.newKeywords);
+            }
+        } else {
+            setKeywordProgress({
+                stage: 'initializing',
+                seedsGenerated: 0,
+                keywordsGenerated: 0,
+                duplicatesFound: 0,
+                existingKeywordsFound: 0,
+                newKeywordsCollected: 0,
+            });
+            setGeneratedKeywords([]);
+        }
 
         try {
             // Get Supabase session token
@@ -555,12 +615,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 method: "POST",
                 headers,
                 body: JSON.stringify({
-                    projectId: currentProjectId || undefined,
+                    projectId: currentProjectId,
                     pitch,
                     topics: topics.length > 0 ? topics : undefined,
                     personas: personas.length > 0 ? personas : undefined,
                     painPoints: painPoints.length > 0 ? painPoints : undefined,
                     features: features.length > 0 ? features : undefined,
+                    resumeFromProgress: resume && savedProgress ? savedProgress : undefined,
                 }),
             });
 
@@ -591,9 +652,21 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             const data = JSON.parse(line.slice(6));
                             if (data.type === "progress") {
                                 setKeywordProgress(data.data);
+                                // Update generated keywords if available in progress
+                                if (data.data.newKeywords && Array.isArray(data.data.newKeywords)) {
+                                    setGeneratedKeywords(data.data.newKeywords);
+                                }
                             } else if (data.type === "complete") {
                                 setGeneratedKeywords(data.data.keywords || []);
-                                setKeywordProgress(prev => prev ? { ...prev, stage: 'complete' } : null);
+                                setKeywordProgress(prev => prev ? { ...prev, stage: 'complete', newKeywords: data.data.keywords || [] } : null);
+                                // Update saved progress to mark as complete
+                                if (currentProjectId) {
+                                    queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
+                                    // Refresh saved progress
+                                    setTimeout(() => {
+                                        queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
+                                    }, 500);
+                                }
                                 toast({
                                     title: "Keywords Generated!",
                                     description: `Successfully generated ${data.data.keywords?.length || 0} keywords`,
@@ -853,29 +926,106 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 </div>
 
                 {/* Generate Keywords Button */}
-                <div className="pt-4 border-t border-white/10 flex justify-center">
-                    <Button
-                        type="button"
-                        onClick={handleGenerateKeywords}
-                        disabled={
-                            !pitch ||
-                            pitch.trim().length === 0 ||
-                            isGeneratingKeywords
-                        }
-                        className="w-1/2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                    >
-                        {isGeneratingKeywords ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Generating Keywords...
-                            </>
-                        ) : (
-                            <>
-                                <Sparkle className="mr-2 h-4 w-4" />
-                                Generate Keywords
-                            </>
-                        )}
-                    </Button>
+                <div className="pt-4 border-t border-white/10 space-y-3">
+                    {/* Show resume option if progress exists and is incomplete */}
+                    {savedProgress && savedProgress.stage !== 'complete' && (
+                        <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
+                            <div className="text-sm text-yellow-200 mb-2">
+                                Generation in progress: {savedProgress.newKeywordsCollected} / 1000 keywords
+                            </div>
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    onClick={() => handleGenerateKeywords(true)}
+                                    disabled={isGeneratingKeywords}
+                                    className="flex-1 bg-yellow-600 hover:bg-yellow-700"
+                                >
+                                    {isGeneratingKeywords ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Resuming...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkle className="mr-2 h-4 w-4" />
+                                            Resume Generation
+                                        </>
+                                    )}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={() => {
+                                        setSavedProgress(null);
+                                        handleGenerateKeywords(false);
+                                    }}
+                                    disabled={isGeneratingKeywords}
+                                    variant="outline"
+                                    className="flex-1"
+                                >
+                                    Start Fresh
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Show completed keywords if generation is complete */}
+                    {savedProgress && savedProgress.stage === 'complete' && savedProgress.newKeywords && savedProgress.newKeywords.length > 0 && (
+                        <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-3">
+                            <div className="text-sm text-green-200 mb-2">
+                                ✓ Generation completed: {savedProgress.newKeywords.length} keywords
+                            </div>
+                            <Button
+                                type="button"
+                                onClick={() => {
+                                    setShowKeywordProgress(true);
+                                    setKeywordProgress({
+                                        stage: 'complete',
+                                        seedsGenerated: savedProgress.seedsGenerated,
+                                        keywordsGenerated: savedProgress.keywordsGenerated,
+                                        duplicatesFound: savedProgress.duplicatesFound,
+                                        existingKeywordsFound: savedProgress.existingKeywordsFound,
+                                        newKeywordsCollected: savedProgress.newKeywordsCollected,
+                                        seeds: savedProgress.seeds,
+                                        allKeywords: savedProgress.allKeywords,
+                                        duplicates: savedProgress.duplicates,
+                                        existingKeywords: savedProgress.existingKeywords,
+                                    });
+                                    setGeneratedKeywords(savedProgress.newKeywords);
+                                }}
+                                variant="outline"
+                                className="w-full"
+                            >
+                                View Keywords
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* Generate Keywords Button */}
+                    <div className="flex justify-center">
+                        <Button
+                            type="button"
+                            onClick={() => handleGenerateKeywords(false)}
+                            disabled={
+                                !pitch ||
+                                pitch.trim().length === 0 ||
+                                isGeneratingKeywords ||
+                                !currentProjectId
+                            }
+                            className="w-1/2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                        >
+                            {isGeneratingKeywords ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Generating Keywords...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkle className="mr-2 h-4 w-4" />
+                                    Generate Keywords
+                                </>
+                            )}
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Competitors List */}

@@ -68,6 +68,21 @@ export const keywords = pgTable("keywords", {
   monthlyData: jsonb("monthly_data").$type<{ month: string; volume: number }[]>(),
 });
 
+export interface KeywordGenerationProgress {
+  stage: string; // 'generating-seeds' | 'generating-keywords' | 'selecting-top-keywords' | 'complete'
+  seedsGenerated: number;
+  keywordsGenerated: number;
+  duplicatesFound: number;
+  existingKeywordsFound: number;
+  newKeywordsCollected: number;
+  seeds?: string[];
+  allKeywords?: string[];
+  duplicates?: string[];
+  existingKeywords?: string[];
+  newKeywords?: string[]; // Final list of new keywords
+  completedAt?: string; // ISO timestamp
+}
+
 export const customSearchProjects = pgTable("custom_search_projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -78,6 +93,7 @@ export const customSearchProjects = pgTable("custom_search_projects", {
   painPoints: jsonb("pain_points").$type<string[]>().default([]),
   features: jsonb("features").$type<string[]>().default([]),
   competitors: jsonb("competitors").$type<Array<{ name: string; description: string; url?: string | null }>>().default([]),
+  keywordGenerationProgress: jsonb("keyword_generation_progress").$type<KeywordGenerationProgress | null>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

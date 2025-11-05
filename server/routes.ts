@@ -1881,7 +1881,7 @@ Return ONLY the JSON array, no other text. Example format:
     // Generate keywords for a custom search project
     app.post("/api/custom-search/generate-keywords", requireAuth, requirePayment, async (req, res) => {
         try {
-            const { projectId, pitch, topics, personas, painPoints, features } = req.body;
+            const { projectId, pitch, topics, personas, painPoints, features, resumeFromProgress } = req.body;
 
             // Verify project exists and user owns it
             if (projectId) {
@@ -1911,22 +1911,79 @@ Return ONLY the JSON array, no other text. Example format:
             res.setHeader('Connection', 'keep-alive');
             res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
+            // Import keyword collector
+            const { collectKeywords, progressToSaveFormat } = await import("./keyword-collector");
+
+            // Track progress for saving (declare outside try-catch for error handling)
+            let lastProgress: any = null;
+            let lastSaveTime = Date.now();
+            const SAVE_INTERVAL = 10000; // Save every 10 seconds
+            let accumulatedNewKeywords: string[] = []; // Track accumulated new keywords
+            const projectIdForError = projectId; // Capture for error handler
+
             // Progress callback
-            const progressCallback = (progress: any) => {
+            const progressCallback = async (progress: any) => {
                 res.write(`data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`);
+                lastProgress = progress;
+
+                // Update accumulated new keywords from progress if available
+                if (progress.newKeywords && Array.isArray(progress.newKeywords)) {
+                    accumulatedNewKeywords = [...progress.newKeywords];
+                }
+
+                // Save progress periodically (every 10 seconds or every 50 keywords)
+                const now = Date.now();
+                if (projectId && (now - lastSaveTime > SAVE_INTERVAL || (progress.newKeywordsCollected > 0 && progress.newKeywordsCollected % 50 === 0))) {
+                    try {
+                        // Use newKeywords from progress if available, otherwise use accumulated
+                        const keywordsToSave = progress.newKeywords || accumulatedNewKeywords;
+                        const progressToSave = progressToSaveFormat(progress, keywordsToSave);
+                        await storage.saveKeywordGenerationProgress(projectId, progressToSave);
+                        lastSaveTime = now;
+                    } catch (error) {
+                        console.error("Error saving progress:", error);
+                        // Don't fail the generation if saving fails
+                    }
+                }
             };
 
-            // Import keyword collector
-            const { collectKeywords } = await import("./keyword-collector");
+            // Generate keywords (with resume support if provided)
+            const result = await collectKeywords(
+                input,
+                progressCallback,
+                1000,
+                resumeFromProgress || project?.keywordGenerationProgress || undefined
+            );
 
-            // Generate keywords
-            const result = await collectKeywords(input, progressCallback, 1000);
+            accumulatedNewKeywords = result.keywords;
+
+            // Save final progress
+            if (projectId) {
+                try {
+                    const finalProgress = progressToSaveFormat(lastProgress || result.progress, accumulatedNewKeywords);
+                    await storage.saveKeywordGenerationProgress(projectId, finalProgress);
+                } catch (error) {
+                    console.error("Error saving final progress:", error);
+                }
+            }
 
             // Send final result
             res.write(`data: ${JSON.stringify({ type: 'complete', data: { keywords: result.keywords } })}\n\n`);
             res.end();
         } catch (error) {
             console.error("Error generating keywords:", error);
+            
+            // Save error state if we have a project
+            if (projectIdForError && lastProgress) {
+                try {
+                    const { progressToSaveFormat } = await import("./keyword-collector");
+                    const errorProgress = progressToSaveFormat(lastProgress, []);
+                    await storage.saveKeywordGenerationProgress(projectIdForError, errorProgress);
+                } catch (saveError) {
+                    console.error("Error saving error progress:", saveError);
+                }
+            }
+
             res.write(`data: ${JSON.stringify({ type: 'error', error: error instanceof Error ? error.message : "Unknown error" })}\n\n`);
             res.end();
         }
