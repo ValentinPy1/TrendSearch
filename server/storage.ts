@@ -1,12 +1,13 @@
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-    users, ideas, reports, keywords,
+    users, ideas, reports, keywords, customSearchProjects,
     type User, type InsertUser,
     type Idea, type InsertIdea,
     type Report, type InsertReport,
     type Keyword, type InsertKeyword,
-    type IdeaWithReport
+    type IdeaWithReport,
+    type CustomSearchProject, type InsertCustomSearchProject
 } from "@shared/schema";
 
 export interface IStorage {
@@ -33,6 +34,13 @@ export interface IStorage {
     createKeyword(keyword: InsertKeyword): Promise<Keyword>;
     createKeywords(keywords: InsertKeyword[]): Promise<Keyword[]>;
     deleteKeyword(id: string): Promise<void>;
+
+    // Custom Search Project methods
+    getCustomSearchProjects(userId: string): Promise<CustomSearchProject[]>;
+    getCustomSearchProject(id: string): Promise<CustomSearchProject | undefined>;
+    createCustomSearchProject(project: InsertCustomSearchProject): Promise<CustomSearchProject>;
+    updateCustomSearchProject(id: string, project: Partial<InsertCustomSearchProject>): Promise<CustomSearchProject>;
+    deleteCustomSearchProject(id: string): Promise<void>;
 
     // Health check
     healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }>;
@@ -78,23 +86,9 @@ export class DatabaseStorage implements IStorage {
             .where(eq(ideas.userId, userId))
             .orderBy(desc(ideas.createdAt));
 
-        // Extract report IDs for batch keyword fetching
-        const reportIds = ideasWithReportsData
-            .map(row => row.report?.id)
-            .filter((id): id is string => id != null); // Filters out both null and undefined
-
-        // Query 2: Batch fetch all keywords for all reports at once
-        const allKeywords = reportIds.length > 0
-            ? await db.select().from(keywords).where(inArray(keywords.reportId, reportIds))
-            : [];
-
-        // Group keywords by reportId for efficient lookup
+        // Skip loading keywords from database - always generate fresh from vector service
+        // This avoids loading old incomplete data and ensures we always use the new_keywords CSV
         const keywordsByReportId = new Map<string, Keyword[]>();
-        allKeywords.forEach(keyword => {
-            const list = keywordsByReportId.get(keyword.reportId) || [];
-            list.push(keyword);
-            keywordsByReportId.set(keyword.reportId, list);
-        });
 
         // Construct the final result structure
         const ideasWithReports: IdeaWithReport[] = ideasWithReportsData.map(({ idea, report }) => {
@@ -151,7 +145,29 @@ export class DatabaseStorage implements IStorage {
     }
 
     async getKeywordsByReportId(reportId: string): Promise<Keyword[]> {
-        return await db.select().from(keywords).where(eq(keywords.reportId, reportId));
+        const allKeywords = await db.select().from(keywords).where(eq(keywords.reportId, reportId));
+        // Filter out keywords with incomplete data (less than 48 months)
+        const filteredKeywords = allKeywords.filter(keyword => {
+            if (!keyword.monthlyData) {
+                console.warn(`[Storage] Keyword ${keyword.id} has no monthlyData`);
+                return false;
+            }
+            if (!Array.isArray(keyword.monthlyData)) {
+                console.warn(`[Storage] Keyword ${keyword.id} monthlyData is not an array:`, typeof keyword.monthlyData);
+                return false;
+            }
+            if (keyword.monthlyData.length < 47) {
+                console.warn(`[Storage] Keyword ${keyword.id} has only ${keyword.monthlyData.length} months of data (expected 47)`);
+                return false;
+            }
+            return true;
+        });
+        
+        if (allKeywords.length > 0 && filteredKeywords.length === 0) {
+            console.warn(`[Storage] All ${allKeywords.length} keywords were filtered out for report ${reportId}`);
+        }
+        
+        return filteredKeywords;
     }
 
     async getKeyword(id: string): Promise<Keyword | undefined> {
@@ -172,6 +188,44 @@ export class DatabaseStorage implements IStorage {
 
     async deleteKeyword(id: string): Promise<void> {
         await db.delete(keywords).where(eq(keywords.id, id));
+    }
+
+    async getCustomSearchProjects(userId: string): Promise<CustomSearchProject[]> {
+        const result = await db
+            .select()
+            .from(customSearchProjects)
+            .where(eq(customSearchProjects.userId, userId))
+            .orderBy(desc(customSearchProjects.updatedAt));
+        return result;
+    }
+
+    async getCustomSearchProject(id: string): Promise<CustomSearchProject | undefined> {
+        const result = await db
+            .select()
+            .from(customSearchProjects)
+            .where(eq(customSearchProjects.id, id));
+        return result[0];
+    }
+
+    async createCustomSearchProject(insertProject: InsertCustomSearchProject): Promise<CustomSearchProject> {
+        const result = await db.insert(customSearchProjects).values(insertProject).returning();
+        return result[0];
+    }
+
+    async updateCustomSearchProject(id: string, updateData: Partial<InsertCustomSearchProject>): Promise<CustomSearchProject> {
+        const result = await db
+            .update(customSearchProjects)
+            .set({
+                ...updateData,
+                updatedAt: sql`now()`,
+            })
+            .where(eq(customSearchProjects.id, id))
+            .returning();
+        return result[0];
+    }
+
+    async deleteCustomSearchProject(id: string): Promise<void> {
+        await db.delete(customSearchProjects).where(eq(customSearchProjects.id, id));
     }
 
     async healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }> {

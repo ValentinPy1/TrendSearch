@@ -3,12 +3,14 @@ import { useMutation } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, History, Loader2, BarChart, Building2 } from "lucide-react";
+import { Sparkles, History, Loader2, Building2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { IdeaWithReport } from "@shared/schema";
 import { KeywordFilters, type KeywordFilter } from "@/components/keyword-filters";
 import { SectorBrowser } from "@/components/sector-browser";
+import { CustomSearchForm } from "@/components/custom-search-form";
 
 interface IdeaGeneratorProps {
     onIdeaGenerated: (idea: IdeaWithReport) => void;
@@ -17,6 +19,7 @@ interface IdeaGeneratorProps {
     currentIdea?: IdeaWithReport | null;
     onGeneratingChange?: (isGenerating: boolean) => void;
     searchKeyword?: string | null;
+    onActiveTabChange?: (tab: string) => void;
 }
 
 export function IdeaGenerator({
@@ -26,9 +29,16 @@ export function IdeaGenerator({
     currentIdea,
     onGeneratingChange,
     searchKeyword,
+    onActiveTabChange,
 }: IdeaGeneratorProps) {
     const { toast } = useToast();
     const [showSectorBrowser, setShowSectorBrowser] = useState(false);
+    const [activeTab, setActiveTab] = useState("standard");
+
+    // Notify parent when tab changes
+    useEffect(() => {
+        onActiveTabChange?.(activeTab);
+    }, [activeTab, onActiveTabChange]);
 
     const form = useForm({
         defaultValues: {
@@ -214,64 +224,87 @@ export function IdeaGenerator({
                     </p>
                 </div>
 
-                <div className="relative">
-                    <Input
-                        placeholder="Write your idea brief (short is better) / keyword here or let AI generate one for you clicking the sparkles icon"
-                        className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-24 rounded-full"
-                        data-testid="input-idea"
-                        onKeyDown={handleKeyDown}
-                        {...form.register("idea")}
-                    />
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setShowSectorBrowser(true)}
-                            className="h-10 w-10 text-primary hover:bg-transparent"
-                            data-testid="button-browse-sectors"
-                            title="Browse Sectors"
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    <TabsList className="flex gap-8 bg-transparent p-0 h-auto mb-8">
+                        <TabsTrigger 
+                            value="standard" 
+                            className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
                         >
-                            <Building2 className="h-5 w-5 stroke-[2.5]" />
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={onShowHistory}
-                            className="h-10 w-10 text-secondary hover:bg-transparent"
-                            data-testid="button-history"
+                            Standard Search
+                        </TabsTrigger>
+                        <TabsTrigger 
+                            value="custom" 
+                            className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
                         >
-                            <History className="h-5 w-5 stroke-[2.5]" />
-                        </Button>
-                        <Button
-                            type="button"
-                            onClick={handleGenerateIdea}
-                            disabled={
-                                generateIdeaMutation.isPending ||
-                                generateReportMutation.isPending
-                            }
-                            variant="ghost"
-                            size="icon"
-                            className="h-10 w-10 text-yellow-300 hover:bg-transparent"
-                            data-testid="button-generate"
-                        >
-                            {generateIdeaMutation.isPending ||
-                                generateReportMutation.isPending ? (
-                                <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
-                            ) : (
-                                <Sparkles className="h-5 w-5 stroke-[2.5]" />
-                            )}
-                        </Button>
-                    </div>
-                </div>
+                            Custom Search
+                        </TabsTrigger>
+                    </TabsList>
 
-                {/* Keyword Filters */}
-                <KeywordFilters
-                    ideaText={form.watch("idea") || null}
-                    filters={filters}
-                    onFiltersChange={setFilters}
-                />
+                    <TabsContent value="standard" className="space-y-6">
+                        <div className="relative">
+                            <Input
+                                placeholder="Write your idea brief (short is better) / keyword here or let AI generate one for you clicking the sparkles icon"
+                                className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-24 rounded-full"
+                                data-testid="input-idea"
+                                onKeyDown={handleKeyDown}
+                                {...form.register("idea")}
+                            />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setShowSectorBrowser(true)}
+                                    className="h-10 w-10 text-primary hover:bg-transparent"
+                                    data-testid="button-browse-sectors"
+                                    title="Browse Sectors"
+                                >
+                                    <Building2 className="h-5 w-5 stroke-[2.5]" />
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={onShowHistory}
+                                    className="h-10 w-10 text-secondary hover:bg-transparent"
+                                    data-testid="button-history"
+                                >
+                                    <History className="h-5 w-5 stroke-[2.5]" />
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleGenerateIdea}
+                                    disabled={
+                                        generateIdeaMutation.isPending ||
+                                        generateReportMutation.isPending
+                                    }
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-10 w-10 text-yellow-300 hover:bg-transparent"
+                                    data-testid="button-generate"
+                                >
+                                    {generateIdeaMutation.isPending ||
+                                        generateReportMutation.isPending ? (
+                                        <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
+                                    ) : (
+                                        <Sparkles className="h-5 w-5 stroke-[2.5]" />
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Keyword Filters */}
+                        <KeywordFilters
+                            ideaText={form.watch("idea") || null}
+                            filters={filters}
+                            onFiltersChange={setFilters}
+                        />
+                    </TabsContent>
+
+                    <TabsContent value="custom" className="">
+                        <CustomSearchForm />
+                    </TabsContent>
+                </Tabs>
             </div>
 
             {/* Sector Browser */}
@@ -298,6 +331,7 @@ export function IdeaGenerator({
                     }
                 }}
             />
+
         </div>
     );
 }

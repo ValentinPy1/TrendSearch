@@ -10,26 +10,63 @@ interface KeywordData {
     low_top_of_page_bid?: number;
     high_top_of_page_bid?: number;
     cpc?: number;
-    '2025_09'?: number;
-    '2025_08'?: number;
-    '2025_07'?: number;
-    '2025_06'?: number;
-    '2025_05'?: number;
-    '2025_04'?: number;
-    '2025_03'?: number;
-    '2025_02'?: number;
-    '2025_01'?: number;
-    '2024_12'?: number;
-    '2024_11'?: number;
+    // 48 months of data (2021_11 to 2025_09)
+    '2021_11'?: number;
+    '2021_12'?: number;
+    '2022_01'?: number;
+    '2022_02'?: number;
+    '2022_03'?: number;
+    '2022_04'?: number;
+    '2022_05'?: number;
+    '2022_06'?: number;
+    '2022_07'?: number;
+    '2022_08'?: number;
+    '2022_09'?: number;
+    '2022_10'?: number;
+    '2022_11'?: number;
+    '2022_12'?: number;
+    '2023_01'?: number;
+    '2023_02'?: number;
+    '2023_03'?: number;
+    '2023_04'?: number;
+    '2023_05'?: number;
+    '2023_06'?: number;
+    '2023_07'?: number;
+    '2023_08'?: number;
+    '2023_09'?: number;
+    '2023_10'?: number;
+    '2023_11'?: number;
+    '2023_12'?: number;
+    '2024_01'?: number;
+    '2024_02'?: number;
+    '2024_03'?: number;
+    '2024_04'?: number;
+    '2024_05'?: number;
+    '2024_06'?: number;
+    '2024_07'?: number;
+    '2024_08'?: number;
+    '2024_09'?: number;
     '2024_10'?: number;
-    'yoy_trend_%'?: number;
-    '3month_trend_%'?: number;
-    growth_slope?: number;
-    growth_r2?: number;
-    growth_consistency?: number;
-    growth_stability?: number;
-    sustained_growth_score?: number;
-    priority_score?: number;
+    '2024_11'?: number;
+    '2024_12'?: number;
+    '2025_01'?: number;
+    '2025_02'?: number;
+    '2025_03'?: number;
+    '2025_04'?: number;
+    '2025_05'?: number;
+    '2025_06'?: number;
+    '2025_07'?: number;
+    '2025_08'?: number;
+    '2025_09'?: number;
+    growth_3m?: number;
+    growth_YoY?: number;
+    volatility?: number;
+    trend_strength?: number;
+    avg_top_page_bid?: number;
+    bid_efficiency?: number;
+    TAC?: number;
+    SAC?: number;
+    opportunity_score?: number;
 }
 
 interface ProcessedKeywordData {
@@ -124,8 +161,8 @@ class KeywordVectorService {
             const metadata: EmbeddingsMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
             console.log(`[KeywordVectorService] Found ${metadata.total_keywords} keywords in ${metadata.chunks.length} binary chunks`);
 
-            // Load keywords from CSV (all 80k keywords)
-            const csvPath = path.join(process.cwd(), 'data', 'keywords_all.csv');
+            // Load keywords from CSV (new keywords dataset with 4 years of data)
+            const csvPath = path.join(process.cwd(), 'new_keywords', 'keywords_data.csv');
             const csvContent = fs.readFileSync(csvPath, 'utf-8');
             this.keywords = parse(csvContent, {
                 columns: true,

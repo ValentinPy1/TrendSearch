@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 interface PaywallModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    feature: "sector-browsing" | "advanced-filters";
+    feature: "sector-browsing" | "advanced-filters" | "custom-search";
 }
 
 export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps) {
@@ -47,11 +47,15 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
 
     const featureName = feature === "sector-browsing" 
         ? "Sector Browsing" 
-        : "Advanced Filters";
+        : feature === "advanced-filters"
+        ? "Advanced Filters"
+        : "Custom Search";
 
     const featureDescription = feature === "sector-browsing"
         ? "Browse and explore sectors to discover trending opportunities across different markets and industries."
-        : "Use advanced filters to refine your keyword search with metrics like volume, competition, growth rates, and opportunity scores.";
+        : feature === "advanced-filters"
+        ? "Use advanced filters to refine your keyword search with metrics like volume, competition, growth rates, and opportunity scores."
+        : "Create detailed custom searches with idea pitch, topics, personas, pain points, and features. Generate targeted keywords and competitor analysis automatically.";
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>

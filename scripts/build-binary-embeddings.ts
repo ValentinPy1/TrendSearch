@@ -51,12 +51,12 @@ async function buildBinaryEmbeddings() {
   const CHUNK_SIZE = 2000;
   const EMBEDDING_DIM = 384;
 
-  // Load top-tier keywords
-  console.log('[1/4] Loading top-tier keywords...');
-  const csvPath = path.join(process.cwd(), 'data', 'keywords_top_tier.csv');
+  // Load keywords
+  console.log('[1/4] Loading keywords...');
+  const csvPath = path.join(process.cwd(), 'new_keywords', 'keywords_data.csv');
   
   if (!fs.existsSync(csvPath)) {
-    throw new Error(`Top-tier CSV not found at ${csvPath}. Run preprocess-keywords.ts first.`);
+    throw new Error(`Keywords CSV file not found at ${csvPath}`);
   }
   
   const csvContent = fs.readFileSync(csvPath, 'utf-8');
@@ -71,7 +71,7 @@ async function buildBinaryEmbeddings() {
     },
   }) as KeywordData[];
   
-  console.log(`✓ Loaded ${keywords.length} top-tier keywords\n`);
+  console.log(`✓ Loaded ${keywords.length} keywords\n`);
 
   // Initialize sentence transformer
   console.log('[2/4] Initializing sentence transformer model...');

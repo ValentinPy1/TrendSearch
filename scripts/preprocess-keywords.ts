@@ -40,7 +40,7 @@ async function preprocessKeywords() {
 
   // Load all keywords from CSV
   console.log('[1/3] Loading keywords from CSV...');
-  const csvPath = path.join(process.cwd(), 'data', 'keywords_data.csv');
+  const csvPath = path.join(process.cwd(), 'new_keywords', 'keywords_data.csv');
   
   if (!fs.existsSync(csvPath)) {
     throw new Error(`Keywords CSV file not found at ${csvPath}`);

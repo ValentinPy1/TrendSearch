@@ -133,3 +133,5 @@ vite.config.ts.*
 *.rar
 *.7z
 data/sectors_aggregated_metrics.json
+
+new_keywords

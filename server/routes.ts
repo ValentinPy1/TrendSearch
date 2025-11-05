@@ -12,6 +12,7 @@ import { db } from "./db";
 import { keywordVectorService } from "./keyword-vector-service";
 import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
 import { calculateOpportunityScore } from "./opportunity-score";
+import OpenAI from "openai";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -257,26 +258,66 @@ function lookupOrProcessKeyword(rawKeyword: any): any {
 }
 
 function processKeywords(rawKeywords: any[]) {
-    // Map CSV columns (2024_10 through 2025_09) to correct month labels in chronological order
-    const monthMapping = [
-        { key: "2024_10", label: "Oct" },
-        { key: "2024_11", label: "Nov" },
-        { key: "2024_12", label: "Dec" },
-        { key: "2025_01", label: "Jan" },
-        { key: "2025_02", label: "Feb" },
-        { key: "2025_03", label: "Mar" },
-        { key: "2025_04", label: "Apr" },
-        { key: "2025_05", label: "May" },
-        { key: "2025_06", label: "Jun" },
-        { key: "2025_07", label: "Jul" },
-        { key: "2025_08", label: "Aug" },
-        { key: "2025_09", label: "Sep" },
+    // Map CSV columns (2021_11 through 2025_09) to correct month labels in chronological order
+    // This is all 48 months of data
+    const allMonths = [
+        { key: "2021_11", label: "Nov 2021" },
+        { key: "2021_12", label: "Dec 2021" },
+        { key: "2022_01", label: "Jan 2022" },
+        { key: "2022_02", label: "Feb 2022" },
+        { key: "2022_03", label: "Mar 2022" },
+        { key: "2022_04", label: "Apr 2022" },
+        { key: "2022_05", label: "May 2022" },
+        { key: "2022_06", label: "Jun 2022" },
+        { key: "2022_07", label: "Jul 2022" },
+        { key: "2022_08", label: "Aug 2022" },
+        { key: "2022_09", label: "Sep 2022" },
+        { key: "2022_10", label: "Oct 2022" },
+        { key: "2022_11", label: "Nov 2022" },
+        { key: "2022_12", label: "Dec 2022" },
+        { key: "2023_01", label: "Jan 2023" },
+        { key: "2023_02", label: "Feb 2023" },
+        { key: "2023_03", label: "Mar 2023" },
+        { key: "2023_04", label: "Apr 2023" },
+        { key: "2023_05", label: "May 2023" },
+        { key: "2023_06", label: "Jun 2023" },
+        { key: "2023_07", label: "Jul 2023" },
+        { key: "2023_08", label: "Aug 2023" },
+        { key: "2023_09", label: "Sep 2023" },
+        { key: "2023_10", label: "Oct 2023" },
+        { key: "2023_11", label: "Nov 2023" },
+        { key: "2023_12", label: "Dec 2023" },
+        { key: "2024_01", label: "Jan 2024" },
+        { key: "2024_02", label: "Feb 2024" },
+        { key: "2024_03", label: "Mar 2024" },
+        { key: "2024_04", label: "Apr 2024" },
+        { key: "2024_05", label: "May 2024" },
+        { key: "2024_06", label: "Jun 2024" },
+        { key: "2024_07", label: "Jul 2024" },
+        { key: "2024_08", label: "Aug 2024" },
+        { key: "2024_09", label: "Sep 2024" },
+        { key: "2024_10", label: "Oct 2024" },
+        { key: "2024_11", label: "Nov 2024" },
+        { key: "2024_12", label: "Dec 2024" },
+        { key: "2025_01", label: "Jan 2025" },
+        { key: "2025_02", label: "Feb 2025" },
+        { key: "2025_03", label: "Mar 2025" },
+        { key: "2025_04", label: "Apr 2025" },
+        { key: "2025_05", label: "May 2025" },
+        { key: "2025_06", label: "Jun 2025" },
+        { key: "2025_07", label: "Jul 2025" },
+        { key: "2025_08", label: "Aug 2025" },
+        { key: "2025_09", label: "Sep 2025" },
     ];
+    
+    // Last 12 months for non-premium users
+    const last12Months = allMonths.slice(-12);
 
     return rawKeywords.map((kw) => {
         // Convert monthly data from CSV format to our format with correct month labels
         // Recharts displays data in the order provided, so keep chronological order
-        const monthlyData = monthMapping.map(({ key, label }) => {
+        // Store all 48 months - client will filter based on premium status
+        const monthlyData = allMonths.map(({ key, label }) => {
             return {
                 month: label,
                 volume: Math.floor(
@@ -286,21 +327,21 @@ function processKeywords(rawKeywords: any[]) {
         });
 
         // Calculate growth from chronologically ordered monthlyData
-        // 3M Growth: Compare last month (Sep) to 3 months ago (Jun)
+        // 3M Growth: Compare last month (Sep 2025) to 3 months ago (Jun 2025)
         let growth3m = 0;
         if (monthlyData.length >= 4) {
-            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep (index 11)
-            const threeMonthsAgo = monthlyData[monthlyData.length - 4].volume; // Jun (index 8)
+            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025 (last index)
+            const threeMonthsAgo = monthlyData[monthlyData.length - 4].volume; // Jun 2025 (3 months ago)
             if (threeMonthsAgo !== 0) {
                 growth3m = ((currentVolume - threeMonthsAgo) / threeMonthsAgo) * 100;
             }
         }
 
-        // YoY Growth: Compare last month (Sep) to first month (Oct)
+        // YoY Growth: Compare last month (Sep 2025) to same month last year (Sep 2024)
         let growthYoy = 0;
         if (monthlyData.length >= 12) {
-            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep (index 11)
-            const oneYearAgo = monthlyData[0].volume; // Oct (index 0)
+            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025
+            const oneYearAgo = monthlyData[monthlyData.length - 13].volume; // Sep 2024 (12 months ago)
             if (oneYearAgo !== 0) {
                 growthYoy = ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
             }
@@ -895,17 +936,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Idea generation route
     app.post("/api/generate-idea", requireAuth, async (req, res) => {
         try {
-            const { originalIdea } = req.body;
+            const { originalIdea, longerDescription, expand } = req.body;
             const userId = req.user.id; // Use authenticated user ID
 
             let generatedIdea: string;
+            let generatedName: string | null = null;
 
+            // If expand is requested, expand the existing pitch
+            if (expand && originalIdea && originalIdea.trim().length > 0) {
+                try {
+                    generatedIdea = await microSaaSIdeaGenerator.expandIdea(originalIdea.trim());
+                    // Generate name from expanded idea
+                    try {
+                        generatedName = await microSaaSIdeaGenerator.generateProjectName(generatedIdea);
+                    } catch (error) {
+                        console.error("Error generating name from expanded idea:", error);
+                    }
+                } catch (error) {
+                    console.error("Error expanding idea:", error);
+                    return res.status(500).json({ 
+                        message: "Failed to expand idea",
+                        error: error instanceof Error ? error.message : "Unknown error"
+                    });
+                }
+            }
             // If user provided their own idea, use it directly
-            if (originalIdea && originalIdea.trim().length > 0) {
+            else if (originalIdea && originalIdea.trim().length > 0) {
                 generatedIdea = originalIdea.trim();
+                // Generate name from provided idea
+                try {
+                    generatedName = await microSaaSIdeaGenerator.generateProjectName(generatedIdea);
+                } catch (error) {
+                    console.error("Error generating name from provided idea:", error);
+                }
             } else {
-                // Otherwise, use GPT-4o-mini to generate microSaaS idea
-                generatedIdea = await microSaaSIdeaGenerator.generateIdea();
+                // If longerDescription is requested, generate a longer, more detailed idea
+                if (longerDescription) {
+                    generatedIdea = await microSaaSIdeaGenerator.generateLongerIdea();
+                } else {
+                    // Otherwise, use GPT-4o-mini to generate standard microSaaS idea
+                    generatedIdea = await microSaaSIdeaGenerator.generateIdea();
+                }
+                // Generate name from generated idea
+                try {
+                    generatedName = await microSaaSIdeaGenerator.generateProjectName(generatedIdea);
+                } catch (error) {
+                    console.error("Error generating name from generated idea:", error);
+                }
             }
 
             const idea = await storage.createIdea({
@@ -914,7 +991,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 generatedIdea,
             });
 
-            res.json({ idea });
+            res.json({ idea: { ...idea, name: generatedName } });
         } catch (error) {
             console.error("Error generating idea:", error);
             res.status(500).json({ message: "Failed to generate idea" });
@@ -926,11 +1003,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
             const ideas = await storage.getIdeasByUser(req.user.id);
 
+            // Generate keywords for each report if they don't exist
+            // This ensures keywords are always available when displaying reports
+            const ideasWithKeywords = await Promise.all(
+                ideas.map(async (idea) => {
+                    if (idea.report && idea.generatedIdea) {
+                        // Generate initial 10 keywords (no filters) for display
+                        try {
+                            const { keywords: keywordData } = await getKeywordsFromVectorDB(
+                                idea.generatedIdea,
+                                10, // Initial 10 keywords
+                                [], // No filters
+                            );
+                            
+                            // Attach opportunity metrics to all keywords before returning
+                            const keywordsWithMetrics = keywordData.map((kw) => {
+                                // Use precomputed metrics if available, otherwise calculate on-the-fly
+                                let metrics: any = null;
+                                if ((kw as any).precomputedMetrics) {
+                                    metrics = (kw as any).precomputedMetrics;
+                                } else {
+                                    // Calculate opportunity metrics on-the-fly
+                                    metrics = calculateOpportunityScore({
+                                        volume: kw.volume || 0,
+                                        competition: kw.competition || 0,
+                                        cpc: parseFloat(kw.cpc?.toString() || "0"),
+                                        topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                                        growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                                        monthlyData: kw.monthlyData || [],
+                                    });
+                                }
+
+                                // Attach opportunity metrics to the keyword object
+                                return {
+                                    ...kw,
+                                    volatility: metrics.volatility,
+                                    trendStrength: metrics.trendStrength,
+                                    bidEfficiency: metrics.bidEfficiency,
+                                    tac: metrics.tac,
+                                    sac: metrics.sac,
+                                    opportunityScore: metrics.opportunityScore,
+                                };
+                            });
+                            
+                            return {
+                                ...idea,
+                                report: {
+                                    ...idea.report,
+                                    keywords: keywordsWithMetrics,
+                                },
+                            };
+                        } catch (error) {
+                            console.error(`[Get Ideas] Error generating keywords for report ${idea.report.id}:`, error);
+                            // Return idea with empty keywords if generation fails
+                            return idea;
+                        }
+                    }
+                    return idea;
+                })
+            );
+
             // OPTIMIZATION: Removed expensive isKeyword check that was adding 12+ seconds
             // The isKeyword badge is not critical for initial page load
             // If needed, this can be computed lazily or cached in the database
-            res.json(ideas);
+            res.json(ideasWithKeywords);
         } catch (error) {
+            console.error("[Get Ideas Error]:", error);
             res.status(500).json({ message: "Failed to fetch ideas" });
         }
     });
@@ -993,17 +1131,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Check if report already exists
             const existingReport = await storage.getReportByIdeaId(ideaId);
-            if (existingReport) {
-                const keywords = await storage.getKeywordsByReportId(existingReport.id);
-                return res.json({
-                    report: existingReport,
-                    keywords,
-                });
-            }
-
-            // Get real keyword data from vector database with filters
+            
+            // Always generate keywords fresh from vector service (new_keywords CSV)
+            // This ensures we always use the latest dataset and avoid old incomplete data
             const { keywords: keywordData, aggregates } =
                 await getKeywordsFromVectorDB(idea.generatedIdea, validatedCount, filters);
+
+            // Attach opportunity metrics to all keywords before returning
+            const keywordsWithMetrics = keywordData.map((kw) => {
+                // Use precomputed metrics if available, otherwise calculate on-the-fly
+                let metrics: any = null;
+                if ((kw as any).precomputedMetrics) {
+                    metrics = (kw as any).precomputedMetrics;
+                } else {
+                    // Calculate opportunity metrics on-the-fly
+                    metrics = calculateOpportunityScore({
+                        volume: kw.volume || 0,
+                        competition: kw.competition || 0,
+                        cpc: parseFloat(kw.cpc?.toString() || "0"),
+                        topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                        growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                        monthlyData: kw.monthlyData || [],
+                    });
+                }
+
+                // Attach opportunity metrics to the keyword object
+                return {
+                    ...kw,
+                    volatility: metrics.volatility,
+                    trendStrength: metrics.trendStrength,
+                    bidEfficiency: metrics.bidEfficiency,
+                    tac: metrics.tac,
+                    sac: metrics.sac,
+                    opportunityScore: metrics.opportunityScore,
+                };
+            });
+
+            if (existingReport) {
+                // Return existing report but with fresh keywords from vector service
+                return res.json({
+                    report: existingReport,
+                    keywords: keywordsWithMetrics,
+                });
+            }
 
             // Create report
             const report = await storage.createReport({
@@ -1018,17 +1188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
 
             // Create keywords with opportunity scores and derived metrics
-            const keywordsToInsert = keywordData.map((kw) => {
-                // Calculate all metrics including opportunity score
-                const metrics = calculateOpportunityScore({
-                    volume: kw.volume || 0,
-                    competition: kw.competition || 0,
-                    cpc: parseFloat(kw.cpc?.toString() || "0"),
-                    topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
-                    growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
-                    monthlyData: kw.monthlyData || [],
-                });
-
+            const keywordsToInsert = keywordsWithMetrics.map((kw) => {
                 return {
                     reportId: report.id,
                     keyword: kw.keyword,
@@ -1044,19 +1204,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     growthConsistency: kw.growthConsistency,
                     growthStability: kw.growthStability,
                     sustainedGrowthScore: kw.sustainedGrowthScore,
-                    volatility: metrics.volatility,
-                    trendStrength: metrics.trendStrength,
-                    bidEfficiency: metrics.bidEfficiency,
-                    tac: metrics.tac,
-                    sac: metrics.sac,
-                    opportunityScore: metrics.opportunityScore,
+                    volatility: kw.volatility,
+                    trendStrength: kw.trendStrength,
+                    bidEfficiency: kw.bidEfficiency,
+                    tac: kw.tac,
+                    sac: kw.sac,
+                    opportunityScore: kw.opportunityScore,
                     monthlyData: kw.monthlyData,
                 };
             });
 
-            const keywords = await storage.createKeywords(keywordsToInsert);
+            // Skip storing keywords in database - always generate fresh from vector service
+            // This avoids database bloat and ensures we always use the latest dataset
+            // const keywords = await storage.createKeywords(keywordsToInsert);
 
-            res.json({ report, keywords });
+            res.json({ report, keywords: keywordsWithMetrics });
         } catch (error) {
             console.error("[Generate Report Error]:", error);
             res.status(500).json({
@@ -1085,13 +1247,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(404).json({ message: "Idea not found" });
             }
 
-            // Get current keyword count
-            const existingKeywords = await storage.getKeywordsByReportId(reportId);
-            const currentCount = existingKeywords.length;
-            const existingKeywordSet = new Set(existingKeywords.map((k) => k.keyword));
-
             // Fetch 5 more keywords (with filters if provided)
-            const { filters = [] } = req.body;
+            const { filters = [], existingKeywords = [] } = req.body;
             
             // Check payment requirement if filters are provided
             if (filters && filters.length > 0) {
@@ -1107,8 +1264,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 req.user = freshUser;
             }
             
+            // Track existing keywords from client request (not from database)
+            const existingKeywordSet = new Set(existingKeywords.map((k: any) => k.keyword || k));
+            const currentCount = existingKeywords.length;
             const newCount = currentCount + 5;
 
+            // Always generate keywords fresh from vector service (new_keywords CSV)
             // Use excludeKeywords to avoid fetching already loaded keywords
             const { keywords: keywordData, hasMore } = await getKeywordsFromVectorDB(
                 idea.generatedIdea,
@@ -1117,7 +1278,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 existingKeywordSet, // Exclude already loaded keywords
             );
 
-            // Get only new keywords (those not already in database)
+            // Get only new keywords (those not already loaded)
             const newKeywordsData = keywordData.filter(
                 (kw) => !existingKeywordSet.has(kw.keyword),
             );
@@ -1135,18 +1296,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(400).json({ message: "No more keywords available" });
             }
 
-            // Create the new keywords with opportunity scores and derived metrics
-            const keywordsToInsert = newKeywordsData.map((kw: any) => {
-                // Calculate all metrics including opportunity score
-                const metrics = calculateOpportunityScore({
-                    volume: kw.volume || 0,
-                    competition: kw.competition || 0,
-                    cpc: parseFloat(kw.cpc?.toString() || "0"),
-                    topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
-                    growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
-                    monthlyData: kw.monthlyData || [],
-                });
+            // Attach opportunity metrics to all new keywords before returning
+            const newKeywordsWithMetrics = newKeywordsData.map((kw: any) => {
+                // Use precomputed metrics if available, otherwise calculate on-the-fly
+                let metrics: any = null;
+                if ((kw as any).precomputedMetrics) {
+                    metrics = (kw as any).precomputedMetrics;
+                } else {
+                    // Calculate opportunity metrics on-the-fly
+                    metrics = calculateOpportunityScore({
+                        volume: kw.volume || 0,
+                        competition: kw.competition || 0,
+                        cpc: parseFloat(kw.cpc?.toString() || "0"),
+                        topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                        growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                        monthlyData: kw.monthlyData || [],
+                    });
+                }
 
+                // Attach opportunity metrics to the keyword object
+                return {
+                    ...kw,
+                    volatility: metrics.volatility,
+                    trendStrength: metrics.trendStrength,
+                    bidEfficiency: metrics.bidEfficiency,
+                    tac: metrics.tac,
+                    sac: metrics.sac,
+                    opportunityScore: metrics.opportunityScore,
+                };
+            });
+
+            // Create the new keywords with opportunity scores and derived metrics (for potential database storage)
+            const keywordsToInsert = newKeywordsWithMetrics.map((kw: any) => {
                 return {
                     reportId: report.id,
                     keyword: kw.keyword,
@@ -1162,19 +1343,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     growthConsistency: kw.growthConsistency,
                     growthStability: kw.growthStability,
                     sustainedGrowthScore: kw.sustainedGrowthScore,
-                    volatility: metrics.volatility,
-                    trendStrength: metrics.trendStrength,
-                    bidEfficiency: metrics.bidEfficiency,
-                    tac: metrics.tac,
-                    sac: metrics.sac,
-                    opportunityScore: metrics.opportunityScore,
+                    volatility: kw.volatility,
+                    trendStrength: kw.trendStrength,
+                    bidEfficiency: kw.bidEfficiency,
+                    tac: kw.tac,
+                    sac: kw.sac,
+                    opportunityScore: kw.opportunityScore,
                     monthlyData: kw.monthlyData,
                 };
             });
 
-            const newKeywords = await storage.createKeywords(keywordsToInsert);
+            // Skip storing keywords in database - always generate fresh from vector service
+            // This avoids database bloat and ensures we always use the latest dataset
+            // const newKeywords = await storage.createKeywords(keywordsToInsert);
 
-            res.json({ keywords: newKeywords });
+            res.json({ keywords: newKeywordsWithMetrics });
         } catch (error) {
             console.error("[Load More Keywords Error]:", error);
             res.status(500).json({
@@ -1323,6 +1506,374 @@ export async function registerRoutes(app: Express): Promise<Server> {
             res.status(500).json({
                 message: "Failed to load sector metrics",
                 error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    });
+
+    // Initialize OpenAI client for custom search
+    const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+
+    // Generate items from pitch (topics, personas, pain points, features)
+    app.post("/api/custom-search/generate-items", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { pitch, type } = req.body;
+
+            if (!pitch || typeof pitch !== "string" || pitch.trim().length === 0) {
+                return res.status(400).json({ message: "Pitch is required" });
+            }
+
+            if (!type || !["topics", "personas", "pain-points", "features"].includes(type)) {
+                return res.status(400).json({ message: "Valid type is required (topics, personas, pain-points, or features)" });
+            }
+
+            let prompt = "";
+            let systemMessage = "";
+
+            switch (type) {
+                case "topics":
+                    systemMessage = "You are a business analyst. Generate relevant topics related to the given idea pitch.";
+                    prompt = `Based on this idea pitch, generate 5-10 relevant topics (keywords or phrases) that describe the main themes, industries, or categories related to this idea.
+
+Idea Pitch:
+${pitch}
+
+Generate 5-10 topics as a JSON array of strings. Each topic should be concise (1-3 words). Return ONLY the JSON array, no other text.`;
+                    break;
+
+                case "personas":
+                    systemMessage = "You are a marketing strategist. Generate target personas based on the given idea pitch.";
+                    prompt = `Based on this idea pitch, generate 5-10 target personas (user types) who would benefit from this idea.
+
+Idea Pitch:
+${pitch}
+
+Generate 5-10 personas as a JSON array of strings. Each persona should be a brief description (2-4 words). Return ONLY the JSON array, no other text.`;
+                    break;
+
+                case "pain-points":
+                    systemMessage = "You are a product strategist. Generate pain points that the idea addresses.";
+                    prompt = `Based on this idea pitch, generate 5-10 pain points or problems that this idea addresses.
+
+Idea Pitch:
+${pitch}
+
+Generate 5-10 pain points as a JSON array of strings. Each pain point should be concise (2-5 words). Return ONLY the JSON array, no other text.`;
+                    break;
+
+                case "features":
+                    systemMessage = "You are a product manager. Generate key features based on the given idea pitch.";
+                    prompt = `Based on this idea pitch, generate 5-10 key features or capabilities that this idea would provide.
+
+Idea Pitch:
+${pitch}
+
+Generate 5-10 features as a JSON array of strings. Each feature should be concise (2-4 words). Return ONLY the JSON array, no other text.`;
+                    break;
+            }
+
+            const response = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                    {
+                        role: "system",
+                        content: systemMessage,
+                    },
+                    {
+                        role: "user",
+                        content: prompt,
+                    },
+                ],
+                max_tokens: 300,
+                temperature: 0.7,
+            });
+
+            let content = response.choices[0]?.message?.content?.trim();
+            if (!content) {
+                throw new Error("No content generated from OpenAI");
+            }
+
+            // Strip markdown code blocks (```json and ```) - handle various formats
+            content = content
+                .replace(/^```json\s*/i, "")  // Remove ```json at start
+                .replace(/^```\s*/i, "")      // Remove ``` at start (if no json)
+                .replace(/\s*```$/i, "")      // Remove ``` at end
+                .replace(/```json/gi, "")     // Remove any ```json in middle
+                .replace(/```/g, "")          // Remove any remaining ```
+                .trim();
+
+            // Parse JSON array from response
+            let items: string[] = [];
+            try {
+                // Try to parse as JSON array
+                const parsed = JSON.parse(content);
+                if (Array.isArray(parsed)) {
+                    items = parsed.filter((item) => typeof item === "string" && item.trim().length > 0);
+                } else {
+                    // If not an array, try to split by commas or newlines
+                    items = content.split(/[,\n]/).map((item) => item.trim()).filter((item) => item.length > 0);
+                }
+            } catch (parseError) {
+                // If JSON parsing fails, try to extract items from text
+                // Remove markdown formatting and extract items
+                items = content
+                    .replace(/^\[/g, "")
+                    .replace(/\]$/g, "")
+                    .split(/[,\n]/)
+                    .map((item) => item.trim().replace(/^["']|["']$/g, "").replace(/^[-*]\s*/, ""))
+                    .filter((item) => item.length > 0);
+            }
+
+            if (items.length === 0) {
+                throw new Error("No items generated from OpenAI response");
+            }
+
+            res.json({ items });
+        } catch (error) {
+            console.error("Error generating items:", error);
+            res.status(500).json({
+                message: "Failed to generate items",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Find competitors based on idea description
+    app.post("/api/custom-search/find-competitors", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { pitch, topics, personas, painPoints, features } = req.body;
+
+            if (!pitch || typeof pitch !== "string" || pitch.trim().length === 0) {
+                return res.status(400).json({ message: "Pitch is required" });
+            }
+
+            const additionalContext: string[] = [];
+            if (topics && Array.isArray(topics) && topics.length > 0) {
+                additionalContext.push(`Topics: ${topics.join(", ")}`);
+            }
+            if (personas && Array.isArray(personas) && personas.length > 0) {
+                additionalContext.push(`Target Personas: ${personas.join(", ")}`);
+            }
+            if (painPoints && Array.isArray(painPoints) && painPoints.length > 0) {
+                additionalContext.push(`Pain Points: ${painPoints.join(", ")}`);
+            }
+            if (features && Array.isArray(features) && features.length > 0) {
+                additionalContext.push(`Features: ${features.join(", ")}`);
+            }
+
+            const systemMessage = "You are a competitive intelligence analyst. Analyze ideas and identify real competitors in the market.";
+
+            const prompt = `Based on this idea pitch, identify exactly 12 real competitors (existing products, services, or companies) that address similar problems or target similar audiences.
+
+Idea Pitch:
+${pitch}
+
+${additionalContext.length > 0 ? `\nAdditional Context:\n${additionalContext.join("\n")}\n` : ""}
+
+Generate a JSON array of competitor objects. Each object should have:
+- name: string (company or product name)
+- description: string (brief description of what they do, 10-20 words)
+- url: string | null (website URL if known, or null)
+
+Return ONLY the JSON array, no other text. Example format:
+[
+  {"name": "Competitor A", "description": "Brief description here", "url": "https://example.com"},
+  {"name": "Competitor B", "description": "Brief description here", "url": null}
+]`;
+
+            const response = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                    {
+                        role: "system",
+                        content: systemMessage,
+                    },
+                    {
+                        role: "user",
+                        content: prompt,
+                    },
+                ],
+                max_tokens: 800,
+                temperature: 0.7,
+            });
+
+            let content = response.choices[0]?.message?.content?.trim();
+            if (!content) {
+                throw new Error("No content generated from OpenAI");
+            }
+
+            // Strip markdown code blocks (```json and ```) - handle various formats
+            content = content
+                .replace(/^```json\s*/i, "")  // Remove ```json at start
+                .replace(/^```\s*/i, "")      // Remove ``` at start (if no json)
+                .replace(/\s*```$/i, "")      // Remove ``` at end
+                .replace(/```json/gi, "")     // Remove any ```json in middle
+                .replace(/```/g, "")          // Remove any remaining ```
+                .trim();
+
+            // Parse JSON array from response
+            let competitors: Array<{ name: string; description: string; url?: string | null }> = [];
+            try {
+                const parsed = JSON.parse(content);
+                if (Array.isArray(parsed)) {
+                    competitors = parsed.map((comp: any) => ({
+                        name: comp.name || comp.title || "Unknown",
+                        description: comp.description || comp.desc || "",
+                        url: comp.url || null,
+                    })).filter((comp: any) => comp.name !== "Unknown" && comp.description.length > 0);
+                }
+            } catch (parseError) {
+                console.error("Error parsing competitors JSON:", parseError);
+                throw new Error("Failed to parse competitors response");
+            }
+
+            if (competitors.length === 0) {
+                throw new Error("No competitors found");
+            }
+
+            res.json({ competitors });
+        } catch (error) {
+            console.error("Error finding competitors:", error);
+            res.status(500).json({
+                message: "Failed to find competitors",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Custom Search Projects API
+    // Get all projects for user
+    app.get("/api/custom-search/projects", requireAuth, async (req, res) => {
+        try {
+            const projects = await storage.getCustomSearchProjects(req.user.id);
+            res.json({ projects });
+        } catch (error) {
+            console.error("Error fetching projects:", error);
+            res.status(500).json({
+                message: "Failed to fetch projects",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Get single project
+    app.get("/api/custom-search/projects/:id", requireAuth, async (req, res) => {
+        try {
+            const { id } = req.params;
+            const project = await storage.getCustomSearchProject(id);
+            
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+
+            // Verify ownership
+            if (project.userId !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden" });
+            }
+
+            res.json({ project });
+        } catch (error) {
+            console.error("Error fetching project:", error);
+            res.status(500).json({
+                message: "Failed to fetch project",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Create new project
+    app.post("/api/custom-search/projects", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { name, pitch, topics, personas, painPoints, features, competitors } = req.body;
+
+            // Generate project name if not provided
+            let projectName = name;
+            if (!projectName || projectName.trim().length === 0) {
+                // Use timestamp for blank projects (name will be generated when idea is generated)
+                const date = new Date();
+                projectName = `Project - ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+            }
+
+            const project = await storage.createCustomSearchProject({
+                userId: req.user.id,
+                name: projectName,
+                pitch: pitch || "",
+                topics: topics || [],
+                personas: personas || [],
+                painPoints: painPoints || [],
+                features: features || [],
+                competitors: competitors || [],
+            });
+
+            res.json({ project });
+        } catch (error) {
+            console.error("Error creating project:", error);
+            res.status(500).json({
+                message: "Failed to create project",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Update project
+    app.put("/api/custom-search/projects/:id", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { name, pitch, topics, personas, painPoints, features, competitors } = req.body;
+
+            // Verify project exists and user owns it
+            const existingProject = await storage.getCustomSearchProject(id);
+            if (!existingProject) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (existingProject.userId !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden" });
+            }
+
+            // Build update data (only include provided fields)
+            const updateData: any = {};
+            if (name !== undefined) updateData.name = name;
+            if (pitch !== undefined) updateData.pitch = pitch;
+            if (topics !== undefined) updateData.topics = topics;
+            if (personas !== undefined) updateData.personas = personas;
+            if (painPoints !== undefined) updateData.painPoints = painPoints;
+            if (features !== undefined) updateData.features = features;
+            if (competitors !== undefined) updateData.competitors = competitors;
+
+            const project = await storage.updateCustomSearchProject(id, updateData);
+            res.json({ project });
+        } catch (error) {
+            console.error("Error updating project:", error);
+            res.status(500).json({
+                message: "Failed to update project",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Delete project
+    app.delete("/api/custom-search/projects/:id", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            // Verify project exists and user owns it
+            const project = await storage.getCustomSearchProject(id);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (project.userId !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden" });
+            }
+
+            await storage.deleteCustomSearchProject(id);
+            res.json({ message: "Project deleted successfully" });
+        } catch (error) {
+            console.error("Error deleting project:", error);
+            res.status(500).json({
+                message: "Failed to delete project",
+                error: error instanceof Error ? error.message : "Unknown error",
             });
         }
     });

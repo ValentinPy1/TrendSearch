@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 import { HelpCircle } from "lucide-react";
 import type { Keyword } from "@shared/schema";
+import { usePaymentStatus } from "@/hooks/use-payment-status";
 
 interface TrendChartProps {
   keywords: Keyword[];
@@ -27,12 +28,24 @@ export function TrendChart({
   reportId,
   selectedKeyword,
 }: TrendChartProps) {
+  const { data: paymentStatus } = usePaymentStatus();
+  const hasPaid = paymentStatus?.hasPaid ?? false;
+  
   const keyword =
     keywords.find((k) => k.keyword === selectedKeyword) || keywords[0];
 
   if (!keyword || !keyword.monthlyData) {
     return null;
   }
+
+  // Filter monthly data based on premium status
+  // Premium: show all 48 months (4 years)
+  // Non-premium: show only last 12 months
+  const displayData = hasPaid 
+    ? keyword.monthlyData 
+    : keyword.monthlyData.slice(-12);
+
+  const timeRangeText = hasPaid ? "4-year" : "12-month";
 
   return (
     <GlassmorphicCard className="p-8">
@@ -42,13 +55,13 @@ export function TrendChart({
             {keyword.keyword}
           </h3>
           <p className="text-sm text-white/60">
-            12-month search volume history
+            {timeRangeText} search volume history
           </p>
         </div>
 
         <div className="h-96">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={keyword.monthlyData}>
+            <LineChart data={displayData}>
               <defs>
                 <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
                   <stop
@@ -70,7 +83,48 @@ export function TrendChart({
               <XAxis
                 dataKey="month"
                 stroke="rgba(255,255,255,0.6)"
-                tick={{ fill: "rgba(255,255,255,0.6)" }}
+                interval={hasPaid ? undefined : 0}
+                tick={(props) => {
+                  const { x, y, payload } = props;
+                  if (hasPaid) {
+                    // For 4-year chart, only show year labels at the start of each year (January)
+                    const value = payload.value;
+                    const yearMatch = value?.match(/\d{4}$/);
+                    if (yearMatch) {
+                      const year = yearMatch[0];
+                      const monthStr = value?.split(' ')[0];
+                      if (monthStr === 'Jan') {
+                        return (
+                          <text
+                            x={x}
+                            y={y}
+                            dy={16}
+                            textAnchor="middle"
+                            fill="rgba(255,255,255,0.6)"
+                            fontSize={12}
+                          >
+                            {year}
+                          </text>
+                        );
+                      }
+                      return null;
+                    }
+                    return null;
+                  }
+                  // For 12-month chart, show all labels as before
+                  return (
+                    <text
+                      x={x}
+                      y={y}
+                      dy={16}
+                      textAnchor="middle"
+                      fill="rgba(255,255,255,0.6)"
+                      fontSize={12}
+                    >
+                      {payload.value}
+                    </text>
+                  );
+                }}
               />
               <YAxis
                 stroke="rgba(255,255,255,0.6)"

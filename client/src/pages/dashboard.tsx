@@ -61,6 +61,19 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         reportId: string;
         ideaText: string;
     } | null>(null);
+    const [activeTab, setActiveTab] = useState("standard");
+
+    // Clear selected idea when switching to custom search tab
+    useEffect(() => {
+        if (activeTab === "custom" && selectedIdea) {
+            // Clear the selected idea when switching to custom search
+            // This ensures standard search reports don't show in custom search
+            setSelectedIdea(null);
+            setSelectedKeyword(null);
+            setDisplayedKeywordCount(10);
+            setExcludedKeywordIds(new Set());
+        }
+    }, [activeTab]);
 
     // Get filters from localStorage (same place IdeaGenerator stores them)
     const getFiltersFromStorage = (): KeywordFilter[] => {
@@ -282,6 +295,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     currentIdea={selectedIdea}
                     onGeneratingChange={setIsGeneratingReport}
                     searchKeyword={searchKeyword}
+                    onActiveTabChange={setActiveTab}
                 />
 
                 {isLoading && (
@@ -372,6 +386,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 {!isLoading &&
                     !error &&
                     !isGeneratingReport &&
+                    activeTab === "standard" &&
                     selectedIdea?.report &&
                     (() => {
                         // Slice first based on displayedKeywordCount, THEN filter out excluded
