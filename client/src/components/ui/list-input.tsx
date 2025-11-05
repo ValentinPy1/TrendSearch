@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X } from "lucide-react";
+import { X, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -63,24 +63,35 @@ export function ListInput({
 
     return (
         <div className={cn("space-y-2", className)}>
-            <div className="flex gap-2">
+            <div className="relative w-full">
                 <Input
                     value={inputValue}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     placeholder={placeholder}
-                    className="flex-1"
+                    className={cn(
+                        "bg-white/5 border-white/10 text-white placeholder:text-white/40 w-full",
+                        onGenerate ? "pr-12" : ""
+                    )}
                 />
                 {onGenerate && (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={onGenerate}
-                        disabled={isGenerating}
-                        className="whitespace-nowrap"
-                    >
-                        {isGenerating ? "Generating..." : generateLabel}
-                    </Button>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={onGenerate}
+                            disabled={isGenerating}
+                            className="h-8 w-8 text-yellow-300 hover:bg-transparent"
+                            title={generateLabel}
+                        >
+                            {isGenerating ? (
+                                <Loader2 className="h-4 w-4 animate-spin stroke-[2.5]" />
+                            ) : (
+                                <Sparkles className="h-4 w-4 stroke-[2.5]" />
+                            )}
+                        </Button>
+                    </div>
                 )}
             </div>
             {value.length > 0 && (

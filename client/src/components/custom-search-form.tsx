@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ListInput } from "@/components/ui/list-input";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Search, ExternalLink, Building2 } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Loader2, Search, ExternalLink, Building2, Sparkles } from "lucide-react";
 
-interface CustomSearchFormProps {}
+interface CustomSearchFormProps { }
 
 interface FormData {
     pitch: string;
@@ -24,7 +24,7 @@ interface Competitor {
     url?: string | null;
 }
 
-export function CustomSearchForm({}: CustomSearchFormProps) {
+export function CustomSearchForm({ }: CustomSearchFormProps) {
     const { toast } = useToast();
     const [topics, setTopics] = useState<string[]>([]);
     const [personas, setPersonas] = useState<string[]>([]);
@@ -45,6 +45,30 @@ export function CustomSearchForm({}: CustomSearchFormProps) {
     });
 
     const pitch = form.watch("pitch");
+
+    const generateIdeaMutation = useMutation({
+        mutationFn: async (data: { originalIdea: string | null }) => {
+            const res = await apiRequest("POST", "/api/generate-idea", data);
+            return res.json();
+        },
+        onSuccess: (result) => {
+            toast({
+                title: "Idea Generated!",
+                description: result.idea.generatedIdea,
+            });
+            // Set the generated idea in the pitch field
+            form.setValue("pitch", result.idea.generatedIdea);
+            queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
+        },
+        onError: (error) => {
+            toast({
+                title: "Error",
+                description:
+                    error instanceof Error ? error.message : "Failed to generate idea",
+                variant: "destructive",
+            });
+        },
+    });
 
     const generateItemsMutation = useMutation({
         mutationFn: async ({
@@ -257,23 +281,49 @@ export function CustomSearchForm({}: CustomSearchFormProps) {
             </div>
 
             <form className="space-y-6">
-                    {/* Idea Pitch */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-white">
-                            Idea Pitch <span className="text-red-500">*</span>
-                        </label>
+                {/* Idea Pitch */}
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-white">
+                        Idea Pitch <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
                         <Textarea
                             {...form.register("pitch")}
                             placeholder="Describe your idea in detail..."
-                            className="min-h-[100px] bg-white/5 border-white/10 text-white placeholder:text-white/40"
+                            className="min-h-[100px] bg-white/5 border-white/10 text-white placeholder:text-white/40 pr-20 pb-10"
                         />
-                        <p className="text-xs text-white/60">
-                            Provide a comprehensive description of your idea.
-                            This will be used to generate topics, personas, pain
-                            points, and features.
-                        </p>
+                        <div className="absolute right-2 bottom-2">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => generateIdeaMutation.mutate({ originalIdea: null })}
+                                disabled={generateIdeaMutation.isPending}
+                                className="h-8 text-yellow-300 hover:bg-transparent gap-1.5 px-4"
+                                title="Generate idea from AI"
+                            >
+                                {generateIdeaMutation.isPending ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin stroke-[2.5]" />
+                                        <span className="text-xs">Generating...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles className="h-4 w-4 stroke-[2.5]" />
+                                        <span className="text-xs">I'm feeling vibing</span>
+                                    </>
+                                )}
+                            </Button>
+                        </div>
                     </div>
+                    <p className="text-xs text-white/60">
+                        Provide a comprehensive description of your idea.
+                        This will be used to generate topics, personas, pain
+                        points, and features.
+                    </p>
+                </div>
 
+                {/* List Inputs in 2x2 Grid */}
+                <div className="grid grid-cols-2 gap-6">
                     {/* Topics */}
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-white">
@@ -282,7 +332,7 @@ export function CustomSearchForm({}: CustomSearchFormProps) {
                         <ListInput
                             value={topics}
                             onChange={setTopics}
-                            placeholder="Add topics related to your idea (or press Generate)"
+                            placeholder="Add topics related to your idea"
                             onGenerate={handleGenerateTopics}
                             isGenerating={isGeneratingTopics}
                             generateLabel="Generate from Pitch"
@@ -298,7 +348,7 @@ export function CustomSearchForm({}: CustomSearchFormProps) {
                         <ListInput
                             value={personas}
                             onChange={setPersonas}
-                            placeholder="Add target personas (or press Generate)"
+                            placeholder="Add target personas"
                             onGenerate={handleGeneratePersonas}
                             isGenerating={isGeneratingPersonas}
                             generateLabel="Generate from Pitch"
@@ -314,7 +364,7 @@ export function CustomSearchForm({}: CustomSearchFormProps) {
                         <ListInput
                             value={painPoints}
                             onChange={setPainPoints}
-                            placeholder="Add pain points your idea addresses (or press Generate)"
+                            placeholder="Add pain points your idea addresses"
                             onGenerate={handleGeneratePainPoints}
                             isGenerating={isGeneratingPainPoints}
                             generateLabel="Generate from Pitch"
@@ -330,85 +380,86 @@ export function CustomSearchForm({}: CustomSearchFormProps) {
                         <ListInput
                             value={features}
                             onChange={setFeatures}
-                            placeholder="Add key features (or press Generate)"
+                            placeholder="Add key features"
                             onGenerate={handleGenerateFeatures}
                             isGenerating={isGeneratingFeatures}
                             generateLabel="Generate from Pitch"
                             badgeColor="bg-purple-600/80 text-purple-100 border-purple-500/50"
                         />
                     </div>
+                </div>
 
-                    {/* Find Competitors Button */}
+                {/* Find Competitors Button */}
+                <div className="pt-4 border-t border-white/10">
+                    <Button
+                        type="button"
+                        onClick={handleFindCompetitors}
+                        disabled={
+                            !pitch ||
+                            pitch.trim().length === 0 ||
+                            isFindingCompetitors
+                        }
+                        className="w-full"
+                    >
+                        {isFindingCompetitors ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Finding Competitors...
+                            </>
+                        ) : (
+                            <>
+                                <Search className="mr-2 h-4 w-4" />
+                                Find All Competitors Automatically
+                            </>
+                        )}
+                    </Button>
+                </div>
+
+                {/* Competitors List */}
+                {competitors.length > 0 && (
                     <div className="pt-4 border-t border-white/10">
-                        <Button
-                            type="button"
-                            onClick={handleFindCompetitors}
-                            disabled={
-                                !pitch ||
-                                pitch.trim().length === 0 ||
-                                isFindingCompetitors
-                            }
-                            className="w-full"
-                        >
-                            {isFindingCompetitors ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Finding Competitors...
-                                </>
-                            ) : (
-                                <>
-                                    <Search className="mr-2 h-4 w-4" />
-                                    Find All Competitors Automatically
-                                </>
-                            )}
-                        </Button>
-                    </div>
-
-                    {/* Competitors List */}
-                    {competitors.length > 0 && (
-                        <div className="pt-4 border-t border-white/10">
-                            <div className="space-y-3">
-                                <div className="flex items-center gap-2">
-                                    <Building2 className="h-5 w-5 text-white/60" />
-                                    <h3 className="text-sm font-semibold text-white">
-                                        Found Competitors ({competitors.length})
-                                    </h3>
-                                </div>
-                                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                                    {competitors.map((competitor, index) => (
-                                        <div
-                                            key={index}
-                                            className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg p-3 transition-colors"
-                                        >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <h4 className="text-sm font-medium text-white">
-                                                            {competitor.name}
-                                                        </h4>
-                                                        {competitor.url && (
-                                                            <a
-                                                                href={competitor.url}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="text-primary hover:text-primary/80 transition-colors"
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            >
-                                                                <ExternalLink className="h-3.5 w-3.5" />
-                                                            </a>
-                                                        )}
-                                                    </div>
-                                                    <p className="text-xs text-white/60 line-clamp-2">
-                                                        {competitor.description}
-                                                    </p>
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <Building2 className="h-5 w-5 text-white/60" />
+                                <h3 className="text-sm font-semibold text-white">
+                                    Found Competitors ({competitors.length})
+                                </h3>
+                            </div>
+                            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                {competitors.map((competitor, index) => (
+                                    <div
+                                        key={index}
+                                        className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg p-3 transition-colors"
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <h4 className="text-sm font-medium text-white">
+                                                        {competitor.name}
+                                                    </h4>
+                                                    {competitor.url && (
+                                                        <a
+                                                            href={competitor.url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-primary hover:text-primary/80 transition-colors"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <ExternalLink className="h-3.5 w-3.5" />
+                                                        </a>
+                                                    )}
                                                 </div>
+                                                <p className="text-xs text-white/60 line-clamp-2">
+                                                    {competitor.description}
+                                                </p>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
-                    )}
+                    </div>
+                )}
             </form>
         </div>
     );

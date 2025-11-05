@@ -218,16 +218,22 @@ export function IdeaGenerator({
                 </div>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 bg-white/5 border-white/10">
-                        <TabsTrigger value="standard" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">
+                    <TabsList className="flex gap-8 bg-transparent p-0 h-auto mb-8">
+                        <TabsTrigger 
+                            value="standard" 
+                            className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
+                        >
                             Standard Search
                         </TabsTrigger>
-                        <TabsTrigger value="custom" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">
+                        <TabsTrigger 
+                            value="custom" 
+                            className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
+                        >
                             Custom Search
                         </TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="standard" className="space-y-6 mt-6">
+                    <TabsContent value="standard" className="space-y-6">
                         <div className="relative">
                             <Input
                                 placeholder="Write your idea brief (short is better) / keyword here or let AI generate one for you clicking the sparkles icon"
@@ -288,7 +294,7 @@ export function IdeaGenerator({
                         />
                     </TabsContent>
 
-                    <TabsContent value="custom" className="mt-6">
+                    <TabsContent value="custom" className="">
                         <CustomSearchForm />
                     </TabsContent>
                 </Tabs>
