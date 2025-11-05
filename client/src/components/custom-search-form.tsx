@@ -645,16 +645,16 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         // If resuming, restore progress state
         if (resume && savedProgress) {
             setKeywordProgress({
-                stage: savedProgress.stage,
-                seedsGenerated: savedProgress.seedsGenerated,
-                keywordsGenerated: savedProgress.keywordsGenerated,
-                duplicatesFound: savedProgress.duplicatesFound,
-                existingKeywordsFound: savedProgress.existingKeywordsFound,
-                newKeywordsCollected: savedProgress.newKeywordsCollected,
-                seeds: savedProgress.seeds,
-                allKeywords: savedProgress.allKeywords,
-                duplicates: savedProgress.duplicates,
-                existingKeywords: savedProgress.existingKeywords,
+                stage: savedProgress.stage || 'initializing',
+                seedsGenerated: savedProgress.seedsGenerated || 0,
+                keywordsGenerated: savedProgress.keywordsGenerated || 0,
+                duplicatesFound: savedProgress.duplicatesFound || 0,
+                existingKeywordsFound: savedProgress.existingKeywordsFound || 0,
+                newKeywordsCollected: savedProgress.newKeywordsCollected || 0,
+                seeds: savedProgress.seeds || [],
+                allKeywords: savedProgress.allKeywords || [],
+                duplicates: savedProgress.duplicates || [],
+                existingKeywords: savedProgress.existingKeywords || [],
             });
             if (savedProgress.newKeywords) {
                 setGeneratedKeywords(savedProgress.newKeywords);
@@ -1180,19 +1180,36 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 type="button"
                                 onClick={() => {
                                     setShowKeywordProgress(true);
-                                    setKeywordProgress({
-                                        stage: 'complete',
-                                        seedsGenerated: savedProgress.seedsGenerated,
-                                        keywordsGenerated: savedProgress.keywordsGenerated,
-                                        duplicatesFound: savedProgress.duplicatesFound,
-                                        existingKeywordsFound: savedProgress.existingKeywordsFound,
-                                        newKeywordsCollected: savedProgress.newKeywordsCollected,
-                                        seeds: savedProgress.seeds,
-                                        allKeywords: savedProgress.allKeywords,
-                                        duplicates: savedProgress.duplicates,
-                                        existingKeywords: savedProgress.existingKeywords,
-                                    });
-                                    setGeneratedKeywords(savedProgress.newKeywords);
+                                    if (savedProgress) {
+                                        setKeywordProgress({
+                                            stage: 'complete',
+                                            seedsGenerated: savedProgress.seedsGenerated || 0,
+                                            keywordsGenerated: savedProgress.keywordsGenerated || 0,
+                                            duplicatesFound: savedProgress.duplicatesFound || 0,
+                                            existingKeywordsFound: savedProgress.existingKeywordsFound || 0,
+                                            newKeywordsCollected: savedProgress.newKeywordsCollected || 0,
+                                            seeds: savedProgress.seeds || [],
+                                            allKeywords: savedProgress.allKeywords || [],
+                                            duplicates: savedProgress.duplicates || [],
+                                            existingKeywords: savedProgress.existingKeywords || [],
+                                        });
+                                        setGeneratedKeywords(savedProgress.newKeywords || generatedKeywords);
+                                    } else {
+                                        // Fallback if no savedProgress but we have generatedKeywords
+                                        setKeywordProgress({
+                                            stage: 'complete',
+                                            seedsGenerated: 0,
+                                            keywordsGenerated: generatedKeywords.length,
+                                            duplicatesFound: 0,
+                                            existingKeywordsFound: 0,
+                                            newKeywordsCollected: generatedKeywords.length,
+                                            seeds: [],
+                                            allKeywords: generatedKeywords,
+                                            duplicates: [],
+                                            existingKeywords: [],
+                                        });
+                                        setGeneratedKeywords(generatedKeywords);
+                                    }
                                 }}
                                 variant="outline"
                                 className="w-full"

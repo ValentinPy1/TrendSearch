@@ -15,18 +15,34 @@ class KeywordGenerator {
      * Returns approximately 50 keywords per seed
      */
     async generateKeywordsFromSeed(seed: string, targetCount: number = 50): Promise<string[]> {
-        const prompt = `Generate ${targetCount} commercial keywords related to: "${seed}"
+        const prompt = `Generate ${targetCount} short, commercial keywords related to: "${seed}"
+
+CRITICAL REQUIREMENTS:
+- Each keyword must be 2-4 words maximum (prefer 2-3 words)
+- Focus on high-volume, commercial keywords that people actually search for
+- Avoid long-tail phrases like "features to look for in..." or "how to choose..."
+- Prefer direct, concise search terms
 
 Focus on:
-- Buyer intent keywords (e.g., "buy", "best", "review", "pricing")
-- Comparison queries (e.g., "vs", "alternative", "compare")
-- Problem-solving keywords (e.g., "how to", "solution", "fix")
-- Commercial and transactional terms
+- Buyer intent: "best [product]", "[product] price", "buy [product]", "[product] review"
+- Comparison: "[product] vs [competitor]", "[product] alternative", "compare [product]"
+- Problem-solving: "[product] solution", "[problem] tool", "[product] for [use case]"
+- Commercial terms: "[product] pricing", "[product] cost", "[product] features"
+
+Examples of GOOD keywords (short):
+- "trend analysis tool"
+- "competitor analysis software"
+- "best market research tool"
+- "keyword research pricing"
+
+Examples of BAD keywords (too long):
+- "features to look for in trend discovery tools"
+- "how to choose competitive intelligence tools"
+- "what are the best features of market research platforms"
 
 Return ONLY the keywords, one per line, without numbers, bullets, or explanations.
 Do not include quotes around keywords.
-Each keyword should be a single search query phrase (2-5 words typically).
-Ensure keywords are diverse and cover different angles of the topic.`;
+Each keyword must be 2-4 words only.`;
 
         try {
             const response = await this.openai.chat.completions.create({
@@ -34,7 +50,7 @@ Ensure keywords are diverse and cover different angles of the topic.`;
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are a keyword research expert. Generate commercial keywords that users would search for when looking to buy, compare, or solve problems related to a topic.',
+                        content: 'You are a keyword research expert. Generate SHORT commercial keywords (2-4 words max) that users actually search for. Focus on high-volume, transactional keywords. Avoid long-tail phrases.',
                     },
                     {
                         role: 'user',
@@ -144,7 +160,9 @@ Return keywords one per line, no numbers or bullets.`,
                 .replace(/^["']|["']$/g, '') // Remove surrounding quotes
                 .trim();
 
-            if (cleaned.length > 0 && cleaned.length < 100) { // Reasonable keyword length
+            // Filter for short keywords (2-4 words, max 50 characters)
+            const wordCount = cleaned.split(/\s+/).length;
+            if (cleaned.length > 0 && cleaned.length <= 50 && wordCount >= 2 && wordCount <= 4) {
                 keywords.push(cleaned);
             }
         }

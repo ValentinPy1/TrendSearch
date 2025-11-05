@@ -63,20 +63,34 @@ export async function generateSeeds(input: SeedGenerationInput): Promise<SeedWit
     const context = contextParts.length > 0 ? `\n\nAdditional context:\n${contextParts.join('\n')}` : '';
 
     // Generate 50 seed prompts using LLM
-    const prompt = `Generate exactly 50 diverse seed prompts for keyword generation based on this idea pitch and context:
+    const prompt = `Generate exactly 50 diverse, SHORT seed prompts for keyword generation based on this idea pitch and context:
 
 Idea Pitch: "${pitch}"${context}
 
-Each seed prompt should be a concise phrase (2-8 words) that can be used to generate commercial keywords. Focus on:
-- Buyer intent phrases (e.g., "buy [product]", "best [solution]", "[product] pricing")
-- Comparison phrases (e.g., "[product] vs alternatives", "[product] comparison")
-- Problem-solving phrases (e.g., "how to [solve problem]", "[product] solution")
-- Feature-focused phrases (e.g., "[product] features", "[product] benefits")
-- Use case phrases (e.g., "[product] for [persona]", "[product] use cases")
+CRITICAL REQUIREMENTS:
+- Each seed prompt must be 2-4 words maximum (prefer 2-3 words)
+- Keep prompts concise and direct - they will be expanded into keywords
+- Avoid long phrases like "how to choose..." or "features to look for in..."
+
+Focus on:
+- Buyer intent: "best [product]", "[product] price", "buy [product]"
+- Comparison: "[product] vs [competitor]", "[product] alternative"
+- Problem-solving: "[product] solution", "[problem] tool"
+- Feature-focused: "[product] features", "[product] benefits"
+- Use case: "[product] for [persona]"
+
+Examples of GOOD seeds (short):
+- "trend analysis tool"
+- "competitor analysis"
+- "market research pricing"
+
+Examples of BAD seeds (too long):
+- "features to look for in trend discovery tools"
+- "how to choose competitive intelligence tools"
 
 Return ONLY the 50 seed prompts, one per line, without numbers, bullets, or explanations.
 Do not include quotes around the prompts.
-Ensure diversity and relevance to the pitch and context.`;
+Each seed must be 2-4 words only.`;
 
     try {
         const response = await openai.chat.completions.create({
@@ -105,23 +119,20 @@ Ensure diversity and relevance to the pitch and context.`;
         const seeds = content
             .split('\n')
             .map(line => line.trim())
-            .filter(line => {
-                // Remove leading numbers, bullets, dashes, etc.
-                const cleaned = line
-                    .replace(/^\d+[\.\)]\s*/, '')
-                    .replace(/^[-*•]\s*/, '')
-                    .replace(/^["']|["']$/g, '')
-                    .trim();
-                return cleaned.length > 0 && cleaned.length < 100;
-            })
             .map(line => {
+                // Remove leading numbers, bullets, dashes, etc.
                 return line
                     .replace(/^\d+[\.\)]\s*/, '')
                     .replace(/^[-*•]\s*/, '')
                     .replace(/^["']|["']$/g, '')
                     .trim();
             })
-            .filter(seed => seed.length > 0);
+            .filter(seed => {
+                // Filter for short seeds (2-4 words, max 50 characters)
+                if (seed.length === 0 || seed.length > 50) return false;
+                const wordCount = seed.split(/\s+/).length;
+                return wordCount >= 2 && wordCount <= 4;
+            });
 
         if (seeds.length === 0) {
             console.warn('[SeedGenerator] No seeds parsed from LLM response');
