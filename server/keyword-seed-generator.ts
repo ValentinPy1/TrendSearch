@@ -1,4 +1,5 @@
 import { keywordVectorService } from "./keyword-vector-service";
+import OpenAI from 'openai';
 
 export interface SeedGenerationInput {
     pitch: string;
@@ -14,12 +15,21 @@ export interface SeedWithSimilarity {
     similarityScore: number;
 }
 
+const openai = new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
+
 /**
- * Generate seed prompts from custom search inputs
+ * Generate seed prompts from custom search inputs using a single LLM prompt
  * Seeds are ranked by semantic similarity to the pitch
  */
 export async function generateSeeds(input: SeedGenerationInput): Promise<SeedWithSimilarity[]> {
     const { pitch, topics, personas, painPoints, features, competitors } = input;
+
+    if (!pitch || !pitch.trim()) {
+        return [];
+    }
 
     // Collect all list items
     const allItems: string[] = [
@@ -31,111 +41,112 @@ export async function generateSeeds(input: SeedGenerationInput): Promise<SeedWit
         ...competitors.map(c => c.description).filter(d => d),
     ].filter(item => item && item.trim().length > 0);
 
-    // Generate systematic seed combinations
-    const seeds: string[] = [];
-
-    // 1. Single elements
-    if (pitch && pitch.trim()) {
-        seeds.push(pitch.trim());
+    // Build context for LLM
+    const contextParts: string[] = [];
+    if (topics.length > 0) {
+        contextParts.push(`Topics: ${topics.join(', ')}`);
     }
-    allItems.forEach(item => {
-        seeds.push(item.trim());
-    });
+    if (personas.length > 0) {
+        contextParts.push(`Personas: ${personas.join(', ')}`);
+    }
+    if (painPoints.length > 0) {
+        contextParts.push(`Pain Points: ${painPoints.join(', ')}`);
+    }
+    if (features.length > 0) {
+        contextParts.push(`Features: ${features.join(', ')}`);
+    }
+    if (competitors.length > 0) {
+        const competitorNames = competitors.map(c => c.name).join(', ');
+        contextParts.push(`Competitors: ${competitorNames}`);
+    }
 
-    // 2. Two-element combinations: pitch + item
-    if (pitch && pitch.trim()) {
-        allItems.forEach(item => {
-            seeds.push(`${pitch.trim()} ${item.trim()}`);
+    const context = contextParts.length > 0 ? `\n\nAdditional context:\n${contextParts.join('\n')}` : '';
+
+    // Generate 50 seed prompts using LLM
+    const prompt = `Generate exactly 50 diverse seed prompts for keyword generation based on this idea pitch and context:
+
+Idea Pitch: "${pitch}"${context}
+
+Each seed prompt should be a concise phrase (2-8 words) that can be used to generate commercial keywords. Focus on:
+- Buyer intent phrases (e.g., "buy [product]", "best [solution]", "[product] pricing")
+- Comparison phrases (e.g., "[product] vs alternatives", "[product] comparison")
+- Problem-solving phrases (e.g., "how to [solve problem]", "[product] solution")
+- Feature-focused phrases (e.g., "[product] features", "[product] benefits")
+- Use case phrases (e.g., "[product] for [persona]", "[product] use cases")
+
+Return ONLY the 50 seed prompts, one per line, without numbers, bullets, or explanations.
+Do not include quotes around the prompts.
+Ensure diversity and relevance to the pitch and context.`;
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                {
+                    role: 'system',
+                    content: 'You are a keyword research expert. Generate diverse seed prompts for keyword generation.',
+                },
+                {
+                    role: 'user',
+                    content: prompt,
+                },
+            ],
+            temperature: 0.8,
+            max_tokens: 2000,
         });
-    }
 
-    // 3. Two-element combinations: item + item
-    for (let i = 0; i < allItems.length; i++) {
-        for (let j = i + 1; j < allItems.length; j++) {
-            seeds.push(`${allItems[i].trim()} ${allItems[j].trim()}`);
+        const content = response.choices[0]?.message?.content || '';
+        if (!content) {
+            console.warn('[SeedGenerator] Empty response from LLM');
+            return [];
         }
-    }
 
-    // 4. Three-element combinations: pitch + item + item
-    if (pitch && pitch.trim() && allItems.length >= 2) {
-        for (let i = 0; i < allItems.length; i++) {
-            for (let j = i + 1; j < allItems.length; j++) {
-                seeds.push(`${pitch.trim()} ${allItems[i].trim()} ${allItems[j].trim()}`);
+        // Parse seeds from response
+        const seeds = content
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => {
+                // Remove leading numbers, bullets, dashes, etc.
+                const cleaned = line
+                    .replace(/^\d+[\.\)]\s*/, '')
+                    .replace(/^[-*•]\s*/, '')
+                    .replace(/^["']|["']$/g, '')
+                    .trim();
+                return cleaned.length > 0 && cleaned.length < 100;
+            })
+            .map(line => {
+                return line
+                    .replace(/^\d+[\.\)]\s*/, '')
+                    .replace(/^[-*•]\s*/, '')
+                    .replace(/^["']|["']$/g, '')
+                    .trim();
+            })
+            .filter(seed => seed.length > 0);
+
+        if (seeds.length === 0) {
+            console.warn('[SeedGenerator] No seeds parsed from LLM response');
+            return [];
+        }
+
+        // Rank seeds by semantic similarity to pitch
+        const seedsWithSimilarity: SeedWithSimilarity[] = [];
+        for (const seed of seeds) {
+            try {
+                const similarityScore = await keywordVectorService.calculateTextSimilarity(pitch, seed);
+                seedsWithSimilarity.push({ seed, similarityScore });
+            } catch (error) {
+                console.warn(`[SeedGenerator] Failed to calculate similarity for seed: ${seed}`, error);
+                seedsWithSimilarity.push({ seed, similarityScore: 0.5 });
             }
         }
+
+        // Sort by similarity score (highest first)
+        seedsWithSimilarity.sort((a, b) => b.similarityScore - a.similarityScore);
+
+        return seedsWithSimilarity;
+    } catch (error) {
+        console.error('[SeedGenerator] Failed to generate seeds:', error);
+        throw error;
     }
-
-    // Fallback: If not enough seeds (less than 20), generate pitch-only variations
-    if (seeds.length < 20) {
-        const pitchOnlySeeds = generatePitchOnlySeeds(pitch || "");
-        seeds.push(...pitchOnlySeeds);
-    }
-
-    // Rank seeds by semantic similarity to pitch
-    if (!pitch || !pitch.trim()) {
-        // If no pitch, return seeds as-is with similarity score 0
-        return seeds.map(seed => ({ seed, similarityScore: 0 }));
-    }
-
-    // Calculate similarity scores for each seed using embeddings
-    const seedsWithSimilarity: SeedWithSimilarity[] = [];
-    for (const seed of seeds) {
-        try {
-            // Use the vector service's calculateTextSimilarity method
-            const similarityScore = await keywordVectorService.calculateTextSimilarity(pitch, seed);
-            seedsWithSimilarity.push({ seed, similarityScore });
-        } catch (error) {
-            // If similarity calculation fails, assign score 0.5 as default
-            console.warn(`[SeedGenerator] Failed to calculate similarity for seed: ${seed}`, error);
-            seedsWithSimilarity.push({ seed, similarityScore: 0.5 });
-        }
-    }
-
-    // Sort by similarity score (highest first)
-    seedsWithSimilarity.sort((a, b) => b.similarityScore - a.similarityScore);
-
-    return seedsWithSimilarity;
-}
-
-/**
- * Generate pitch-only seed variations when user doesn't provide enough list items
- */
-function generatePitchOnlySeeds(pitch: string): string[] {
-    if (!pitch || !pitch.trim()) return [];
-
-    const seeds: string[] = [
-        `buyer intent keywords for ${pitch}`,
-        `comparison keywords for ${pitch}`,
-        `problem-solving keywords for ${pitch}`,
-        `${pitch} alternatives`,
-        `${pitch} vs competitors`,
-        `${pitch} best`,
-        `${pitch} review`,
-        `${pitch} pricing`,
-        `${pitch} features`,
-        `${pitch} benefits`,
-        `${pitch} use cases`,
-        `${pitch} tutorial`,
-        `${pitch} guide`,
-        `${pitch} comparison`,
-        `${pitch} vs`,
-        `best ${pitch}`,
-        `${pitch} software`,
-        `${pitch} tool`,
-        `${pitch} solution`,
-        `${pitch} platform`,
-        `how to use ${pitch}`,
-        `why use ${pitch}`,
-        `${pitch} pros and cons`,
-        `${pitch} alternatives`,
-        `${pitch} for business`,
-        `${pitch} for startups`,
-        `${pitch} integration`,
-        `${pitch} api`,
-        `${pitch} support`,
-        `cheap ${pitch}`,
-    ];
-
-    return seeds;
 }
 

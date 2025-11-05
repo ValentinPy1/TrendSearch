@@ -12,6 +12,11 @@ export interface ProgressUpdate {
     existingKeywordsFound: number;
     newKeywordsCollected: number;
     currentSeed?: string;
+    // Actual lists for display
+    seeds?: string[];
+    allKeywords?: string[];
+    duplicates?: string[];
+    existingKeywords?: string[];
 }
 
 export interface KeywordCollectionResult {
@@ -43,12 +48,16 @@ export async function collectKeywords(
     
     const seedsWithSimilarity = await generateSeeds(input);
     progress.seedsGenerated = seedsWithSimilarity.length;
+    progress.seeds = seedsWithSimilarity.map(s => s.seed);
     progressCallback?.(progress);
 
     // Step 2: Collect keywords from seeds
     progress.stage = 'generating-keywords';
     const allGeneratedKeywords: string[] = [];
     const seenKeywords = new Set<string>(); // Track duplicates
+    const allKeywordsList: string[] = []; // Track all keywords generated
+    const duplicatesList: string[] = []; // Track all duplicates
+    const existingKeywordsList: string[] = []; // Track all existing keywords
 
     for (const { seed, similarityScore } of seedsWithSimilarity) {
         if (progress.newKeywordsCollected >= targetCount) {
@@ -62,15 +71,21 @@ export async function collectKeywords(
             // Generate keywords from this seed (~50 per seed)
             const generatedKeywords = await keywordGenerator.generateKeywordsFromSeed(seed, 50);
             progress.keywordsGenerated += generatedKeywords.length;
+            allKeywordsList.push(...generatedKeywords);
 
             // Deduplicate within this batch
             const deduplicated = deduplicateKeywords(generatedKeywords);
-            const duplicatesInBatch = generatedKeywords.length - deduplicated.length;
-            progress.duplicatesFound += duplicatesInBatch;
+            const duplicatesInBatch = generatedKeywords.filter(kw => {
+                const normalized = kw.toLowerCase();
+                return !deduplicated.some(d => d.toLowerCase() === normalized);
+            });
+            progress.duplicatesFound += duplicatesInBatch.length;
+            duplicatesList.push(...duplicatesInBatch);
 
             // Check for existing keywords (vector DB + global DB)
             const checkResult = await checkKeywords(deduplicated);
             progress.existingKeywordsFound += checkResult.existingKeywords.length;
+            existingKeywordsList.push(...checkResult.existingKeywords);
 
             // Add new keywords to collection
             const newKeywords = checkResult.newKeywords.filter(kw => {
@@ -80,11 +95,17 @@ export async function collectKeywords(
                     return true;
                 }
                 progress.duplicatesFound++;
+                duplicatesList.push(kw);
                 return false;
             });
 
             allGeneratedKeywords.push(...newKeywords);
             progress.newKeywordsCollected = allGeneratedKeywords.length;
+
+            // Update lists in progress
+            progress.allKeywords = [...allKeywordsList];
+            progress.duplicates = [...duplicatesList];
+            progress.existingKeywords = [...existingKeywordsList];
 
             progressCallback?.(progress);
 

@@ -7,8 +7,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { ListInput } from "@/components/ui/list-input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil, Sparkle } from "lucide-react";
 import { CustomSearchProjectBrowser } from "./custom-search-project-browser";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { CustomSearchProject } from "@shared/schema";
 
 interface CustomSearchFormProps { }
@@ -46,6 +48,23 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [isSaving, setIsSaving] = useState(false);
     const [isLoadingProject, setIsLoadingProject] = useState(false);
     const [isEditingName, setIsEditingName] = useState(false);
+    const [isGeneratingKeywords, setIsGeneratingKeywords] = useState(false);
+    const [showKeywordProgress, setShowKeywordProgress] = useState(false);
+    const [keywordProgress, setKeywordProgress] = useState<{
+        stage: string;
+        seedsGenerated: number;
+        keywordsGenerated: number;
+        duplicatesFound: number;
+        existingKeywordsFound: number;
+        newKeywordsCollected: number;
+        currentSeed?: string;
+        seeds?: string[];
+        allKeywords?: string[];
+        duplicates?: string[];
+        existingKeywords?: string[];
+    } | null>(null);
+    const [generatedKeywords, setGeneratedKeywords] = useState<string[]>([]);
+    const [expandedQuadrant, setExpandedQuadrant] = useState<string | null>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const form = useForm<FormData>({
@@ -500,6 +519,106 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     };
 
+    const handleGenerateKeywords = async () => {
+        if (!pitch || pitch.trim().length === 0) {
+            toast({
+                title: "Error",
+                description: "Please enter an idea pitch first",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setIsGeneratingKeywords(true);
+        setShowKeywordProgress(true);
+        setExpandedQuadrant(null);
+        setKeywordProgress({
+            stage: 'initializing',
+            seedsGenerated: 0,
+            keywordsGenerated: 0,
+            duplicatesFound: 0,
+            existingKeywordsFound: 0,
+            newKeywordsCollected: 0,
+        });
+        setGeneratedKeywords([]);
+
+        try {
+            // Get Supabase session token
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (session?.access_token) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
+            }
+
+            const response = await fetch("/api/custom-search/generate-keywords", {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                    projectId: currentProjectId || undefined,
+                    pitch,
+                    topics: topics.length > 0 ? topics : undefined,
+                    personas: personas.length > 0 ? personas : undefined,
+                    painPoints: painPoints.length > 0 ? painPoints : undefined,
+                    features: features.length > 0 ? features : undefined,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            // Handle Server-Sent Events
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+
+            if (!reader) {
+                throw new Error("No response body");
+            }
+
+            let buffer = "";
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            if (data.type === "progress") {
+                                setKeywordProgress(data.data);
+                            } else if (data.type === "complete") {
+                                setGeneratedKeywords(data.data.keywords || []);
+                                setKeywordProgress(prev => prev ? { ...prev, stage: 'complete' } : null);
+                                toast({
+                                    title: "Keywords Generated!",
+                                    description: `Successfully generated ${data.data.keywords?.length || 0} keywords`,
+                                });
+                            } else if (data.type === "error") {
+                                throw new Error(data.error || "Unknown error");
+                            }
+                        } catch (e) {
+                            console.error("Error parsing SSE data:", e);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error generating keywords:", error);
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to generate keywords",
+                variant: "destructive",
+            });
+        } finally {
+            setIsGeneratingKeywords(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* Project Name and Management Buttons */}
@@ -733,6 +852,32 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     </Button>
                 </div>
 
+                {/* Generate Keywords Button */}
+                <div className="pt-4 border-t border-white/10 flex justify-center">
+                    <Button
+                        type="button"
+                        onClick={handleGenerateKeywords}
+                        disabled={
+                            !pitch ||
+                            pitch.trim().length === 0 ||
+                            isGeneratingKeywords
+                        }
+                        className="w-1/2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                    >
+                        {isGeneratingKeywords ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Generating Keywords...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkle className="mr-2 h-4 w-4" />
+                                Generate Keywords
+                            </>
+                        )}
+                    </Button>
+                </div>
+
                 {/* Competitors List */}
                 {competitors.length > 0 && (
                     <div className="pt-4 border-t border-white/10">
@@ -779,6 +924,195 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     </div>
                 )}
             </form>
+
+            {/* Keyword Generation Progress Dialog */}
+            <Dialog open={showKeywordProgress} onOpenChange={setShowKeywordProgress}>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Generating Keywords</DialogTitle>
+                        <DialogDescription>
+                            Generating 1000 unique keywords from your custom search inputs...
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {keywordProgress && (
+                        <div className="space-y-6 mt-4">
+                            {/* Stage Indicator */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium text-white">Stage</span>
+                                    <span className="text-sm text-white/60 capitalize">
+                                        {keywordProgress.stage.replace(/-/g, ' ')}
+                                    </span>
+                                </div>
+                                {keywordProgress.currentSeed && (
+                                    <div className="text-xs text-white/40 truncate">
+                                        Current seed: {keywordProgress.currentSeed}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Progress Metrics */}
+                            <div className="grid grid-cols-2 gap-4">
+                                {/* Seeds Generated */}
+                                <div 
+                                    className={`bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10 ${
+                                        expandedQuadrant === 'seeds' ? 'bg-white/10 border border-white/20' : ''
+                                    }`}
+                                    onClick={() => setExpandedQuadrant(expandedQuadrant === 'seeds' ? null : 'seeds')}
+                                >
+                                    <div className="text-xs text-white/60 mb-1">Seeds Generated</div>
+                                    <div className="text-2xl font-semibold text-white">
+                                        {keywordProgress.seedsGenerated}
+                                    </div>
+                                    {expandedQuadrant === 'seeds' && keywordProgress.seeds && keywordProgress.seeds.length > 0 && (
+                                        <div className="mt-3 max-h-48 overflow-y-auto space-y-1">
+                                            {keywordProgress.seeds.map((seed, index) => (
+                                                <div key={index} className="text-xs text-white/70 bg-white/5 rounded px-2 py-1">
+                                                    {seed}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Keywords Generated */}
+                                <div 
+                                    className={`bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10 ${
+                                        expandedQuadrant === 'keywords' ? 'bg-white/10 border border-white/20' : ''
+                                    }`}
+                                    onClick={() => setExpandedQuadrant(expandedQuadrant === 'keywords' ? null : 'keywords')}
+                                >
+                                    <div className="text-xs text-white/60 mb-1">Keywords Generated</div>
+                                    <div className="text-2xl font-semibold text-white">
+                                        {keywordProgress.keywordsGenerated}
+                                    </div>
+                                    {expandedQuadrant === 'keywords' && keywordProgress.allKeywords && keywordProgress.allKeywords.length > 0 && (
+                                        <div className="mt-3 max-h-48 overflow-y-auto">
+                                            <div className="flex flex-wrap gap-1">
+                                                {keywordProgress.allKeywords.map((keyword, index) => (
+                                                    <span key={index} className="text-xs bg-white/10 text-white/70 px-2 py-1 rounded">
+                                                        {keyword}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Duplicates Found */}
+                                <div 
+                                    className={`bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10 ${
+                                        expandedQuadrant === 'duplicates' ? 'bg-white/10 border border-white/20' : ''
+                                    }`}
+                                    onClick={() => setExpandedQuadrant(expandedQuadrant === 'duplicates' ? null : 'duplicates')}
+                                >
+                                    <div className="text-xs text-white/60 mb-1">Duplicates Found</div>
+                                    <div className="text-2xl font-semibold text-white">
+                                        {keywordProgress.duplicatesFound}
+                                    </div>
+                                    {expandedQuadrant === 'duplicates' && keywordProgress.duplicates && keywordProgress.duplicates.length > 0 && (
+                                        <div className="mt-3 max-h-48 overflow-y-auto">
+                                            <div className="flex flex-wrap gap-1">
+                                                {keywordProgress.duplicates.map((duplicate, index) => (
+                                                    <span key={index} className="text-xs bg-white/10 text-white/70 px-2 py-1 rounded">
+                                                        {duplicate}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Existing Keywords */}
+                                <div 
+                                    className={`bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10 ${
+                                        expandedQuadrant === 'existing' ? 'bg-white/10 border border-white/20' : ''
+                                    }`}
+                                    onClick={() => setExpandedQuadrant(expandedQuadrant === 'existing' ? null : 'existing')}
+                                >
+                                    <div className="text-xs text-white/60 mb-1">Existing Keywords</div>
+                                    <div className="text-2xl font-semibold text-white">
+                                        {keywordProgress.existingKeywordsFound}
+                                    </div>
+                                    {expandedQuadrant === 'existing' && keywordProgress.existingKeywords && keywordProgress.existingKeywords.length > 0 && (
+                                        <div className="mt-3 max-h-48 overflow-y-auto">
+                                            <div className="flex flex-wrap gap-1">
+                                                {keywordProgress.existingKeywords.map((keyword, index) => (
+                                                    <span key={index} className="text-xs bg-white/10 text-white/70 px-2 py-1 rounded">
+                                                        {keyword}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* New Keywords Collected */}
+                            <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 rounded-lg p-4 border border-purple-500/30">
+                                <div className="text-xs text-white/60 mb-1">New Keywords Collected</div>
+                                <div className="text-3xl font-bold text-white">
+                                    {keywordProgress.newKeywordsCollected}
+                                    <span className="text-lg text-white/60 ml-2">/ 1000</span>
+                                </div>
+                                <div className="mt-2 w-full bg-white/10 rounded-full h-2">
+                                    <div
+                                        className="bg-gradient-to-r from-purple-600 to-pink-600 h-2 rounded-full transition-all duration-300"
+                                        style={{
+                                            width: `${Math.min((keywordProgress.newKeywordsCollected / 1000) * 100, 100)}%`,
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Generated Keywords Preview */}
+                            {generatedKeywords.length > 0 && (
+                                <div className="space-y-2">
+                                    <div className="text-sm font-medium text-white">
+                                        Generated Keywords ({generatedKeywords.length})
+                                    </div>
+                                    <div className="max-h-60 overflow-y-auto bg-white/5 rounded-lg p-3">
+                                        <div className="flex flex-wrap gap-2">
+                                            {generatedKeywords.slice(0, 50).map((keyword, index) => (
+                                                <span
+                                                    key={index}
+                                                    className="text-xs bg-white/10 text-white/80 px-2 py-1 rounded"
+                                                >
+                                                    {keyword}
+                                                </span>
+                                            ))}
+                                            {generatedKeywords.length > 50 && (
+                                                <span className="text-xs text-white/60">
+                                                    +{generatedKeywords.length - 50} more
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Completion Message */}
+                            {keywordProgress.stage === 'complete' && (
+                                <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4">
+                                    <div className="text-sm font-medium text-green-400">
+                                        ✓ Keywords Generated Successfully!
+                                    </div>
+                                    <div className="text-xs text-white/60 mt-1">
+                                        {generatedKeywords.length} unique keywords have been generated and saved.
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {isGeneratingKeywords && (
+                        <div className="mt-4 flex items-center justify-center">
+                            <Loader2 className="h-6 w-6 animate-spin text-white/60" />
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
