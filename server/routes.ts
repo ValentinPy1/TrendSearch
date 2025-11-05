@@ -78,13 +78,13 @@ function applyRawFilters(
             // Map raw keyword fields to filter metrics
             switch (filter.metric) {
                 case "volume":
-                    valueToCompare = typeof kw.search_volume === "number" 
-                        ? kw.search_volume 
+                    valueToCompare = typeof kw.search_volume === "number"
+                        ? kw.search_volume
                         : parseFloat(String(kw.search_volume || "0")) || 0;
                     break;
                 case "competition":
-                    valueToCompare = typeof kw.competition === "number" 
-                        ? kw.competition 
+                    valueToCompare = typeof kw.competition === "number"
+                        ? kw.competition
                         : parseFloat(String(kw.competition || "0")) || 0;
                     break;
                 case "cpc":
@@ -111,8 +111,8 @@ function applyRawFilters(
             }
 
             // Ensure filter.value is also a number
-            const filterValue = typeof filter.value === "number" 
-                ? filter.value 
+            const filterValue = typeof filter.value === "number"
+                ? filter.value
                 : parseFloat(String(filter.value)) || 0;
 
             // Apply operator with robust numeric comparison
@@ -241,7 +241,7 @@ function applyFilters(
 function lookupOrProcessKeyword(rawKeyword: any): any {
     // Try to lookup preprocessed data
     const preprocessed = keywordVectorService.getPreprocessedKeyword(rawKeyword.keyword);
-    
+
     if (preprocessed) {
         // Merge raw keyword data with preprocessed data
         return {
@@ -252,7 +252,7 @@ function lookupOrProcessKeyword(rawKeyword: any): any {
             precomputedMetrics: rawKeyword.precomputedMetrics,
         };
     }
-    
+
     // Fallback: process on-the-fly (backward compatibility)
     return processKeywords([rawKeyword])[0];
 }
@@ -309,7 +309,7 @@ function processKeywords(rawKeywords: any[]) {
         { key: "2025_08", label: "Aug 2025" },
         { key: "2025_09", label: "Sep 2025" },
     ];
-    
+
     // Last 12 months for non-premium users
     const last12Months = allMonths.slice(-12);
 
@@ -593,8 +593,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.error("Database error when fetching user:", dbError);
                 // If database connection fails, still allow auth but without local profile
                 // This is a fallback for when database is temporarily unavailable
-                return res.status(503).json({ 
-                    message: "Database temporarily unavailable. Please try again." 
+                return res.status(503).json({
+                    message: "Database temporarily unavailable. Please try again."
                 });
             }
 
@@ -617,8 +617,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.log("Auto-created user profile for:", user.email);
                 } catch (createError) {
                     console.error("Failed to auto-create user profile:", createError);
-                    return res.status(500).json({ 
-                        message: "Failed to create user profile. Database connection issue." 
+                    return res.status(500).json({
+                        message: "Failed to create user profile. Database connection issue."
                     });
                 }
             }
@@ -637,31 +637,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!req.user) {
             return res.status(401).json({ message: "Unauthorized" });
         }
-        
+
         // Refetch user from database to get latest payment status (req.user might be stale)
         const freshUser = await storage.getUser(req.user.id);
-        
+
         if (!freshUser) {
             return res.status(404).json({ message: "User not found" });
         }
-        
+
         // Update req.user with fresh data
         req.user = freshUser;
-        
+
         if (!freshUser.hasPaid) {
-            return res.status(402).json({ 
+            return res.status(402).json({
                 message: "Payment required",
-                requiresPayment: true 
+                requiresPayment: true
             });
         }
-        
+
         next();
     };
 
     // Auth routes
     // Note: Signup and login are handled by Supabase Auth on the client side
     // This endpoint is called after Supabase creates the user to create the local profile
-    
+
     app.post("/api/auth/create-profile", requireAuth, async (req, res) => {
         try {
             const { firstName, lastName } = req.body;
@@ -704,21 +704,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     app.get("/api/payment/status", requireAuth, async (req, res) => {
         // Refetch user from database to get latest payment status (req.user might be stale)
         const freshUser = await storage.getUser(req.user.id);
-        
+
         if (!freshUser) {
             return res.status(404).json({ message: "User not found" });
         }
-        
+
         // Disable caching to ensure fresh payment status
         res.set({
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache',
             'Expires': '0'
         });
-        
-        res.json({ 
+
+        res.json({
             hasPaid: freshUser.hasPaid,
-            paymentDate: freshUser.paymentDate 
+            paymentDate: freshUser.paymentDate
         });
     });
 
@@ -726,30 +726,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     app.post("/api/payment/verify-session", requireAuth, async (req, res) => {
         try {
             const { sessionId } = req.body;
-            
+
             console.log(`[Verify Payment] Starting verification for session: ${sessionId}`);
-            
+
             if (!sessionId) {
                 return res.status(400).json({ message: "Session ID is required" });
             }
 
             // Retrieve the checkout session from Stripe
             const session = await stripe.checkout.sessions.retrieve(sessionId);
-            
+
             console.log(`[Verify Payment] Session retrieved. Payment status: ${session.payment_status}, Metadata:`, session.metadata);
-            
+
             if (session.payment_status !== 'paid') {
                 console.log(`[Verify Payment] Payment not completed. Status: ${session.payment_status}`);
-                return res.status(400).json({ 
+                return res.status(400).json({
                     message: "Payment not completed",
-                    payment_status: session.payment_status 
+                    payment_status: session.payment_status
                 });
             }
 
             // Get user ID from metadata
             const userId = session.metadata?.userId;
             console.log(`[Verify Payment] User ID from metadata: ${userId}, Current user: ${req.user.id}`);
-            
+
             if (!userId || userId !== req.user.id) {
                 console.log(`[Verify Payment] Unauthorized: userId mismatch`);
                 return res.status(403).json({ message: "Unauthorized" });
@@ -766,12 +766,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Verify the update
             const updatedUser = await storage.getUser(userId);
-            
+
             if (!updatedUser) {
                 console.error(`❌ Error: User ${userId} not found after update`);
                 return res.status(500).json({ message: "User not found after update" });
             }
-            
+
             if (updatedUser.hasPaid) {
                 console.log(`✅ Manual payment verification: User ${userId} payment status updated successfully. hasPaid: ${updatedUser.hasPaid}`);
             } else {
@@ -779,7 +779,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(500).json({ message: "Payment status update failed" });
             }
 
-            res.json({ 
+            res.json({
                 success: true,
                 message: "Payment verified and status updated",
                 hasPaid: updatedUser.hasPaid
@@ -799,15 +799,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // If user already paid, return success
             if (user.hasPaid) {
-                return res.json({ 
+                return res.json({
                     message: "User already has access",
-                    alreadyPaid: true 
+                    alreadyPaid: true
                 });
             }
 
             if (!process.env.STRIPE_PRICE_ID) {
-                return res.status(500).json({ 
-                    message: "Stripe price ID not configured" 
+                return res.status(500).json({
+                    message: "Stripe price ID not configured"
                 });
             }
 
@@ -836,9 +836,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     .where(eq(users.id, user.id));
             }
 
-            res.json({ 
+            res.json({
                 checkoutUrl: session.url,
-                sessionId: session.id 
+                sessionId: session.id
             });
         } catch (error) {
             console.error("Stripe checkout error:", error);
@@ -895,7 +895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     .where(eq(users.id, userId));
 
                 console.log(`✅ Payment completed for user ${userId} - hasPaid set to true`);
-                
+
                 // Verify the update was successful
                 const updatedUser = await storage.getUser(userId);
                 if (updatedUser?.hasPaid) {
@@ -954,7 +954,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     }
                 } catch (error) {
                     console.error("Error expanding idea:", error);
-                    return res.status(500).json({ 
+                    return res.status(500).json({
                         message: "Failed to expand idea",
                         error: error instanceof Error ? error.message : "Unknown error"
                     });
@@ -1015,7 +1015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                                 10, // Initial 10 keywords
                                 [], // No filters
                             );
-                            
+
                             // Attach opportunity metrics to all keywords before returning
                             const keywordsWithMetrics = keywordData.map((kw) => {
                                 // Use precomputed metrics if available, otherwise calculate on-the-fly
@@ -1045,7 +1045,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                                     opportunityScore: metrics.opportunityScore,
                                 };
                             });
-                            
+
                             return {
                                 ...idea,
                                 report: {
@@ -1105,9 +1105,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // Refetch user from database to get latest payment status (req.user might be stale)
                 const freshUser = await storage.getUser(req.user.id);
                 if (!freshUser || !freshUser.hasPaid) {
-                    return res.status(402).json({ 
+                    return res.status(402).json({
                         message: "Payment required to use advanced filters",
-                        requiresPayment: true 
+                        requiresPayment: true
                     });
                 }
                 // Update req.user with fresh data
@@ -1131,7 +1131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Check if report already exists
             const existingReport = await storage.getReportByIdeaId(ideaId);
-            
+
             // Always generate keywords fresh from vector service (new_keywords CSV)
             // This ensures we always use the latest dataset and avoid old incomplete data
             const { keywords: keywordData, aggregates } =
@@ -1249,21 +1249,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Fetch 5 more keywords (with filters if provided)
             const { filters = [], existingKeywords = [] } = req.body;
-            
+
             // Check payment requirement if filters are provided
             if (filters && filters.length > 0) {
                 // Refetch user from database to get latest payment status (req.user might be stale)
                 const freshUser = await storage.getUser(req.user.id);
                 if (!freshUser || !freshUser.hasPaid) {
-                    return res.status(402).json({ 
+                    return res.status(402).json({
                         message: "Payment required to use advanced filters",
-                        requiresPayment: true 
+                        requiresPayment: true
                     });
                 }
                 // Update req.user with fresh data
                 req.user = freshUser;
             }
-            
+
             // Track existing keywords from client request (not from database)
             const existingKeywordSet = new Set(existingKeywords.map((k: any) => k.keyword || k));
             const currentCount = existingKeywords.length;
@@ -1382,12 +1382,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Refetch user from database to get latest payment status (req.user might be stale)
             const freshUser = await storage.getUser(req.user.id);
             if (!freshUser || !freshUser.hasPaid) {
-                return res.status(402).json({ 
+                return res.status(402).json({
                     message: "Payment required to use advanced filters",
-                    requiresPayment: true 
+                    requiresPayment: true
                 });
             }
-            
+
             // Update req.user with fresh data
             req.user = freshUser;
 
@@ -1482,7 +1482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
             const sectorsPath = path.join(process.cwd(), "data", "sectors_aggregated_metrics.json");
             const sectorsStructurePath = path.join(process.cwd(), "data", "sectors.json");
-            
+
             if (!fs.existsSync(sectorsPath)) {
                 return res.status(404).json({
                     message: "Sector metrics not found. Please run the aggregation script first.",
@@ -1490,13 +1490,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
 
             const sectorsData = JSON.parse(fs.readFileSync(sectorsPath, "utf-8"));
-            
+
             // Also include sector structure for mapping user_types/product_fits to sectors
             let sectorsStructure = null;
             if (fs.existsSync(sectorsStructurePath)) {
                 sectorsStructure = JSON.parse(fs.readFileSync(sectorsStructurePath, "utf-8"));
             }
-            
+
             res.json({
                 ...sectorsData,
                 sectorsStructure,
@@ -1778,11 +1778,11 @@ Return ONLY the JSON array, no other text. Example format:
 
             // Count keywords with data (volume is not null)
             const keywordsWithData = keywords.filter(kw => kw.volume !== null && kw.volume !== undefined);
-            
+
             // Count keywords with metrics computed (growthYoy or growth3m is not null)
-            const keywordsWithMetrics = keywords.filter(kw => 
-                kw.volume !== null && 
-                kw.volume !== undefined && 
+            const keywordsWithMetrics = keywords.filter(kw =>
+                kw.volume !== null &&
+                kw.volume !== undefined &&
                 (kw.growthYoy !== null || kw.growth3m !== null)
             );
 
@@ -1817,7 +1817,7 @@ Return ONLY the JSON array, no other text. Example format:
         try {
             const { id } = req.params;
             const project = await storage.getCustomSearchProject(id);
-            
+
             if (!project) {
                 return res.status(404).json({ message: "Project not found" });
             }
@@ -2026,7 +2026,7 @@ Return ONLY the JSON array, no other text. Example format:
             res.end();
         } catch (error) {
             console.error("Error generating keywords:", error);
-            
+
             // Save error state if we have a project
             if (projectIdForError && lastProgress) {
                 try {
@@ -2077,7 +2077,7 @@ Return ONLY the JSON array, no other text. Example format:
             const today = new Date();
             const fourYearsAgo = new Date();
             fourYearsAgo.setFullYear(today.getFullYear() - 4);
-            
+
             const dateTo = today.toISOString().split('T')[0]; // YYYY-MM-DD
             const dateFrom = fourYearsAgo.toISOString().split('T')[0]; // YYYY-MM-DD
 
@@ -2105,11 +2105,19 @@ Return ONLY the JSON array, no other text. Example format:
                     keywordsWithData++;
                 }
 
-                // Format monthly data
-                const monthlyData = result.monthly_searches?.map(ms => ({
-                    month: `${ms.year}-${String(ms.month).padStart(2, '0')}`,
-                    volume: ms.search_volume
-                })) || [];
+                // Format monthly data and convert to "Nov 2021" format, then sort chronologically
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const monthlyData = result.monthly_searches?.map(ms => {
+                    const monthName = monthNames[ms.month - 1]; // month is 1-12, array is 0-indexed
+                    return {
+                        month: `${monthName} ${ms.year}`,
+                        volume: ms.search_volume,
+                        sortKey: `${ms.year}-${String(ms.month).padStart(2, '0')}` // For sorting
+                    };
+                }).sort((a, b) => {
+                    // Sort chronologically by sortKey
+                    return a.sortKey.localeCompare(b.sortKey);
+                }).map(({ sortKey, ...rest }) => rest) || []; // Remove sortKey after sorting
 
                 // Map competition from string to number (HIGH=100, MEDIUM=50, LOW=0)
                 let competitionIndex = null;
@@ -2163,7 +2171,7 @@ Return ONLY the JSON array, no other text. Example format:
             // Get all keywords that should be linked (both newly created and existing)
             const allKeywordsToLink: string[] = [];
             const keywordTextToIdMap = new Map<string, string>();
-            
+
             // Map newly saved keywords
             savedKeywords.forEach(kw => {
                 keywordTextToIdMap.set(kw.keyword.toLowerCase(), kw.id);
@@ -2199,7 +2207,7 @@ Return ONLY the JSON array, no other text. Example format:
                 const keywordId = keywordTextToIdMap.get(keywordText.toLowerCase());
                 if (keywordId && !existingLinkIds.has(keywordId)) {
                     keywordIdsToLink.push(keywordId);
-                    
+
                     // Calculate actual similarity score if not already stored
                     let similarity = existingSimilarityMap.get(keywordText.toLowerCase());
                     if (similarity === undefined && pitch.trim()) {
@@ -2212,7 +2220,7 @@ Return ONLY the JSON array, no other text. Example format:
                     } else if (similarity === undefined) {
                         similarity = 0.5; // Default fallback when no pitch
                     }
-                    
+
                     similarityScoresToLink.push(similarity);
                 }
             }
@@ -2405,12 +2413,12 @@ Return ONLY the JSON array, no other text. Example format:
                     return "low";
                 })
                 .filter((c): c is string => c !== null);
-            
+
             const competitionCounts = competitionLevels.reduce((acc, level) => {
                 acc[level] = (acc[level] || 0) + 1;
                 return acc;
             }, {} as Record<string, number>);
-            
+
             const competition = Object.keys(competitionCounts).length > 0
                 ? Object.entries(competitionCounts).sort((a, b) => b[1] - a[1])[0][0]
                 : null;
@@ -2418,7 +2426,7 @@ Return ONLY the JSON array, no other text. Example format:
             // Format keywords for response (matching Keyword type from schema)
             // Need to calculate opportunity score and other derived metrics
             const { calculateOpportunityScore } = await import("./opportunity-score");
-            
+
             // Get all similarity scores for keywords in one query
             const keywordIds = keywordsWithData.map(kw => kw.id);
             const projectLinks = keywordIds.length > 0
@@ -2429,7 +2437,7 @@ Return ONLY the JSON array, no other text. Example format:
                         eq(customSearchProjectKeywords.customSearchProjectId, projectId)
                     )
                 : [];
-            
+
             const similarityScoreMap = new Map<string, string>();
             const pitch = project.pitch || "";
 
@@ -2442,7 +2450,7 @@ Return ONLY the JSON array, no other text. Example format:
             // Recalculate similarity scores if they're missing or equal to 0.8 (old default)
             for (const link of projectLinks) {
                 let similarity = link.similarityScore ? parseFloat(link.similarityScore) : null;
-                
+
                 // If similarity is missing or is the old default (0.8), recalculate it
                 if (similarity === null || similarity === 0.8) {
                     const keywordText = keywordIdToTextMap.get(link.globalKeywordId);
@@ -2462,17 +2470,17 @@ Return ONLY the JSON array, no other text. Example format:
                         similarity = similarity || 0.5; // Use existing or default
                     }
                 }
-                
+
                 similarityScoreMap.set(link.globalKeywordId, similarity.toString());
             }
-            
+
             const formattedKeywords = keywordsWithData.map(kw => {
                 // Calculate opportunity score if we have all required data
                 let opportunityScore = null;
                 let bidEfficiency = null;
                 let tac = null;
                 let sac = null;
-                
+
                 if (kw.volume && kw.competition !== null && kw.cpc && kw.topPageBid && kw.growthYoy !== null && kw.monthlyData) {
                     try {
                         const oppResult = calculateOpportunityScore({
@@ -2493,6 +2501,48 @@ Return ONLY the JSON array, no other text. Example format:
                 }
 
                 const similarityScore = similarityScoreMap.get(kw.id) || null;
+
+                // Ensure monthlyData is properly formatted and sorted chronologically
+                let formattedMonthlyData = kw.monthlyData || [];
+                if (Array.isArray(formattedMonthlyData) && formattedMonthlyData.length > 0) {
+                    // Check if data is in "YYYY-MM" format (from DataForSEO) and convert to "Nov 2021" format
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const needsConversion = formattedMonthlyData.some((item: any) =>
+                        typeof item.month === 'string' && /^\d{4}-\d{2}$/.test(item.month)
+                    );
+
+                    if (needsConversion) {
+                        formattedMonthlyData = formattedMonthlyData.map((item: any) => {
+                            if (/^\d{4}-\d{2}$/.test(item.month)) {
+                                const [year, month] = item.month.split('-');
+                                const monthIndex = parseInt(month, 10) - 1;
+                                const monthName = monthNames[monthIndex];
+                                return {
+                                    month: `${monthName} ${year}`,
+                                    volume: item.volume,
+                                    sortKey: item.month // For sorting
+                                };
+                            }
+                            return { ...item, sortKey: item.month };
+                        }).sort((a: any, b: any) => {
+                            // Sort chronologically
+                            if (a.sortKey && b.sortKey) {
+                                return a.sortKey.localeCompare(b.sortKey);
+                            }
+                            // If no sortKey, try to parse from month string
+                            const dateA = new Date(a.month);
+                            const dateB = new Date(b.month);
+                            return dateA.getTime() - dateB.getTime();
+                        }).map(({ sortKey, ...rest }: any) => rest); // Remove sortKey after sorting
+                    } else {
+                        // Already in correct format, just ensure it's sorted
+                        formattedMonthlyData = [...formattedMonthlyData].sort((a: any, b: any) => {
+                            const dateA = new Date(a.month);
+                            const dateB = new Date(b.month);
+                            return dateA.getTime() - dateB.getTime();
+                        });
+                    }
+                }
 
                 return {
                     id: kw.id,
@@ -2516,7 +2566,7 @@ Return ONLY the JSON array, no other text. Example format:
                     tac: tac ? tac.toString() : null,
                     sac: sac ? sac.toString() : null,
                     opportunityScore: opportunityScore ? opportunityScore.toString() : null,
-                    monthlyData: kw.monthlyData || []
+                    monthlyData: formattedMonthlyData
                 };
             });
 
