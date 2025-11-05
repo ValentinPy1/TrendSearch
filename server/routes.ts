@@ -936,7 +936,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Idea generation route
     app.post("/api/generate-idea", requireAuth, async (req, res) => {
         try {
-            const { originalIdea } = req.body;
+            const { originalIdea, longerDescription } = req.body;
             const userId = req.user.id; // Use authenticated user ID
 
             let generatedIdea: string;
@@ -945,8 +945,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (originalIdea && originalIdea.trim().length > 0) {
                 generatedIdea = originalIdea.trim();
             } else {
-                // Otherwise, use GPT-4o-mini to generate microSaaS idea
-                generatedIdea = await microSaaSIdeaGenerator.generateIdea();
+                // If longerDescription is requested, generate a longer, more detailed idea
+                if (longerDescription) {
+                    generatedIdea = await microSaaSIdeaGenerator.generateLongerIdea();
+                } else {
+                    // Otherwise, use GPT-4o-mini to generate standard microSaaS idea
+                    generatedIdea = await microSaaSIdeaGenerator.generateIdea();
+                }
             }
 
             const idea = await storage.createIdea({

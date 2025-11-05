@@ -47,7 +47,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const pitch = form.watch("pitch");
 
     const generateIdeaMutation = useMutation({
-        mutationFn: async (data: { originalIdea: string | null }) => {
+        mutationFn: async (data: { originalIdea: string | null; longerDescription?: boolean }) => {
             const res = await apiRequest("POST", "/api/generate-idea", data);
             return res.json();
         },
@@ -296,7 +296,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             <Button
                                 type="button"
                                 variant="ghost"
-                                onClick={() => generateIdeaMutation.mutate({ originalIdea: null })}
+                                onClick={() => generateIdeaMutation.mutate({ originalIdea: null, longerDescription: true })}
                                 disabled={generateIdeaMutation.isPending}
                                 className="h-8 text-yellow-300 hover:bg-transparent gap-1.5 px-4"
                                 title="Generate idea from AI"
