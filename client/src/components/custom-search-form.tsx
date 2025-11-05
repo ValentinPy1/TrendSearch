@@ -1590,8 +1590,52 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             {/* Report Display */}
             {reportData && reportData.keywords && reportData.keywords.length > 0 && (() => {
                 // Filter keywords with full data if checkbox is checked
+                // A keyword has "full data" if it has all essential metrics: volume, competition, cpc, and topPageBid
                 const filteredKeywords = showOnlyFullData 
-                    ? reportData.keywords.filter((k: any) => k.volume !== null && k.volume !== undefined)
+                    ? reportData.keywords.filter((k: any) => {
+                        // Check if volume exists and is > 0
+                        let volume: number | null = null;
+                        if (k.volume !== null && k.volume !== undefined) {
+                            if (typeof k.volume === 'number') {
+                                volume = k.volume;
+                            } else if (typeof k.volume === 'string' && k.volume.trim() !== '') {
+                                const parsed = parseInt(k.volume, 10);
+                                volume = !isNaN(parsed) ? parsed : null;
+                            }
+                        }
+                        const hasVolume = volume !== null && volume > 0;
+                        
+                        // Check if competition exists
+                        let competition: number | null = null;
+                        if (k.competition !== null && k.competition !== undefined) {
+                            if (typeof k.competition === 'number') {
+                                competition = k.competition;
+                            } else if (typeof k.competition === 'string' && k.competition.trim() !== '') {
+                                const parsed = parseInt(k.competition, 10);
+                                competition = !isNaN(parsed) ? parsed : null;
+                            }
+                        }
+                        const hasCompetition = competition !== null;
+                        
+                        // Check if CPC exists and is > 0
+                        let cpc: number | null = null;
+                        if (k.cpc !== null && k.cpc !== undefined && k.cpc !== '') {
+                            const parsed = parseFloat(k.cpc);
+                            cpc = !isNaN(parsed) && parsed > 0 ? parsed : null;
+                        }
+                        const hasCpc = cpc !== null && cpc > 0;
+                        
+                        // Check if top page bid exists and is > 0
+                        let topPageBid: number | null = null;
+                        if (k.topPageBid !== null && k.topPageBid !== undefined && k.topPageBid !== '') {
+                            const parsed = parseFloat(k.topPageBid);
+                            topPageBid = !isNaN(parsed) && parsed > 0 ? parsed : null;
+                        }
+                        const hasTopPageBid = topPageBid !== null && topPageBid > 0;
+                        
+                        // Require all metrics to be present
+                        return hasVolume && hasCompetition && hasCpc && hasTopPageBid;
+                    })
                     : reportData.keywords;
                 
                 // Slice keywords based on displayedKeywordCount (same logic as standard search)
