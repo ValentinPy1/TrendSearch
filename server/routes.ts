@@ -940,10 +940,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const userId = req.user.id; // Use authenticated user ID
 
             let generatedIdea: string;
+            let generatedName: string | null = null;
 
             // If user provided their own idea, use it directly
             if (originalIdea && originalIdea.trim().length > 0) {
                 generatedIdea = originalIdea.trim();
+                // Generate name from provided idea
+                try {
+                    generatedName = await microSaaSIdeaGenerator.generateProjectName(generatedIdea);
+                } catch (error) {
+                    console.error("Error generating name from provided idea:", error);
+                }
             } else {
                 // If longerDescription is requested, generate a longer, more detailed idea
                 if (longerDescription) {
@@ -951,6 +958,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 } else {
                     // Otherwise, use GPT-4o-mini to generate standard microSaaS idea
                     generatedIdea = await microSaaSIdeaGenerator.generateIdea();
+                }
+                // Generate name from generated idea
+                try {
+                    generatedName = await microSaaSIdeaGenerator.generateProjectName(generatedIdea);
+                } catch (error) {
+                    console.error("Error generating name from generated idea:", error);
                 }
             }
 
@@ -960,7 +973,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 generatedIdea,
             });
 
-            res.json({ idea });
+            res.json({ idea: { ...idea, name: generatedName } });
         } catch (error) {
             console.error("Error generating idea:", error);
             res.status(500).json({ message: "Failed to generate idea" });
@@ -1760,23 +1773,9 @@ Return ONLY the JSON array, no other text. Example format:
             // Generate project name if not provided
             let projectName = name;
             if (!projectName || projectName.trim().length === 0) {
-                if (pitch && pitch.trim().length > 0) {
-                    // Generate AI-powered name from pitch
-                    try {
-                        projectName = await microSaaSIdeaGenerator.generateProjectName(pitch);
-                    } catch (error) {
-                        console.error("Error generating project name, using fallback:", error);
-                        // Fallback to first sentence of pitch (up to 50 chars)
-                        const firstSentence = pitch.split(/[.!?]/)[0].trim();
-                        projectName = firstSentence.length > 50 
-                            ? firstSentence.substring(0, 47) + "..."
-                            : firstSentence || "Untitled Project";
-                    }
-                } else {
-                    // Use timestamp for blank projects
-                    const date = new Date();
-                    projectName = `Project - ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-                }
+                // Use timestamp for blank projects (name will be generated when idea is generated)
+                const date = new Date();
+                projectName = `Project - ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
             }
 
             const project = await storage.createCustomSearchProject({
@@ -1817,24 +1816,6 @@ Return ONLY the JSON array, no other text. Example format:
 
             // Build update data (only include provided fields)
             const updateData: any = {};
-            
-            // If pitch is being updated and name wasn't explicitly provided, regenerate name
-            // Only regenerate if current name looks like a default/timestamp name
-            if (pitch !== undefined && name === undefined) {
-                const currentName = existingProject.name || "";
-                const isDefaultName = currentName.startsWith("Project - ") || 
-                                     currentName === "Untitled Project" ||
-                                     currentName.trim().length === 0;
-                
-                if (isDefaultName && pitch && pitch.trim().length > 0) {
-                    try {
-                        updateData.name = await microSaaSIdeaGenerator.generateProjectName(pitch);
-                    } catch (error) {
-                        console.error("Error generating project name during update, keeping existing name:", error);
-                    }
-                }
-            }
-            
             if (name !== undefined) updateData.name = name;
             if (pitch !== undefined) updateData.pitch = pitch;
             if (topics !== undefined) updateData.topics = topics;

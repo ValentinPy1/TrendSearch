@@ -2,17 +2,19 @@ import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ListInput } from "@/components/ui/list-input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen } from "lucide-react";
+import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil } from "lucide-react";
 import { CustomSearchProjectBrowser } from "./custom-search-project-browser";
 import type { CustomSearchProject } from "@shared/schema";
 
 interface CustomSearchFormProps { }
 
 interface FormData {
+    name: string;
     pitch: string;
     topics: string[];
     personas: string[];
@@ -43,15 +45,18 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [showProjectBrowser, setShowProjectBrowser] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isLoadingProject, setIsLoadingProject] = useState(false);
+    const [isEditingName, setIsEditingName] = useState(false);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const form = useForm<FormData>({
         defaultValues: {
+            name: "",
             pitch: "",
         },
     });
 
     const pitch = form.watch("pitch");
+    const name = form.watch("name");
 
     // Query to check if user has any projects
     const { data: projectsData } = useQuery<{ projects: CustomSearchProject[] }>({
@@ -93,6 +98,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const updateProjectMutation = useMutation({
         mutationFn: async (data: {
             id: string;
+            name?: string;
             pitch?: string;
             topics?: string[];
             personas?: string[];
@@ -129,6 +135,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             if (!currentProjectId) {
                 // Create new project if none exists
                 createProjectMutation.mutate({
+                    name: name || undefined,
                     pitch: pitch || "",
                     topics,
                     personas,
@@ -142,6 +149,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 updateProjectMutation.mutate(
                     {
                         id: currentProjectId,
+                        name: name || undefined,
                         pitch: pitch || "",
                         topics,
                         personas,
@@ -168,7 +176,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pitch, topics, personas, painPoints, features, competitors, isLoadingProject]);
+    }, [name, pitch, topics, personas, painPoints, features, competitors, isLoadingProject]);
 
     // Auto-create project on first mount if no projects exist
     useEffect(() => {
@@ -178,6 +186,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         if (projectsData.projects.length === 0 && !currentProjectId && !createProjectMutation.isPending && !isLoadingProject) {
             setIsLoadingProject(true);
             createProjectMutation.mutate({
+                name: "",
                 pitch: "",
                 topics: [],
                 personas: [],
@@ -203,6 +212,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const loadProject = (project: CustomSearchProject) => {
         setIsLoadingProject(true);
         setCurrentProjectId(project.id);
+        form.setValue("name", project.name || "");
         form.setValue("pitch", project.pitch || "");
         setTopics(project.topics || []);
         setPersonas(project.personas || []);
@@ -228,7 +238,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setIsSaving(false);
         
         // Clear all form state
-        form.reset({ pitch: "" });
+        form.reset({ name: "", pitch: "" });
         setTopics([]);
         setPersonas([]);
         setPainPoints([]);
@@ -239,6 +249,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         // Create new project with blank data after a small delay to ensure state is cleared
         setTimeout(() => {
             createProjectMutation.mutate({
+                name: "",
                 pitch: "",
                 topics: [],
                 personas: [],
@@ -274,8 +285,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 title: "Idea Generated!",
                 description: result.idea.generatedIdea,
             });
-            // Set the generated idea in the pitch field
+            // Set the generated idea in the pitch field and name if provided
             form.setValue("pitch", result.idea.generatedIdea);
+            if (result.idea.name) {
+                form.setValue("name", result.idea.name);
+            }
             queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
         },
         onError: (error) => {
@@ -487,30 +501,45 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="space-y-2">
-                <h3 className="flex items-center gap-2 text-xl font-semibold text-white">
-                    <Search className="h-5 w-5 text-white" />
-                    Custom Search
-                </h3>
-                <p className="text-sm text-white/60">
-                    Provide detailed information about your idea to generate
-                    targeted keywords and competitor analysis.
-                </p>
-            </div>
-
-            {/* Project Management Buttons */}
+            {/* Project Name and Management Buttons */}
             <div className="flex items-center justify-between gap-4 pb-4 border-b border-white/10">
-                <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleNewProject}
-                    disabled={createProjectMutation.isPending}
-                    className="flex items-center gap-2"
-                >
-                    <Plus className="h-4 w-4" />
-                    New Project
-                </Button>
+                {/* Project Name */}
+                <div className="flex items-center gap-2">
+                    {isEditingName ? (
+                        <Input
+                            {...form.register("name")}
+                            placeholder="Enter project name..."
+                            className="bg-transparent border-white/20 text-white placeholder:text-white/40 px-0 py-0 h-auto border-b-2 border-white/40 focus:border-white rounded-none focus:ring-0 focus-visible:ring-0"
+                            autoFocus
+                            onBlur={() => setIsEditingName(false)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    e.currentTarget.blur();
+                                }
+                            }}
+                        />
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            <span
+                                className="text-white/60 hover:text-white/80 transition-colors cursor-pointer px-0 py-2 rounded-none border-b-2 border-transparent hover:border-white/40"
+                                onClick={() => setIsEditingName(true)}
+                            >
+                                {name || "Untitled Project"}
+                            </span>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setIsEditingName(true)}
+                                className="h-6 w-6 text-white/40 hover:text-white/60 hover:bg-transparent p-0"
+                            >
+                                <Pencil className="h-3 w-3" />
+                            </Button>
+                        </div>
+                    )}
+                </div>
+                
+                {/* Project Management Buttons */}
                 <div className="flex items-center gap-2">
                     {isSaving && (
                         <div className="flex items-center gap-2 text-xs text-white/60">
@@ -518,6 +547,16 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             Saving...
                         </div>
                     )}
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleNewProject}
+                        disabled={createProjectMutation.isPending}
+                        className="flex items-center gap-2"
+                    >
+                        <Plus className="h-4 w-4" />
+                        New Project
+                    </Button>
                     <Button
                         type="button"
                         variant="outline"
