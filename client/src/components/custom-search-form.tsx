@@ -8,7 +8,7 @@ import { ListInput } from "@/components/ui/list-input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabase";
-import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil, Sparkle } from "lucide-react";
+import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil, Sparkle, CheckCircle2 } from "lucide-react";
 import { CustomSearchProjectBrowser } from "./custom-search-project-browser";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { CustomSearchProject, Keyword } from "@shared/schema";
@@ -55,7 +55,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [isLoadingProject, setIsLoadingProject] = useState(false);
     const [isEditingName, setIsEditingName] = useState(false);
     const [isGeneratingKeywords, setIsGeneratingKeywords] = useState(false);
-    const [showKeywordProgress, setShowKeywordProgress] = useState(false);
     const [keywordProgress, setKeywordProgress] = useState<{
         stage: string;
         seedsGenerated: number;
@@ -70,6 +69,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         existingKeywords?: string[];
         newKeywords?: string[];
     } | null>(null);
+    const [keywordProgressStartTime, setKeywordProgressStartTime] = useState<number | null>(null);
+    const [metricsProgressStartTime, setMetricsProgressStartTime] = useState<number | null>(null);
     const [generatedKeywords, setGeneratedKeywords] = useState<string[]>([]);
     const [showQuadrantPopup, setShowQuadrantPopup] = useState(false);
     const [quadrantPopupType, setQuadrantPopupType] = useState<'seeds' | 'keywords' | 'duplicates' | 'existing' | null>(null);
@@ -705,7 +706,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
 
         setIsGeneratingKeywords(true);
-        setShowKeywordProgress(true);
         setShowQuadrantPopup(false);
         
         // If resuming, restore progress state
@@ -726,8 +726,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 setGeneratedKeywords(savedProgress.newKeywords);
             }
         } else {
+            // Initialize with optimistic progress - start showing first stage immediately
             setKeywordProgress({
-                stage: 'initializing',
+                stage: 'generating-seeds',
                 seedsGenerated: 0,
                 keywordsGenerated: 0,
                 duplicatesFound: 0,
@@ -735,6 +736,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 newKeywordsCollected: 0,
             });
             setGeneratedKeywords([]);
+            // Reset metrics stats
+            setDataForSEOStats(null);
+            setMetricsStats(null);
+            // Reset progress start times for fresh generation
+            setKeywordProgressStartTime(null);
+            setMetricsProgressStartTime(null);
         }
 
         try {
@@ -786,9 +793,21 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         try {
                             const data = JSON.parse(line.slice(6));
                             if (data.type === "progress") {
+                                const currentStage = data.currentStage || data.stage || 'initializing';
+                                
+                                // Track when keyword generation stage starts for optimistic progress
+                                if ((currentStage === 'generating-keywords' || currentStage === 'selecting-top-keywords') && !keywordProgressStartTime) {
+                                    setKeywordProgressStartTime(Date.now());
+                                }
+                                
+                                // Track when metrics computation stage starts for optimistic progress
+                                if (currentStage === 'computing-metrics' && !metricsProgressStartTime) {
+                                    setMetricsProgressStartTime(Date.now());
+                                }
+                                
                                 // Update progress with current stage
                                 setKeywordProgress({
-                                    stage: data.currentStage || data.stage || 'initializing',
+                                    stage: currentStage,
                                     ...data
                                 });
                                 // Update generated keywords if available in progress
@@ -820,6 +839,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     setGeneratedKeywords(data.newKeywords);
                                 }
                                 setKeywordProgress(prev => prev ? { ...prev, stage: 'complete', currentStage: 'complete' } : null);
+                                // Reset progress start times
+                                setKeywordProgressStartTime(null);
+                                setMetricsProgressStartTime(null);
                                 // Update saved progress to mark as complete
                                 if (currentProjectId) {
                                     queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
@@ -849,6 +871,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             });
         } finally {
             setIsGeneratingKeywords(false);
+            // Reset progress start times when generation completes or fails
+            setKeywordProgressStartTime(null);
+            setMetricsProgressStartTime(null);
         }
     };
 
@@ -1065,37 +1090,59 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     </div>
                 </div>
 
-                {/* Find Competitors Button */}
-                <div className="pt-4 border-t border-white/10 flex justify-center">
-                    <Button
-                        type="button"
-                        onClick={handleFindCompetitors}
-                        disabled={
-                            !pitch ||
-                            pitch.trim().length === 0 ||
-                            isFindingCompetitors
-                        }
-                        className="w-1/2"
-                    >
-                        {isFindingCompetitors ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Finding Competitors...
-                            </>
-                        ) : (
-                            <>
-                                <Search className="mr-2 h-4 w-4" />
-                                Find Competitors
-                            </>
-                        )}
-                    </Button>
-                </div>
+                {/* Find Competitors and Find Custom Keywords Buttons */}
+                <div className="pt-4 border-t border-white/10">
+                    <div className="flex gap-3">
+                        <Button
+                            type="button"
+                            onClick={handleFindCompetitors}
+                            disabled={
+                                !pitch ||
+                                pitch.trim().length === 0 ||
+                                isFindingCompetitors
+                            }
+                            className="flex-1"
+                        >
+                            {isFindingCompetitors ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Finding Competitors...
+                                </>
+                            ) : (
+                                <>
+                                    <Search className="mr-2 h-4 w-4" />
+                                    Find Competitors
+                                </>
+                            )}
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={() => handleGenerateFullReport(false)}
+                            disabled={
+                                !pitch ||
+                                pitch.trim().length === 0 ||
+                                isGeneratingKeywords ||
+                                !currentProjectId
+                            }
+                            className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                        >
+                            {isGeneratingKeywords ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Finding Keywords...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkle className="mr-2 h-4 w-4" />
+                                    Find custom keywords
+                                </>
+                            )}
+                        </Button>
+                    </div>
 
-                {/* Generate Keywords Button */}
-                <div className="pt-4 border-t border-white/10 space-y-3">
                     {/* Show resume option if progress exists and is incomplete */}
                     {savedProgress && savedProgress.currentStage !== 'complete' && savedProgress.currentStage !== undefined && (
-                        <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
+                        <div className="mt-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
                             <div className="text-sm text-yellow-200 mb-2">
                                 Generation in progress: {savedProgress.newKeywordsCollected || 0} / 1000 keywords
                             </div>
@@ -1134,43 +1181,205 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         </div>
                     )}
 
-                    {/* Generate Full Report Button */}
-                    <div className="flex flex-col gap-2">
-                        {isGeneratingKeywords && !showKeywordProgress && (
-                            <Button
-                                type="button"
-                                onClick={() => setShowKeywordProgress(true)}
-                                variant="outline"
-                                className="w-full border-yellow-600 text-yellow-600 hover:bg-yellow-600/10"
-                            >
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Show Progress
-                            </Button>
-                        )}
-                        <Button
-                            type="button"
-                            onClick={() => handleGenerateFullReport(false)}
-                            disabled={
-                                !pitch ||
-                                pitch.trim().length === 0 ||
-                                isGeneratingKeywords ||
-                                !currentProjectId
-                            }
-                            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                        >
-                            {isGeneratingKeywords ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Generating Full Report...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkle className="mr-2 h-4 w-4" />
-                                    Generate Full Report
-                                </>
-                            )}
-                        </Button>
-                    </div>
+                    {/* Inline Step Indicators */}
+                    {isGeneratingKeywords && (
+                        <div className="mt-4 space-y-2">
+                            {/* Step 1: Generating Seeds */}
+                            <div className="flex items-center gap-2">
+                                {(() => {
+                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                    const isActive = currentStage === 'generating-seeds';
+                                    const isCompleted = ['generating-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                    return (
+                                        <>
+                                            {isCompleted ? (
+                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                            ) : isActive ? (
+                                                <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                            ) : (
+                                                <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                            )}
+                                            <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                Generating seeds
+                                            </span>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Step 2: Generating Keywords - with progress bar */}
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    {(() => {
+                                        const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                        const isActive = currentStage === 'generating-keywords' || currentStage === 'selecting-top-keywords';
+                                        const isCompleted = ['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                        return (
+                                            <>
+                                                {isCompleted ? (
+                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                ) : isActive ? (
+                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                ) : (
+                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                )}
+                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                    Generating keywords
+                                                </span>
+                                                {isActive && (
+                                                    <span className="text-xs text-white/60 ml-auto">
+                                                        {keywordProgress?.newKeywordsCollected || 0} / 1000
+                                                    </span>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                                {(() => {
+                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                    const isActive = currentStage === 'generating-keywords' || currentStage === 'selecting-top-keywords';
+                                    if (!isActive) return null;
+                                    
+                                    // Smooth progress: start animating immediately, update with actual progress
+                                    const actualProgress = keywordProgress?.newKeywordsCollected || 0;
+                                    const actualPercent = Math.min((actualProgress / 1000) * 100, 100);
+                                    
+                                    // Optimistic progress: if we just started and have no progress yet, show a small amount
+                                    // This prevents the bar from appearing stuck at 0%
+                                    let optimisticPercent = actualPercent;
+                                    if (actualPercent === 0 && keywordProgressStartTime) {
+                                        const timeSinceStart = Date.now() - keywordProgressStartTime;
+                                        // Show 2% after 500ms, 5% after 2s to give visual feedback
+                                        if (timeSinceStart > 500) {
+                                            optimisticPercent = Math.min(2 + (timeSinceStart - 500) / 300, 5);
+                                        }
+                                    }
+                                    
+                                    return (
+                                        <div className="ml-6">
+                                            <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-purple-600 to-pink-600 transition-all duration-500 ease-out"
+                                                    style={{
+                                                        width: `${Math.max(optimisticPercent, actualPercent)}%`,
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Step 3: Fetching DataForSEO */}
+                            <div className="flex items-center gap-2">
+                                {(() => {
+                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                    const isActive = currentStage === 'fetching-dataforseo';
+                                    const isCompleted = ['computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                    return (
+                                        <>
+                                            {isCompleted ? (
+                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                            ) : isActive ? (
+                                                <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                            ) : (
+                                                <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                            )}
+                                            <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                Fetching DataForSEO metrics
+                                            </span>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Step 4: Computing Metrics - with progress bar */}
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    {(() => {
+                                        const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                        const isActive = currentStage === 'computing-metrics';
+                                        const isCompleted = ['generating-report', 'complete'].includes(currentStage);
+                                        return (
+                                            <>
+                                                {isCompleted ? (
+                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                ) : isActive ? (
+                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                ) : (
+                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                )}
+                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                    Computing metrics
+                                                </span>
+                                                {isActive && metricsStats && (
+                                                    <span className="text-xs text-white/60 ml-auto">
+                                                        {metricsStats.processedCount} / {metricsStats.totalKeywords}
+                                                    </span>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                                {(() => {
+                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                    const isActive = currentStage === 'computing-metrics';
+                                    if (!isActive) return null;
+                                    
+                                    // Calculate actual progress
+                                    const actualPercent = metricsStats && metricsStats.totalKeywords > 0
+                                        ? Math.min((metricsStats.processedCount / metricsStats.totalKeywords) * 100, 100)
+                                        : 0;
+                                    
+                                    // Optimistic progress: if we just started and have no progress yet, show a small amount
+                                    let optimisticPercent = actualPercent;
+                                    if (actualPercent === 0 && metricsProgressStartTime) {
+                                        const timeSinceStart = Date.now() - metricsProgressStartTime;
+                                        // Show 2% after 500ms, 5% after 2s to give visual feedback
+                                        if (timeSinceStart > 500) {
+                                            optimisticPercent = Math.min(2 + (timeSinceStart - 500) / 300, 5);
+                                        }
+                                    }
+                                    
+                                    return (
+                                        <div className="ml-6">
+                                            <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-purple-600 to-pink-600 transition-all duration-500 ease-out"
+                                                    style={{
+                                                        width: `${Math.max(optimisticPercent, actualPercent)}%`,
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Step 5: Generating Report */}
+                            <div className="flex items-center gap-2">
+                                {(() => {
+                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                    const isActive = currentStage === 'generating-report';
+                                    const isCompleted = currentStage === 'complete';
+                                    return (
+                                        <>
+                                            {isCompleted ? (
+                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                            ) : isActive ? (
+                                                <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                            ) : (
+                                                <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                            )}
+                                            <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                Generating report
+                                            </span>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Competitors List */}
@@ -1219,196 +1428,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     </div>
                 )}
             </form>
-
-            {/* Keyword Generation Progress Dialog */}
-            <Dialog open={showKeywordProgress} onOpenChange={(open) => {
-                // Allow closing, but show button to reopen if generation is in progress
-                setShowKeywordProgress(open);
-            }}>
-                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>Generating Keywords</DialogTitle>
-                        <DialogDescription>
-                            Generating 1000 unique keywords from your custom search inputs...
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    {keywordProgress && (
-                        <div className="space-y-6 mt-4">
-                            {/* Stage Indicator */}
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-white">Stage</span>
-                                    <span className="text-sm text-white/60 capitalize">
-                                        {keywordProgress.stage.replace(/-/g, ' ')}
-                                    </span>
-                                </div>
-                                {keywordProgress.currentSeed && (
-                                    <div className="text-xs text-white/40 truncate">
-                                        Current seed: {keywordProgress.currentSeed}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Progress Metrics */}
-                            <div className="grid grid-cols-2 gap-4">
-                                {/* Seeds Generated */}
-                                <div 
-                                    className="bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10"
-                                    onClick={() => {
-                                        setQuadrantPopupType('seeds');
-                                        setShowQuadrantPopup(true);
-                                    }}
-                                >
-                                    <div className="text-xs text-white/60 mb-1">Seeds Generated</div>
-                                    <div className="text-2xl font-semibold text-white">
-                                        {keywordProgress.seedsGenerated}
-                                    </div>
-                                </div>
-
-                                {/* Keywords Generated */}
-                                <div 
-                                    className="bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10"
-                                    onClick={() => {
-                                        setQuadrantPopupType('keywords');
-                                        setShowQuadrantPopup(true);
-                                    }}
-                                >
-                                    <div className="text-xs text-white/60 mb-1">Keywords Generated</div>
-                                    <div className="text-2xl font-semibold text-white">
-                                        {keywordProgress.keywordsGenerated}
-                                    </div>
-                                </div>
-
-                                {/* Duplicates Found */}
-                                <div 
-                                    className="bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10"
-                                    onClick={() => {
-                                        setQuadrantPopupType('duplicates');
-                                        setShowQuadrantPopup(true);
-                                    }}
-                                >
-                                    <div className="text-xs text-white/60 mb-1">Duplicates Found</div>
-                                    <div className="text-2xl font-semibold text-white">
-                                        {keywordProgress.duplicatesFound}
-                                    </div>
-                                </div>
-
-                                {/* Existing Keywords */}
-                                <div 
-                                    className="bg-white/5 rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/10"
-                                    onClick={() => {
-                                        setQuadrantPopupType('existing');
-                                        setShowQuadrantPopup(true);
-                                    }}
-                                >
-                                    <div className="text-xs text-white/60 mb-1">Existing Keywords</div>
-                                    <div className="text-2xl font-semibold text-white">
-                                        {keywordProgress.existingKeywordsFound}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* New Keywords Collected */}
-                            <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 rounded-lg p-4 border border-purple-500/30">
-                                <div className="text-xs text-white/60 mb-1">New Keywords Collected</div>
-                                <div className="text-3xl font-bold text-white">
-                                    {keywordProgress.newKeywordsCollected}
-                                    <span className="text-lg text-white/60 ml-2">/ 1000</span>
-                                </div>
-                                <div className="mt-2 w-full bg-white/10 rounded-full h-2">
-                                    <div
-                                        className="bg-gradient-to-r from-purple-600 to-pink-600 h-2 rounded-full transition-all duration-300"
-                                        style={{
-                                            width: `${Math.min((keywordProgress.newKeywordsCollected / 1000) * 100, 100)}%`,
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Generated Keywords Preview */}
-                            {generatedKeywords.length > 0 && (
-                                <div className="space-y-2">
-                                    <div className="text-sm font-medium text-white">
-                                        Generated Keywords ({generatedKeywords.length})
-                                    </div>
-                                    <div className="max-h-60 overflow-y-auto bg-white/5 rounded-lg p-3">
-                                        <div className="flex flex-wrap gap-2">
-                                            {generatedKeywords.slice(0, 50).map((keyword, index) => (
-                                                <span
-                                                    key={index}
-                                                    className="text-xs bg-white/10 text-white/80 px-2 py-1 rounded"
-                                                >
-                                                    {keyword}
-                                                </span>
-                                            ))}
-                                            {generatedKeywords.length > 50 && (
-                                                <span className="text-xs text-white/60">
-                                                    +{generatedKeywords.length - 50} more
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Stage Progress Indicators */}
-                            <div className="space-y-2">
-                                <div className="text-xs text-white/60 mb-2">Pipeline Stages:</div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {['generating-seeds', 'generating-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report'].map((stage) => {
-                                        const isActive = keywordProgress.stage === stage || keywordProgress.currentStage === stage;
-                                        const isCompleted = ['generating-seeds', 'generating-keywords', 'fetching-dataforseo', 'computing-metrics'].indexOf(stage) < 
-                                            ['generating-seeds', 'generating-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report'].indexOf(keywordProgress.stage || keywordProgress.currentStage || '');
-                                        const stageNames: Record<string, string> = {
-                                            'generating-seeds': 'Seeds',
-                                            'generating-keywords': 'Keywords',
-                                            'fetching-dataforseo': 'DataForSEO',
-                                            'computing-metrics': 'Metrics',
-                                            'generating-report': 'Report'
-                                        };
-                                        return (
-                                            <div
-                                                key={stage}
-                                                className={`p-2 rounded text-xs ${
-                                                    isActive
-                                                        ? 'bg-blue-500/20 border border-blue-500/50'
-                                                        : isCompleted
-                                                        ? 'bg-green-500/20 border border-green-500/30'
-                                                        : 'bg-white/5 border border-white/10'
-                                                }`}
-                                            >
-                                                <div className={`font-medium ${isActive ? 'text-blue-300' : isCompleted ? 'text-green-300' : 'text-white/40'}`}>
-                                                    {isCompleted ? '✓ ' : isActive ? '→ ' : ''}
-                                                    {stageNames[stage] || stage}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Completion Message */}
-                            {(keywordProgress.stage === 'complete' || keywordProgress.currentStage === 'complete') && (
-                                <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4">
-                                    <div className="text-sm font-medium text-green-400">
-                                        ✓ Full Report Generated Successfully!
-                                    </div>
-                                    <div className="text-xs text-white/60 mt-1">
-                                        Report generated with {reportData?.totalKeywords || generatedKeywords.length || 0} keywords.
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {isGeneratingKeywords && (
-                        <div className="mt-4 flex items-center justify-center">
-                            <Loader2 className="h-6 w-6 animate-spin text-white/60" />
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
 
             {/* Quadrant Popup Dialog */}
             <Dialog open={showQuadrantPopup} onOpenChange={setShowQuadrantPopup}>
