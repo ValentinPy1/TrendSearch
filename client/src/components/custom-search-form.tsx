@@ -174,7 +174,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     useEffect(() => {
         if (!projectsData) return;
         
-        if (projectsData.projects.length === 0 && !currentProjectId && !createProjectMutation.isPending) {
+        // Only auto-create/load if we don't have a current project and we're not manually creating one
+        if (projectsData.projects.length === 0 && !currentProjectId && !createProjectMutation.isPending && !isLoadingProject) {
+            setIsLoadingProject(true);
             createProjectMutation.mutate({
                 pitch: "",
                 topics: [],
@@ -182,8 +184,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 painPoints: [],
                 features: [],
                 competitors: [],
+            }, {
+                onSuccess: () => {
+                    setTimeout(() => {
+                        setIsLoadingProject(false);
+                    }, 100);
+                },
             });
-        } else if (projectsData.projects.length > 0 && !currentProjectId) {
+        } else if (projectsData.projects.length > 0 && !currentProjectId && !isLoadingProject) {
             // Load most recent project
             const mostRecent = projectsData.projects[0];
             loadProject(mostRecent);
@@ -209,8 +217,18 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
     // Handle new project creation
     const handleNewProject = () => {
-        // Clear form
-        form.setValue("pitch", "");
+        // Clear any pending save operations
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+        }
+        
+        // Set loading flag first to prevent auto-save
+        setIsLoadingProject(true);
+        setIsSaving(false);
+        
+        // Clear all form state
+        form.reset({ pitch: "" });
         setTopics([]);
         setPersonas([]);
         setPainPoints([]);
@@ -218,15 +236,27 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setCompetitors([]);
         setCurrentProjectId(null);
         
-        // Create new project
-        createProjectMutation.mutate({
-            pitch: "",
-            topics: [],
-            personas: [],
-            painPoints: [],
-            features: [],
-            competitors: [],
-        });
+        // Create new project with blank data after a small delay to ensure state is cleared
+        setTimeout(() => {
+            createProjectMutation.mutate({
+                pitch: "",
+                topics: [],
+                personas: [],
+                painPoints: [],
+                features: [],
+                competitors: [],
+            }, {
+                onSuccess: () => {
+                    // Allow auto-save after project is created
+                    setTimeout(() => {
+                        setIsLoadingProject(false);
+                    }, 100);
+                },
+                onError: () => {
+                    setIsLoadingProject(false);
+                },
+            });
+        }, 50);
     };
 
     // Handle project selection from browser
