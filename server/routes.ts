@@ -936,14 +936,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Idea generation route
     app.post("/api/generate-idea", requireAuth, async (req, res) => {
         try {
-            const { originalIdea, longerDescription } = req.body;
+            const { originalIdea, longerDescription, expand } = req.body;
             const userId = req.user.id; // Use authenticated user ID
 
             let generatedIdea: string;
             let generatedName: string | null = null;
 
+            // If expand is requested, expand the existing pitch
+            if (expand && originalIdea && originalIdea.trim().length > 0) {
+                try {
+                    generatedIdea = await microSaaSIdeaGenerator.expandIdea(originalIdea.trim());
+                    // Generate name from expanded idea
+                    try {
+                        generatedName = await microSaaSIdeaGenerator.generateProjectName(generatedIdea);
+                    } catch (error) {
+                        console.error("Error generating name from expanded idea:", error);
+                    }
+                } catch (error) {
+                    console.error("Error expanding idea:", error);
+                    return res.status(500).json({ 
+                        message: "Failed to expand idea",
+                        error: error instanceof Error ? error.message : "Unknown error"
+                    });
+                }
+            }
             // If user provided their own idea, use it directly
-            if (originalIdea && originalIdea.trim().length > 0) {
+            else if (originalIdea && originalIdea.trim().length > 0) {
                 generatedIdea = originalIdea.trim();
                 // Generate name from provided idea
                 try {

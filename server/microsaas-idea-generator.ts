@@ -289,6 +289,69 @@ Your project name (3-5 words):`;
         : firstSentence || "Untitled Project";
     }
   }
+
+  async expandIdea(pitch: string): Promise<string> {
+    console.log('[MicroSaaS Generator] Expanding idea from pitch...');
+    
+    if (!pitch || pitch.trim().length === 0) {
+      throw new Error('Pitch text is required to expand');
+    }
+
+    const prompt = `Expand and formulate this idea pitch into a more detailed, comprehensive description:
+
+Original Pitch:
+${pitch}
+
+Requirements:
+- 15 to 25 words
+- Keep the core concept and value proposition from the original pitch
+- Expand with more details about the target audience, key features, or problem it solves
+- Make it cohesive and well-structured
+- Focus on clarity and value proposition
+- Build upon the original idea, don't change it completely
+
+Expanded idea (15-25 words):`;
+
+    try {
+      console.log('[MicroSaaS Generator] Calling OpenAI API to expand idea...');
+      
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a microSaaS idea formulator. Expand and enhance existing idea pitches into more detailed, comprehensive descriptions (15-25 words) while preserving the core concept.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 150,
+        temperature: 0.8,
+      });
+
+      let expandedIdea = response.choices[0]?.message?.content?.trim();
+      
+      if (!expandedIdea) {
+        console.error('[MicroSaaS Generator] No expanded idea in response');
+        throw new Error('No expanded idea generated from OpenAI');
+      }
+
+      // Remove quotes from the expanded idea
+      expandedIdea = this.stripQuotes(expandedIdea);
+
+      console.log('[MicroSaaS Generator] Successfully expanded idea:', expandedIdea.substring(0, 100));
+      return expandedIdea;
+    } catch (error) {
+      console.error('[MicroSaaS Generator] Error expanding idea with OpenAI:', error);
+      if (error instanceof Error) {
+        console.error('[MicroSaaS Generator] Error message:', error.message);
+        console.error('[MicroSaaS Generator] Error stack:', error.stack);
+      }
+      throw new Error('Failed to expand idea with AI: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  }
 }
 
 export const microSaaSIdeaGenerator = new MicroSaaSIdeaGenerator();

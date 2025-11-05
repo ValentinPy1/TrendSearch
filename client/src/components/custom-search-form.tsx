@@ -126,7 +126,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const autoSave = () => {
         // Skip auto-save if we're loading a project or creating initial project
         if (isLoadingProject || createProjectMutation.isPending) return;
-        
+
         if (saveTimeoutRef.current) {
             clearTimeout(saveTimeoutRef.current);
         }
@@ -181,7 +181,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     // Auto-create project on first mount if no projects exist
     useEffect(() => {
         if (!projectsData) return;
-        
+
         // Only auto-create/load if we don't have a current project and we're not manually creating one
         if (projectsData.projects.length === 0 && !currentProjectId && !createProjectMutation.isPending && !isLoadingProject) {
             setIsLoadingProject(true);
@@ -232,11 +232,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             clearTimeout(saveTimeoutRef.current);
             saveTimeoutRef.current = null;
         }
-        
+
         // Set loading flag first to prevent auto-save
         setIsLoadingProject(true);
         setIsSaving(false);
-        
+
         // Clear all form state
         form.reset({ name: "", pitch: "" });
         setTopics([]);
@@ -245,7 +245,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setFeatures([]);
         setCompetitors([]);
         setCurrentProjectId(null);
-        
+
         // Create new project with blank data after a small delay to ensure state is cleared
         setTimeout(() => {
             createProjectMutation.mutate({
@@ -276,13 +276,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     };
 
     const generateIdeaMutation = useMutation({
-        mutationFn: async (data: { originalIdea: string | null; longerDescription?: boolean }) => {
+        mutationFn: async (data: { originalIdea: string | null; longerDescription?: boolean; expand?: boolean }) => {
             const res = await apiRequest("POST", "/api/generate-idea", data);
             return res.json();
         },
-        onSuccess: (result) => {
+        onSuccess: (result, variables) => {
+            const wasExpanded = variables.expand && variables.originalIdea;
             toast({
-                title: "Idea Generated!",
+                title: wasExpanded ? "Idea Expanded!" : "Idea Generated!",
                 description: result.idea.generatedIdea,
             });
             // Set the generated idea in the pitch field and name if provided
@@ -538,7 +539,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         </div>
                     )}
                 </div>
-                
+
                 {/* Project Management Buttons */}
                 <div className="flex items-center gap-2">
                     {isSaving && (
@@ -587,9 +588,29 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         <Textarea
                             {...form.register("pitch")}
                             placeholder="Describe your idea in detail..."
-                            className="min-h-[100px] bg-white/5 border-white/10 text-white placeholder:text-white/40 pr-20 pb-10"
+                            className="min-h-[100px] bg-white/5 border-white/10 text-white placeholder:text-white/40 pr-40 pb-10"
                         />
-                        <div className="absolute right-2 bottom-2">
+                        <div className="absolute right-2 bottom-2 flex items-center gap-2">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => generateIdeaMutation.mutate({ originalIdea: pitch || null, expand: true })}
+                                disabled={generateIdeaMutation.isPending || !pitch || pitch.trim().length === 0}
+                                className="h-8 text-blue-300 hover:bg-transparent gap-1.5 px-4"
+                                title="Expand current idea"
+                            >
+                                {generateIdeaMutation.isPending ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin stroke-[2.5]" />
+                                        <span className="text-xs">Expanding...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles className="h-4 w-4 stroke-[2.5]" />
+                                        <span className="text-xs">Expand Current</span>
+                                    </>
+                                )}
+                            </Button>
                             <Button
                                 type="button"
                                 variant="ghost"
@@ -606,7 +627,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 ) : (
                                     <>
                                         <Sparkles className="h-4 w-4 stroke-[2.5]" />
-                                        <span className="text-xs">I'm feeling vibing</span>
+                                        <span className="text-xs">Generate New</span>
                                     </>
                                 )}
                             </Button>
