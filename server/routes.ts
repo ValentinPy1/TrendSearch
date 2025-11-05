@@ -2431,9 +2431,40 @@ Return ONLY the JSON array, no other text. Example format:
                 : [];
             
             const similarityScoreMap = new Map<string, string>();
-            projectLinks.forEach(link => {
-                similarityScoreMap.set(link.globalKeywordId, link.similarityScore || "");
+            const pitch = project.pitch || "";
+
+            // Create a map of keyword ID to keyword text for lookup
+            const keywordIdToTextMap = new Map<string, string>();
+            keywordsWithData.forEach(kw => {
+                keywordIdToTextMap.set(kw.id, kw.keyword);
             });
+
+            // Recalculate similarity scores if they're missing or equal to 0.8 (old default)
+            for (const link of projectLinks) {
+                let similarity = link.similarityScore ? parseFloat(link.similarityScore) : null;
+                
+                // If similarity is missing or is the old default (0.8), recalculate it
+                if (similarity === null || similarity === 0.8) {
+                    const keywordText = keywordIdToTextMap.get(link.globalKeywordId);
+                    if (keywordText && pitch.trim()) {
+                        try {
+                            similarity = await keywordVectorService.calculateTextSimilarity(pitch, keywordText);
+                            // Update the database with the new similarity score
+                            await db
+                                .update(customSearchProjectKeywords)
+                                .set({ similarityScore: similarity.toString() })
+                                .where(eq(customSearchProjectKeywords.id, link.id));
+                        } catch (error) {
+                            console.warn(`Failed to calculate similarity for keyword "${keywordText}":`, error);
+                            similarity = similarity || 0.5; // Use existing or default
+                        }
+                    } else {
+                        similarity = similarity || 0.5; // Use existing or default
+                    }
+                }
+                
+                similarityScoreMap.set(link.globalKeywordId, similarity.toString());
+            }
             
             const formattedKeywords = keywordsWithData.map(kw => {
                 // Calculate opportunity score if we have all required data
