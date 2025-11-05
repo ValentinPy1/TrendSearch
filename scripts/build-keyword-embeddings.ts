@@ -39,7 +39,7 @@ interface KeywordEmbedding {
 
 async function buildKeywordEmbeddings() {
   console.log('Loading CSV data...');
-  const csvPath = path.join(process.cwd(), 'data', 'keywords_data.csv');
+  const csvPath = path.join(process.cwd(), 'new_keywords', 'keywords_data.csv');
   const csvContent = fs.readFileSync(csvPath, 'utf-8');
   
   const records = parse(csvContent, {

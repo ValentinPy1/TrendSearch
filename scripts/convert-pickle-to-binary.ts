@@ -28,30 +28,10 @@ async function convertPickleToBinary() {
 
   // Use Python to extract embeddings from pickle
   console.log('[1/4] Extracting embeddings from pickle file...');
-  const pythonScript = `
-import pickle
-import numpy as np
-import json
-
-# Load pickle file
-with open('new_keywords/vector_database.pkl', 'rb') as f:
-    data = pickle.load(f)
-
-embeddings = data['embeddings']
-keywords = data['keywords']
-
-# Convert embeddings to list for JSON serialization
-embeddings_list = embeddings.tolist()
-
-# Save keywords
-with open('new_keywords/keywords_list.json', 'w') as f:
-    json.dump(keywords, f)
-
-print(f"Extracted {len(keywords)} keywords and embeddings with shape {embeddings.shape}")
-`;
+  const extractScriptPath = path.join(process.cwd(), 'scripts', 'extract-pickle-temp.py');
 
   try {
-    execSync(`python3 -c "${pythonScript.replace(/\n/g, ' ')}"`, { cwd: process.cwd(), stdio: 'inherit' });
+    execSync(`python3 ${extractScriptPath}`, { cwd: process.cwd(), stdio: 'inherit' });
   } catch (error) {
     console.error('Error extracting from pickle:', error);
     throw error;
@@ -70,29 +50,10 @@ print(f"Extracted {len(keywords)} keywords and embeddings with shape {embeddings
 
   // Load embeddings from pickle and convert to chunks
   console.log('[2/4] Loading embeddings and converting to binary chunks...');
-  const loadEmbeddingsScript = `
-import pickle
-import numpy as np
-import json
-
-# Load pickle file
-with open('new_keywords/vector_database.pkl', 'rb') as f:
-    data = pickle.load(f)
-
-embeddings = data['embeddings']
-
-# Save as binary file that Node.js can read
-# We'll use numpy to save, then Node will read it
-embeddings_bytes = embeddings.astype(np.float32).tobytes()
-
-with open('new_keywords/embeddings.bin', 'wb') as f:
-    f.write(embeddings_bytes)
-
-print(f"Saved embeddings binary: {len(embeddings_bytes)} bytes")
-`;
+  const loadScriptPath = path.join(process.cwd(), 'scripts', 'load-embeddings-temp.py');
 
   try {
-    execSync(`python3 -c "${loadEmbeddingsScript.replace(/\n/g, ' ')}"`, { cwd: process.cwd(), stdio: 'inherit' });
+    execSync(`python3 ${loadScriptPath}`, { cwd: process.cwd(), stdio: 'inherit' });
   } catch (error) {
     console.error('Error saving embeddings binary:', error);
     throw error;
@@ -185,6 +146,8 @@ print(f"Saved embeddings binary: {len(embeddings_bytes)} bytes")
   try {
     fs.unlinkSync(keywordsJsonPath);
     fs.unlinkSync(embeddingsBinPath);
+    fs.unlinkSync(extractScriptPath);
+    fs.unlinkSync(loadScriptPath);
   } catch (error) {
     console.warn('Warning: Could not cleanup temporary files:', error);
   }
