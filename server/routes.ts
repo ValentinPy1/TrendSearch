@@ -7,7 +7,7 @@ import { supabaseAdmin } from "./supabase";
 import { stripe } from "./stripe";
 import Stripe from "stripe";
 import { eq } from "drizzle-orm";
-import { users } from "@shared/schema";
+import { users, customSearchProjectKeywords } from "@shared/schema";
 import { db } from "./db";
 import { keywordVectorService } from "./keyword-vector-service";
 import { microSaaSIdeaGenerator } from "./microsaas-idea-generator";
@@ -1758,6 +1758,60 @@ Return ONLY the JSON array, no other text. Example format:
         }
     });
 
+    // Get project keywords status
+    app.get("/api/custom-search/projects/:id/keywords-status", requireAuth, async (req, res) => {
+        try {
+            const { id } = req.params;
+            const userId = req.user.id;
+
+            // Verify project ownership
+            const project = await storage.getCustomSearchProject(id);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (project.userId !== userId) {
+                return res.status(403).json({ message: "Unauthorized" });
+            }
+
+            // Get all keywords for the project
+            const keywords = await storage.getProjectKeywords(id);
+
+            // Count keywords with data (volume is not null)
+            const keywordsWithData = keywords.filter(kw => kw.volume !== null && kw.volume !== undefined);
+            
+            // Count keywords with metrics computed (growthYoy or growth3m is not null)
+            const keywordsWithMetrics = keywords.filter(kw => 
+                kw.volume !== null && 
+                kw.volume !== undefined && 
+                (kw.growthYoy !== null || kw.growth3m !== null)
+            );
+
+            // Get keywords from saved progress (for display)
+            const savedProgress = project.keywordGenerationProgress;
+            let keywordList = savedProgress?.newKeywords || [];
+
+            // If no keywords in saved progress but we have keywords in database, use those
+            if (keywordList.length === 0 && keywords.length > 0) {
+                keywordList = keywords.map(kw => kw.keyword);
+            }
+
+            res.json({
+                totalKeywords: keywords.length,
+                keywordsWithData: keywordsWithData.length,
+                keywordsWithMetrics: keywordsWithMetrics.length,
+                keywordList: keywordList,
+                hasDataForSEO: keywordsWithData.length > 0,
+                hasMetrics: keywordsWithMetrics.length > 0,
+            });
+        } catch (error) {
+            console.error("Error fetching project keywords status:", error);
+            res.status(500).json({
+                message: "Failed to fetch project keywords status",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
     // Get single project
     app.get("/api/custom-search/projects/:id", requireAuth, async (req, res) => {
         try {
@@ -1986,6 +2040,459 @@ Return ONLY the JSON array, no other text. Example format:
 
             res.write(`data: ${JSON.stringify({ type: 'error', error: error instanceof Error ? error.message : "Unknown error" })}\n\n`);
             res.end();
+        }
+    });
+
+    // Fetch DataForSEO metrics for generated keywords
+    app.post("/api/custom-search/fetch-dataforseo", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { projectId } = req.body;
+            const userId = req.user.id;
+
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+
+            // Verify project ownership
+            const project = await storage.getCustomSearchProject(projectId);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (project.userId !== userId) {
+                return res.status(403).json({ message: "Unauthorized" });
+            }
+
+            // Get keywords from saved progress
+            const savedProgress = project.keywordGenerationProgress;
+            if (!savedProgress || !savedProgress.newKeywords || savedProgress.newKeywords.length === 0) {
+                return res.status(400).json({ message: "No keywords found. Please generate keywords first." });
+            }
+
+            const keywords = savedProgress.newKeywords;
+            if (keywords.length > 1000) {
+                return res.status(400).json({ message: "Maximum 1000 keywords allowed per request" });
+            }
+
+            // Calculate date range: last 4 years from today
+            const today = new Date();
+            const fourYearsAgo = new Date();
+            fourYearsAgo.setFullYear(today.getFullYear() - 4);
+            
+            const dateTo = today.toISOString().split('T')[0]; // YYYY-MM-DD
+            const dateFrom = fourYearsAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+
+            // Import and call DataForSEO service
+            const { fetchKeywordMetrics } = await import("./dataforseo-service");
+            const apiResponse = await fetchKeywordMetrics(keywords, dateFrom, dateTo);
+
+            // Process API response and save to database
+            const task = apiResponse.tasks[0];
+            if (!task || !task.result) {
+                return res.status(500).json({ message: "No results from DataForSEO API" });
+            }
+
+            const keywordResults = task.result;
+            let keywordsWithData = 0;
+            const keywordIds: string[] = [];
+            const similarityScores: number[] = [];
+
+            // Prepare keywords for insertion
+            const keywordsToInsert: any[] = [];
+            const keywordMap = new Map<string, any>(); // Map keyword text to result
+
+            for (const result of keywordResults) {
+                if (result.search_volume !== null && result.search_volume !== undefined) {
+                    keywordsWithData++;
+                }
+
+                // Format monthly data
+                const monthlyData = result.monthly_searches?.map(ms => ({
+                    month: `${ms.year}-${String(ms.month).padStart(2, '0')}`,
+                    volume: ms.search_volume
+                })) || [];
+
+                // Map competition from string to number (HIGH=100, MEDIUM=50, LOW=0)
+                let competitionIndex = null;
+                if (result.competition) {
+                    if (result.competition === "HIGH") {
+                        competitionIndex = 100;
+                    } else if (result.competition === "MEDIUM") {
+                        competitionIndex = 50;
+                    } else if (result.competition === "LOW") {
+                        competitionIndex = 0;
+                    }
+                }
+
+                // Calculate average top page bid
+                const avgTopPageBid = result.low_top_of_page_bid && result.high_top_of_page_bid
+                    ? (result.low_top_of_page_bid + result.high_top_of_page_bid) / 2
+                    : null;
+
+                const keywordData = {
+                    keyword: result.keyword,
+                    volume: result.search_volume || null,
+                    competition: competitionIndex || result.competition_index || null,
+                    cpc: result.cpc || null,
+                    topPageBid: avgTopPageBid,
+                    monthlyData: monthlyData,
+                    source: "dataforseo"
+                };
+
+                keywordsToInsert.push(keywordData);
+                keywordMap.set(result.keyword.toLowerCase(), result);
+            }
+
+            // Also add keywords that weren't in the API response (no data)
+            for (const keyword of keywords) {
+                if (!keywordMap.has(keyword.toLowerCase())) {
+                    keywordsToInsert.push({
+                        keyword: keyword,
+                        volume: null,
+                        competition: null,
+                        cpc: null,
+                        topPageBid: null,
+                        monthlyData: [],
+                        source: "dataforseo"
+                    });
+                }
+            }
+
+            // Save all keywords to globalKeywords table (only new ones will be created)
+            const savedKeywords = await storage.createGlobalKeywords(keywordsToInsert);
+
+            // Get all keywords that should be linked (both newly created and existing)
+            const allKeywordsToLink: string[] = [];
+            const keywordTextToIdMap = new Map<string, string>();
+            
+            // Map newly saved keywords
+            savedKeywords.forEach(kw => {
+                keywordTextToIdMap.set(kw.keyword.toLowerCase(), kw.id);
+                allKeywordsToLink.push(kw.keyword);
+            });
+
+            // Get existing keywords that weren't just created
+            const existingKeywords = await storage.getGlobalKeywordsByTexts(keywords);
+            existingKeywords.forEach(kw => {
+                if (!keywordTextToIdMap.has(kw.keyword.toLowerCase())) {
+                    keywordTextToIdMap.set(kw.keyword.toLowerCase(), kw.id);
+                    allKeywordsToLink.push(kw.keyword);
+                }
+            });
+
+            // Get existing links to check for duplicates
+            const existingLinks = await storage.getProjectKeywords(projectId);
+            const existingLinkIds = new Set(existingLinks.map(kw => kw.id));
+            const existingSimilarityMap = new Map<string, number>();
+            existingLinks.forEach(kw => {
+                existingSimilarityMap.set(kw.keyword.toLowerCase(), kw.similarityScore ? parseFloat(kw.similarityScore) : 0.8);
+            });
+
+            // Prepare keywords to link (exclude already linked ones)
+            const keywordIdsToLink: string[] = [];
+            const similarityScoresToLink: number[] = [];
+
+            for (const keywordText of allKeywordsToLink) {
+                const keywordId = keywordTextToIdMap.get(keywordText.toLowerCase());
+                if (keywordId && !existingLinkIds.has(keywordId)) {
+                    keywordIdsToLink.push(keywordId);
+                    const similarity = existingSimilarityMap.get(keywordText.toLowerCase()) || 0.8;
+                    similarityScoresToLink.push(similarity);
+                }
+            }
+
+            // Link keywords to project (only new links)
+            if (keywordIdsToLink.length > 0) {
+                await storage.linkKeywordsToProject(projectId, keywordIdsToLink, similarityScoresToLink);
+            }
+
+            res.json({
+                success: true,
+                keywordsWithData,
+                totalKeywords: keywords.length,
+                keywordsWithoutData: keywords.length - keywordsWithData
+            });
+        } catch (error) {
+            console.error("Error fetching DataForSEO metrics:", error);
+            res.status(500).json({
+                message: error instanceof Error ? error.message : "Failed to fetch DataForSEO metrics",
+                error: error instanceof Error ? error.stack : String(error)
+            });
+        }
+    });
+
+    // Compute metrics for keywords
+    app.post("/api/custom-search/compute-metrics", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { projectId } = req.body;
+            const userId = req.user.id;
+
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+
+            // Verify project ownership
+            const project = await storage.getCustomSearchProject(projectId);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (project.userId !== userId) {
+                return res.status(403).json({ message: "Unauthorized" });
+            }
+
+            // Get all keywords for the project
+            const keywords = await storage.getProjectKeywords(projectId);
+
+            // Import opportunity score functions
+            const { calculateVolatility, calculateTrendStrength } = await import("./opportunity-score");
+
+            let processedCount = 0;
+
+            // Process each keyword that has monthly data
+            for (const keyword of keywords) {
+                if (!keyword.monthlyData || !Array.isArray(keyword.monthlyData) || keyword.monthlyData.length === 0) {
+                    continue; // Skip keywords without data
+                }
+
+                if (keyword.volume === null || keyword.volume === undefined) {
+                    continue; // Skip keywords without volume
+                }
+
+                const monthlyData = keyword.monthlyData;
+                const sortedMonthlyData = [...monthlyData].sort((a, b) => {
+                    const dateA = new Date(a.month);
+                    const dateB = new Date(b.month);
+                    return dateA.getTime() - dateB.getTime();
+                });
+
+                if (sortedMonthlyData.length < 2) {
+                    continue; // Need at least 2 months for calculations
+                }
+
+                // Calculate YoY growth
+                const lastMonth = sortedMonthlyData[sortedMonthlyData.length - 1];
+                let yoyGrowth: number | null = null;
+                if (sortedMonthlyData.length >= 12) {
+                    const sameMonthLastYear = sortedMonthlyData[sortedMonthlyData.length - 12];
+                    if (sameMonthLastYear.volume > 0) {
+                        yoyGrowth = ((lastMonth.volume - sameMonthLastYear.volume) / sameMonthLastYear.volume) * 100;
+                    }
+                }
+
+                // Calculate 3mo growth
+                let threeMonthGrowth: number | null = null;
+                if (sortedMonthlyData.length >= 3) {
+                    const threeMonthsAgo = sortedMonthlyData[sortedMonthlyData.length - 3];
+                    if (threeMonthsAgo.volume > 0) {
+                        threeMonthGrowth = ((lastMonth.volume - threeMonthsAgo.volume) / threeMonthsAgo.volume) * 100;
+                    }
+                }
+
+                // Calculate volatility (using function from opportunity-score.ts)
+                const volatility = calculateVolatility(sortedMonthlyData);
+
+                // Calculate trend strength (requires growthYoy and volatility)
+                const growthYoyValue = yoyGrowth !== null ? yoyGrowth : 0;
+                const trendStrength = calculateTrendStrength(growthYoyValue, volatility);
+
+                // Update keyword with computed metrics
+                await storage.updateKeywordMetrics(keyword.id, {
+                    growthYoy: yoyGrowth !== null ? yoyGrowth.toString() : null,
+                    growth3m: threeMonthGrowth !== null ? threeMonthGrowth.toString() : null,
+                    volatility: volatility.toString(),
+                    trendStrength: trendStrength.toString()
+                });
+
+                processedCount++;
+            }
+
+            res.json({
+                success: true,
+                processedCount,
+                totalKeywords: keywords.length
+            });
+        } catch (error) {
+            console.error("Error computing metrics:", error);
+            res.status(500).json({
+                message: error instanceof Error ? error.message : "Failed to compute metrics",
+                error: error instanceof Error ? error.stack : String(error)
+            });
+        }
+    });
+
+    // Generate report for keywords
+    app.post("/api/custom-search/generate-report", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { projectId } = req.body;
+            const userId = req.user.id;
+
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+
+            // Verify project ownership
+            const project = await storage.getCustomSearchProject(projectId);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (project.userId !== userId) {
+                return res.status(403).json({ message: "Unauthorized" });
+            }
+
+            // Get all keywords for the project that have data (exclude null volumes)
+            const allKeywords = await storage.getProjectKeywords(projectId);
+            const keywordsWithData = allKeywords.filter(kw => kw.volume !== null && kw.volume !== undefined);
+
+            if (keywordsWithData.length === 0) {
+                return res.status(400).json({ message: "No keywords with data found. Please fetch DataForSEO metrics first." });
+            }
+
+            // Calculate aggregated metrics
+            const totalVolume = keywordsWithData.reduce((sum, kw) => sum + (kw.volume || 0), 0);
+            const avgVolume = Math.round(totalVolume / keywordsWithData.length);
+
+            const validGrowthYoy = keywordsWithData
+                .map(kw => kw.growthYoy ? parseFloat(kw.growthYoy) : null)
+                .filter((g): g is number => g !== null);
+            const avgGrowthYoy = validGrowthYoy.length > 0
+                ? validGrowthYoy.reduce((sum, g) => sum + g, 0) / validGrowthYoy.length
+                : null;
+
+            const validGrowth3m = keywordsWithData
+                .map(kw => kw.growth3m ? parseFloat(kw.growth3m) : null)
+                .filter((g): g is number => g !== null);
+            const avgGrowth3m = validGrowth3m.length > 0
+                ? validGrowth3m.reduce((sum, g) => sum + g, 0) / validGrowth3m.length
+                : null;
+
+            const validCpc = keywordsWithData
+                .map(kw => kw.cpc ? parseFloat(kw.cpc) : null)
+                .filter((c): c is number => c !== null);
+            const avgCpc = validCpc.length > 0
+                ? validCpc.reduce((sum, c) => sum + c, 0) / validCpc.length
+                : null;
+
+            const validTopPageBid = keywordsWithData
+                .map(kw => kw.topPageBid ? parseFloat(kw.topPageBid) : null)
+                .filter((b): b is number => b !== null);
+            const avgTopPageBid = validTopPageBid.length > 0
+                ? validTopPageBid.reduce((sum, b) => sum + b, 0) / validTopPageBid.length
+                : null;
+
+            // Determine competition level (most common)
+            const competitionLevels = keywordsWithData
+                .map(kw => {
+                    if (!kw.competition) return null;
+                    const comp = kw.competition;
+                    if (comp >= 75) return "high";
+                    if (comp >= 25) return "medium";
+                    return "low";
+                })
+                .filter((c): c is string => c !== null);
+            
+            const competitionCounts = competitionLevels.reduce((acc, level) => {
+                acc[level] = (acc[level] || 0) + 1;
+                return acc;
+            }, {} as Record<string, number>);
+            
+            const competition = Object.keys(competitionCounts).length > 0
+                ? Object.entries(competitionCounts).sort((a, b) => b[1] - a[1])[0][0]
+                : null;
+
+            // Format keywords for response (matching Keyword type from schema)
+            // Need to calculate opportunity score and other derived metrics
+            const { calculateOpportunityScore } = await import("./opportunity-score");
+            
+            // Get all similarity scores for keywords in one query
+            const keywordIds = keywordsWithData.map(kw => kw.id);
+            const projectLinks = keywordIds.length > 0
+                ? await db
+                    .select()
+                    .from(customSearchProjectKeywords)
+                    .where(
+                        eq(customSearchProjectKeywords.customSearchProjectId, projectId)
+                    )
+                : [];
+            
+            const similarityScoreMap = new Map<string, string>();
+            projectLinks.forEach(link => {
+                similarityScoreMap.set(link.globalKeywordId, link.similarityScore || "");
+            });
+            
+            const formattedKeywords = keywordsWithData.map(kw => {
+                // Calculate opportunity score if we have all required data
+                let opportunityScore = null;
+                let bidEfficiency = null;
+                let tac = null;
+                let sac = null;
+                
+                if (kw.volume && kw.competition !== null && kw.cpc && kw.topPageBid && kw.growthYoy !== null && kw.monthlyData) {
+                    try {
+                        const oppResult = calculateOpportunityScore({
+                            volume: kw.volume,
+                            competition: kw.competition,
+                            cpc: parseFloat(kw.cpc),
+                            topPageBid: parseFloat(kw.topPageBid),
+                            growthYoy: parseFloat(kw.growthYoy),
+                            monthlyData: kw.monthlyData
+                        });
+                        opportunityScore = oppResult.opportunityScore;
+                        bidEfficiency = oppResult.bidEfficiency;
+                        tac = oppResult.tac;
+                        sac = oppResult.sac;
+                    } catch (error) {
+                        console.error(`Error calculating opportunity score for keyword ${kw.keyword}:`, error);
+                    }
+                }
+
+                const similarityScore = similarityScoreMap.get(kw.id) || null;
+
+                return {
+                    id: kw.id,
+                    reportId: projectId, // Use projectId as reportId for display purposes
+                    keyword: kw.keyword,
+                    volume: kw.volume,
+                    competition: kw.competition,
+                    cpc: kw.cpc ? parseFloat(kw.cpc).toString() : null,
+                    topPageBid: kw.topPageBid ? parseFloat(kw.topPageBid).toString() : null,
+                    growth3m: kw.growth3m ? parseFloat(kw.growth3m).toString() : null,
+                    growthYoy: kw.growthYoy ? parseFloat(kw.growthYoy).toString() : null,
+                    similarityScore: similarityScore ? parseFloat(similarityScore).toString() : null,
+                    growthSlope: null,
+                    growthR2: null,
+                    growthConsistency: null,
+                    growthStability: null,
+                    sustainedGrowthScore: null,
+                    volatility: kw.volatility ? parseFloat(kw.volatility).toString() : null,
+                    trendStrength: kw.trendStrength ? parseFloat(kw.trendStrength).toString() : null,
+                    bidEfficiency: bidEfficiency ? bidEfficiency.toString() : null,
+                    tac: tac ? tac.toString() : null,
+                    sac: sac ? sac.toString() : null,
+                    opportunityScore: opportunityScore ? opportunityScore.toString() : null,
+                    monthlyData: kw.monthlyData || []
+                };
+            });
+
+            res.json({
+                success: true,
+                report: {
+                    aggregated: {
+                        avgVolume,
+                        growth3m: avgGrowth3m,
+                        growthYoy: avgGrowthYoy,
+                        competition,
+                        avgTopPageBid,
+                        avgCpc
+                    },
+                    keywords: formattedKeywords,
+                    totalKeywords: keywordsWithData.length
+                }
+            });
+        } catch (error) {
+            console.error("Error generating report:", error);
+            res.status(500).json({
+                message: error instanceof Error ? error.message : "Failed to generate report",
+                error: error instanceof Error ? error.stack : String(error)
+            });
         }
     });
 

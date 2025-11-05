@@ -80,6 +80,32 @@ STRIPE_PRICE_ID=price_...
    - Select event: `checkout.session.completed`
    - Copy the **Signing secret** → `STRIPE_WEBHOOK_SECRET` (starts with `whsec_`)
 
+### DataForSEO Configuration
+- `DATA_FOR_SEO_LOGIN` - Your DataForSEO API login (username)
+- `DATA_FOR_SEO_PASSWORD` - Your DataForSEO API password
+- `DATA_FOR_SEO_CRED_B64` - Base64-encoded credentials (format: `bG9naW46cGFzc3dvcmQ=` where login:password is base64 encoded)
+
+These can be set in your `.env` file:
+
+```env
+# DataForSEO (for keyword metrics)
+DATA_FOR_SEO_LOGIN=your_login
+DATA_FOR_SEO_PASSWORD=your_password
+DATA_FOR_SEO_CRED_B64=your_base64_encoded_credentials
+```
+
+## Getting Your DataForSEO Credentials
+
+1. Go to your DataForSEO account (https://dataforseo.com)
+2. Navigate to your account settings or API credentials
+3. Copy the following:
+   - **Login** → `DATA_FOR_SEO_LOGIN`
+   - **Password** → `DATA_FOR_SEO_PASSWORD`
+4. Generate Base64-encoded credentials:
+   - Combine login and password as `login:password`
+   - Encode to Base64 (e.g., using `echo -n "login:password" | base64`)
+   - Copy the result → `DATA_FOR_SEO_CRED_B64`
+
 ## Security Notes
 
 - Never commit the `.env` file to version control
@@ -87,4 +113,5 @@ STRIPE_PRICE_ID=price_...
 - The `SUPABASE_ANON_KEY` is safe to expose in client-side code
 - The `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` should only be used on the server side
 - The `STRIPE_PUBLISHABLE_KEY` can be used in client-side code (but not needed for this implementation)
+- The `DATA_FOR_SEO_LOGIN`, `DATA_FOR_SEO_PASSWORD`, and `DATA_FOR_SEO_CRED_B64` should only be used on the server side
 

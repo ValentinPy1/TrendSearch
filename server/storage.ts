@@ -50,6 +50,8 @@ export interface IStorage {
     getGlobalKeywordsByTexts(keywords: string[]): Promise<GlobalKeyword[]>;
     createGlobalKeywords(keywords: InsertGlobalKeyword[]): Promise<GlobalKeyword[]>;
     linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[]): Promise<void>;
+    getProjectKeywords(projectId: string): Promise<GlobalKeyword[]>;
+    updateKeywordMetrics(keywordId: string, metrics: Partial<GlobalKeyword>): Promise<void>;
 
     // Keyword Generation Progress methods
     saveKeywordGenerationProgress(projectId: string, progress: KeywordGenerationProgress): Promise<void>;
@@ -292,6 +294,26 @@ export class DatabaseStorage implements IStorage {
         }));
 
         await db.insert(customSearchProjectKeywords).values(links as any);
+    }
+
+    async getProjectKeywords(projectId: string): Promise<GlobalKeyword[]> {
+        // Join customSearchProjectKeywords with globalKeywords to get all keywords for a project
+        const result = await db
+            .select({
+                keyword: globalKeywords,
+            })
+            .from(customSearchProjectKeywords)
+            .innerJoin(globalKeywords, eq(customSearchProjectKeywords.globalKeywordId, globalKeywords.id))
+            .where(eq(customSearchProjectKeywords.customSearchProjectId, projectId));
+        
+        return result.map(r => r.keyword);
+    }
+
+    async updateKeywordMetrics(keywordId: string, metrics: Partial<GlobalKeyword>): Promise<void> {
+        await db
+            .update(globalKeywords)
+            .set(metrics as any)
+            .where(eq(globalKeywords.id, keywordId));
     }
 
     async saveKeywordGenerationProgress(projectId: string, progress: KeywordGenerationProgress): Promise<void> {

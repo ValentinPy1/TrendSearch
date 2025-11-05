@@ -34,7 +34,7 @@ export interface OpportunityScoreResult {
  * For each month: predicted(t) = first_month * growth_factor^(t/11)
  * Volatility = average(|actual - predicted| / predicted)
  */
-function calculateVolatility(monthlyData: { month: string; volume: number }[]): number {
+export function calculateVolatility(monthlyData: { month: string; volume: number }[]): number {
     if (!monthlyData || monthlyData.length < 2) {
         return 0;
     }
@@ -84,7 +84,7 @@ function calculateVolatility(monthlyData: { month: string; volume: number }[]): 
  *   0% growth → 1 / 1.1 = 0.91
  *   +100% growth → 2 / 1.1 = 1.82
  */
-function calculateTrendStrength(growthYoy: number, volatility: number): number {
+export function calculateTrendStrength(growthYoy: number, volatility: number): number {
     const transformedGrowth = Math.max(0, 1 + (growthYoy / 100));
     const trendStrength = transformedGrowth / (1 + volatility);
     return trendStrength;

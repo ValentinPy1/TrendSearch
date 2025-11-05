@@ -11,7 +11,12 @@ import { supabase } from "@/lib/supabase";
 import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil, Sparkle } from "lucide-react";
 import { CustomSearchProjectBrowser } from "./custom-search-project-browser";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import type { CustomSearchProject } from "@shared/schema";
+import type { CustomSearchProject, Keyword } from "@shared/schema";
+import { KeywordsTable } from "@/components/keywords-table";
+import { TrendChart } from "@/components/trend-chart";
+import { KeywordMetricsCards } from "@/components/keyword-metrics-cards";
+import { MetricsCards } from "@/components/metrics-cards";
+import { AverageTrendChart } from "@/components/average-trend-chart";
 
 interface CustomSearchFormProps { }
 
@@ -69,6 +74,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [quadrantPopupType, setQuadrantPopupType] = useState<'seeds' | 'keywords' | 'duplicates' | 'existing' | null>(null);
     const [savedProgress, setSavedProgress] = useState<any>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const [isFetchingDataForSEO, setIsFetchingDataForSEO] = useState(false);
+    const [isComputingMetrics, setIsComputingMetrics] = useState(false);
+    const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+    const [dataForSEOStats, setDataForSEOStats] = useState<{ keywordsWithData: number; totalKeywords: number; keywordsWithoutData: number } | null>(null);
+    const [metricsStats, setMetricsStats] = useState<{ processedCount: number; totalKeywords: number } | null>(null);
+    const [reportData, setReportData] = useState<any>(null);
+    const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
 
     const form = useForm<FormData>({
         defaultValues: {
@@ -245,7 +257,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     }, [projectsData, currentProjectId]);
 
     // Load project data into form
-    const loadProject = (project: CustomSearchProject) => {
+    const loadProject = async (project: CustomSearchProject) => {
         setIsLoadingProject(true);
         setCurrentProjectId(project.id);
         form.setValue("name", project.name || "");
@@ -265,6 +277,51 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
         } else {
             setSavedProgress(null);
+        }
+
+        // Load keywords status from database
+        try {
+            const res = await apiRequest("GET", `/api/custom-search/projects/${project.id}/keywords-status`);
+            const status = await res.json();
+            
+            // Restore keywords list if available
+            if (status.keywordList && status.keywordList.length > 0) {
+                setGeneratedKeywords(status.keywordList);
+            }
+
+            // Restore DataForSEO stats if keywords have data
+            if (status.hasDataForSEO) {
+                setDataForSEOStats({
+                    keywordsWithData: status.keywordsWithData,
+                    totalKeywords: status.totalKeywords,
+                    keywordsWithoutData: status.totalKeywords - status.keywordsWithData,
+                });
+            }
+
+            // Restore metrics stats if metrics are computed
+            if (status.hasMetrics) {
+                setMetricsStats({
+                    processedCount: status.keywordsWithMetrics,
+                    totalKeywords: status.keywordsWithData,
+                });
+
+                // If metrics are computed, try to load the report
+                try {
+                    const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
+                        projectId: project.id,
+                    });
+                    const reportResult = await reportRes.json();
+                    if (reportResult.success && reportResult.report) {
+                        setReportData(reportResult.report);
+                    }
+                } catch (reportError) {
+                    console.error("Error loading report:", reportError);
+                    // Don't show error, just continue
+                }
+            }
+        } catch (error) {
+            console.error("Error loading keywords status:", error);
+            // Don't show error to user, just continue without restoring status
         }
         
         // Allow auto-save after a short delay to ensure form is fully updated
@@ -287,6 +344,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setSavedProgress(null);
         setGeneratedKeywords([]);
         setKeywordProgress(null);
+        setDataForSEOStats(null);
+        setMetricsStats(null);
+        setReportData(null);
 
         // Clear all form state
         form.reset({ name: "", pitch: "" });
@@ -693,6 +753,131 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     };
 
+    const handleFetchDataForSEO = async () => {
+        if (!currentProjectId) {
+            toast({
+                title: "Error",
+                description: "Please save your project first",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setIsFetchingDataForSEO(true);
+        try {
+            const res = await apiRequest("POST", "/api/custom-search/fetch-dataforseo", {
+                projectId: currentProjectId,
+            });
+            const result = await res.json();
+            
+            if (result.success) {
+                setDataForSEOStats({
+                    keywordsWithData: result.keywordsWithData,
+                    totalKeywords: result.totalKeywords,
+                    keywordsWithoutData: result.keywordsWithoutData,
+                });
+                toast({
+                    title: "DataForSEO Metrics Fetched!",
+                    description: `${result.keywordsWithData} out of ${result.totalKeywords} keywords had data`,
+                });
+                // Refresh project data
+                queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
+            } else {
+                throw new Error(result.message || "Failed to fetch DataForSEO metrics");
+            }
+        } catch (error) {
+            console.error("Error fetching DataForSEO metrics:", error);
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to fetch DataForSEO metrics",
+                variant: "destructive",
+            });
+        } finally {
+            setIsFetchingDataForSEO(false);
+        }
+    };
+
+    const handleComputeMetrics = async () => {
+        if (!currentProjectId) {
+            toast({
+                title: "Error",
+                description: "Please save your project first",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setIsComputingMetrics(true);
+        try {
+            const res = await apiRequest("POST", "/api/custom-search/compute-metrics", {
+                projectId: currentProjectId,
+            });
+            const result = await res.json();
+            
+            if (result.success) {
+                setMetricsStats({
+                    processedCount: result.processedCount,
+                    totalKeywords: result.totalKeywords,
+                });
+                toast({
+                    title: "Metrics Computed!",
+                    description: `Processed ${result.processedCount} out of ${result.totalKeywords} keywords`,
+                });
+                // Refresh project data
+                queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
+            } else {
+                throw new Error(result.message || "Failed to compute metrics");
+            }
+        } catch (error) {
+            console.error("Error computing metrics:", error);
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to compute metrics",
+                variant: "destructive",
+            });
+        } finally {
+            setIsComputingMetrics(false);
+        }
+    };
+
+    const handleGenerateReport = async () => {
+        if (!currentProjectId) {
+            toast({
+                title: "Error",
+                description: "Please save your project first",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setIsGeneratingReport(true);
+        try {
+            const res = await apiRequest("POST", "/api/custom-search/generate-report", {
+                projectId: currentProjectId,
+            });
+            const result = await res.json();
+            
+            if (result.success) {
+                setReportData(result.report);
+                toast({
+                    title: "Report Generated!",
+                    description: `Report generated for ${result.report.totalKeywords} keywords`,
+                });
+            } else {
+                throw new Error(result.message || "Failed to generate report");
+            }
+        } catch (error) {
+            console.error("Error generating report:", error);
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to generate report",
+                variant: "destructive",
+            });
+        } finally {
+            setIsGeneratingReport(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* Project Name and Management Buttons */}
@@ -969,11 +1154,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         </div>
                     )}
 
-                    {/* Show completed keywords if generation is complete */}
-                    {savedProgress && savedProgress.stage === 'complete' && savedProgress.newKeywords && savedProgress.newKeywords.length > 0 && (
-                        <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-3">
+                    {/* Show completed keywords if generation is complete OR if keywords exist in database */}
+                    {((savedProgress && savedProgress.stage === 'complete' && savedProgress.newKeywords && savedProgress.newKeywords.length > 0) || generatedKeywords.length > 0) && (
+                        <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-3 space-y-3">
                             <div className="text-sm text-green-200 mb-2">
-                                ✓ Generation completed: {savedProgress.newKeywords.length} keywords
+                                ✓ {savedProgress?.stage === 'complete' ? 'Generation completed' : 'Keywords loaded'}: {generatedKeywords.length} keywords
                             </div>
                             <Button
                                 type="button"
@@ -998,6 +1183,97 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             >
                                 View Keywords
                             </Button>
+
+                            {/* DataForSEO Fetch Button */}
+                            <div className="space-y-2">
+                                <Button
+                                    type="button"
+                                    onClick={handleFetchDataForSEO}
+                                    disabled={isFetchingDataForSEO || !currentProjectId || dataForSEOStats !== null}
+                                    className="w-full bg-blue-600 hover:bg-blue-700"
+                                >
+                                    {isFetchingDataForSEO ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Fetching DataForSEO...
+                                        </>
+                                    ) : dataForSEOStats ? (
+                                        <>
+                                            <Search className="mr-2 h-4 w-4" />
+                                            DataForSEO Fetched
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Search className="mr-2 h-4 w-4" />
+                                            Fetch DataForSEO
+                                        </>
+                                    )}
+                                </Button>
+                                {dataForSEOStats && (
+                                    <div className="text-xs text-green-200">
+                                        {dataForSEOStats.keywordsWithData} / {dataForSEOStats.totalKeywords} keywords had data
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Compute Metrics Button */}
+                            <div className="space-y-2">
+                                <Button
+                                    type="button"
+                                    onClick={handleComputeMetrics}
+                                    disabled={isComputingMetrics || !currentProjectId || !dataForSEOStats || metricsStats !== null}
+                                    className="w-full bg-purple-600 hover:bg-purple-700"
+                                >
+                                    {isComputingMetrics ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Computing Metrics...
+                                        </>
+                                    ) : metricsStats ? (
+                                        <>
+                                            <Sparkles className="mr-2 h-4 w-4" />
+                                            Metrics Computed
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles className="mr-2 h-4 w-4" />
+                                            Compute Metrics
+                                        </>
+                                    )}
+                                </Button>
+                                {metricsStats && (
+                                    <div className="text-xs text-green-200">
+                                        Processed {metricsStats.processedCount} / {metricsStats.totalKeywords} keywords
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Generate Report Button */}
+                            <div className="space-y-2">
+                                <Button
+                                    type="button"
+                                    onClick={handleGenerateReport}
+                                    disabled={isGeneratingReport || !currentProjectId || !metricsStats}
+                                    className="w-full bg-indigo-600 hover:bg-indigo-700"
+                                >
+                                    {isGeneratingReport ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Generating Report...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkle className="mr-2 h-4 w-4" />
+                                            Generate Report
+                                        </>
+                                    )}
+                                </Button>
+                                {reportData && (
+                                    <div className="text-xs text-green-200">
+                                        Report generated for {reportData.totalKeywords} keywords
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -1294,6 +1570,73 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Report Display */}
+            {reportData && reportData.keywords && reportData.keywords.length > 0 && (
+                <div className="space-y-4 mt-8">
+                    <div className="text-center pt-8 pb-4">
+                        <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
+                            {name || "Custom Search Report"}
+                        </h2>
+                        {pitch && (
+                            <p className="text-lg text-white/70 mt-4 max-w-2xl mx-auto">
+                                {pitch}
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="pt-16 space-y-4">
+                        <div>
+                            <h3 className="text-xl font-semibold text-white/90 mb-2">
+                                Generated Keywords ({reportData.keywords.length})
+                            </h3>
+                            <p className="text-sm text-white/60">
+                                Click a keyword to view its trend analysis
+                            </p>
+                        </div>
+                        <KeywordsTable
+                            keywords={reportData.keywords as Keyword[]}
+                            selectedKeyword={selectedKeyword}
+                            onKeywordSelect={setSelectedKeyword}
+                            reportId={currentProjectId || ""}
+                        />
+                    </div>
+
+                    {selectedKeyword &&
+                        reportData.keywords.find(
+                            (k: any) => k.keyword === selectedKeyword,
+                        ) && (
+                            <div className="grid grid-cols-1 lg:grid-cols-[1fr_175px] gap-4">
+                                <TrendChart
+                                    key={`chart-${selectedKeyword}`}
+                                    keywords={reportData.keywords as Keyword[]}
+                                    reportId={currentProjectId || ""}
+                                    selectedKeyword={selectedKeyword}
+                                />
+                                <KeywordMetricsCards
+                                    key={`metrics-${selectedKeyword}`}
+                                    keyword={
+                                        reportData.keywords.find(
+                                            (k: any) => k.keyword === selectedKeyword,
+                                        ) as Keyword
+                                    }
+                                    allKeywords={reportData.keywords as Keyword[]}
+                                />
+                            </div>
+                        )}
+
+                    <div className="pt-16 space-y-4">
+                        <h3 className="text-xl font-semibold text-white/90">
+                            Aggregated KPIs
+                        </h3>
+                        <MetricsCards keywords={reportData.keywords as Keyword[]} />
+                    </div>
+
+                    <div>
+                        <AverageTrendChart keywords={reportData.keywords as Keyword[]} />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
