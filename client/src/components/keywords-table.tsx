@@ -233,7 +233,7 @@ export function KeywordsTable({
 
     const formatCurrencyTwoSignificantDigits = (value: number): string => {
         if (value === 0 || isNaN(value) || !isFinite(value)) {
-            return "N/A";
+            return "";
         }
 
         // Round to 2 significant digits
@@ -253,7 +253,7 @@ export function KeywordsTable({
 
     const formatCurrencyThreeSignificantDigits = (value: number): string => {
         if (value === 0 || isNaN(value) || !isFinite(value)) {
-            return "N/A";
+            return "";
         }
 
         // Round to 3 significant digits
@@ -354,7 +354,10 @@ export function KeywordsTable({
                 align: "right",
                 sortable: true,
                 tooltip: "Average monthly searches for this keyword",
-                format: (value) => (value?.toLocaleString() || "N/A"),
+                format: (value) => {
+                    if (value === null || value === undefined) return "";
+                    return value.toLocaleString();
+                },
             },
             competition: {
                 id: "competition",
@@ -364,7 +367,8 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Level of advertiser competition (0-100 scale)",
                 format: (value) => {
-                    const competition = value || 0;
+                    if (value === null || value === undefined) return "";
+                    const competition = value;
                     return (
                         <span className="font-medium" style={getRedGradientText(competition)}>
                             {competition}
@@ -380,7 +384,9 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Average cost per click in advertising",
                 format: (value, keyword, allKeywords) => {
+                    if (value === null || value === undefined || value === "") return "";
                     const cpc = parseFloat(value || "0");
+                    if (cpc === 0 || isNaN(cpc)) return "";
                     const maxCpc = Math.max(...allKeywords.map((k) => parseFloat(k.cpc || "0")));
                     return (
                         <span className="font-medium" style={getPurpleGradientText(cpc, maxCpc)}>
@@ -397,7 +403,9 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Estimated cost to appear at top of search results",
                 format: (value, keyword, allKeywords) => {
+                    if (value === null || value === undefined || value === "") return "";
                     const topPageBid = parseFloat(value || "0");
+                    if (topPageBid === 0 || isNaN(topPageBid)) return "";
                     const maxTopPageBid = Math.max(...allKeywords.map((k) => parseFloat(k.topPageBid || "0")));
                     return (
                         <span className="font-medium" style={getPurpleGradientText(topPageBid, maxTopPageBid)}>
@@ -414,6 +422,7 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Search volume change over last 3 months",
                 format: (value) => {
+                    if (value === null || value === undefined || value === "") return "";
                     const growth3m = parseFloat(value || "0");
                     return (
                         <span className="font-medium" style={getTrendGradientText(growth3m)}>
@@ -431,6 +440,7 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Search volume change compared to last year",
                 format: (value) => {
+                    if (value === null || value === undefined || value === "") return "";
                     const growthYoy = parseFloat(value || "0");
                     return (
                         <span className="font-medium" style={getTrendGradientText(growthYoy)}>
@@ -448,6 +458,7 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Variability in search volume (lower = more stable)",
                 format: (value) => {
+                    if (value === null || value === undefined || value === "") return "";
                     const volatility = parseFloat(value || "0");
                     return (
                         <span className="font-medium text-white/80">
@@ -464,6 +475,7 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Strength and reliability of the trend (0-1, higher = stronger trend)",
                 format: (value) => {
+                    if (value === null || value === undefined || value === "") return "";
                     const strength = parseFloat(value || "0");
                     return (
                         <span className="font-medium" style={getTrendStrengthBidEfficiencyGradient(strength)}>
@@ -480,6 +492,7 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Efficiency metric for bidding (higher = better value)",
                 format: (value) => {
+                    if (value === null || value === undefined || value === "") return "";
                     const efficiency = parseFloat(value || "0");
                     return (
                         <span className="font-medium" style={getTrendStrengthBidEfficiencyGradient(efficiency)}>
@@ -496,8 +509,11 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Total Acquisition Cost",
                 format: (value) => {
+                    if (value === null || value === undefined || value === "") return "";
                     const tac = parseFloat(value || "0");
+                    if (tac === 0 || isNaN(tac)) return "";
                     const displayValue = formatCurrencyTwoSignificantDigits(tac);
+                    if (!displayValue) return "";
                     return (
                         <span className="font-medium" style={getLogarithmicPurpleGradient(tac)}>
                             {displayValue}
@@ -513,8 +529,11 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Search Acquisition Cost",
                 format: (value) => {
+                    if (value === null || value === undefined || value === "") return "";
                     const sac = parseFloat(value || "0");
+                    if (sac === 0 || isNaN(sac)) return "";
                     const displayValue = formatCurrencyThreeSignificantDigits(sac);
+                    if (!displayValue) return "";
                     return (
                         <span className="font-medium" style={getLogarithmicPurpleGradient(sac)}>
                             {displayValue}
@@ -530,6 +549,7 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Comprehensive opportunity score combining multiple factors (higher = better opportunity)",
                 format: (value) => {
+                    if (value === null || value === undefined || value === "") return "";
                     const score = parseFloat(value || "0");
                     const maxScore = 25; // Scale gradient from 0 to 100
                     return (

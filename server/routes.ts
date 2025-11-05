@@ -2187,6 +2187,10 @@ Return ONLY the JSON array, no other text. Example format:
                 existingSimilarityMap.set(kw.keyword.toLowerCase(), kw.similarityScore ? parseFloat(kw.similarityScore) : 0.8);
             });
 
+            // Calculate similarity scores for new keywords against project pitch
+            const pitch = project.pitch || "";
+            const { keywordVectorService } = await import("./keyword-vector-service");
+
             // Prepare keywords to link (exclude already linked ones)
             const keywordIdsToLink: string[] = [];
             const similarityScoresToLink: number[] = [];
@@ -2195,7 +2199,20 @@ Return ONLY the JSON array, no other text. Example format:
                 const keywordId = keywordTextToIdMap.get(keywordText.toLowerCase());
                 if (keywordId && !existingLinkIds.has(keywordId)) {
                     keywordIdsToLink.push(keywordId);
-                    const similarity = existingSimilarityMap.get(keywordText.toLowerCase()) || 0.8;
+                    
+                    // Calculate actual similarity score if not already stored
+                    let similarity = existingSimilarityMap.get(keywordText.toLowerCase());
+                    if (similarity === undefined && pitch.trim()) {
+                        try {
+                            similarity = await keywordVectorService.calculateTextSimilarity(pitch, keywordText);
+                        } catch (error) {
+                            console.warn(`Failed to calculate similarity for keyword "${keywordText}":`, error);
+                            similarity = 0.5; // Default fallback
+                        }
+                    } else if (similarity === undefined) {
+                        similarity = 0.5; // Default fallback when no pitch
+                    }
+                    
                     similarityScoresToLink.push(similarity);
                 }
             }

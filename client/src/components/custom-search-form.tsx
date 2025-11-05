@@ -17,6 +17,7 @@ import { TrendChart } from "@/components/trend-chart";
 import { KeywordMetricsCards } from "@/components/keyword-metrics-cards";
 import { MetricsCards } from "@/components/metrics-cards";
 import { AverageTrendChart } from "@/components/average-trend-chart";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface CustomSearchFormProps { }
 
@@ -81,6 +82,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [metricsStats, setMetricsStats] = useState<{ processedCount: number; totalKeywords: number } | null>(null);
     const [reportData, setReportData] = useState<any>(null);
     const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
+    const [displayedKeywordCount, setDisplayedKeywordCount] = useState(10);
+    const [showOnlyFullData, setShowOnlyFullData] = useState(false);
 
     const form = useForm<FormData>({
         defaultValues: {
@@ -313,6 +316,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     const reportResult = await reportRes.json();
                     if (reportResult.success && reportResult.report) {
                         setReportData(reportResult.report);
+                        setDisplayedKeywordCount(10); // Reset to 10 when loading report
+                        setShowOnlyFullData(false); // Reset filter when loading report
                     }
                 } catch (reportError) {
                     console.error("Error loading report:", reportError);
@@ -347,6 +352,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setDataForSEOStats(null);
         setMetricsStats(null);
         setReportData(null);
+        setSelectedKeyword(null);
+        setDisplayedKeywordCount(10);
+        setShowOnlyFullData(false);
 
         // Clear all form state
         form.reset({ name: "", pitch: "" });
@@ -859,6 +867,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             
             if (result.success) {
                 setReportData(result.report);
+                setDisplayedKeywordCount(10); // Reset to 10 when generating new report
+                setShowOnlyFullData(false); // Reset filter when generating new report
                 toast({
                     title: "Report Generated!",
                     description: `Report generated for ${result.report.totalKeywords} keywords`,
@@ -875,6 +885,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             });
         } finally {
             setIsGeneratingReport(false);
+        }
+    };
+
+    const handleLoadMore = () => {
+        if (reportData && reportData.keywords) {
+            setDisplayedKeywordCount(prev => prev + 5);
         }
     };
 
@@ -1572,71 +1588,101 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             </Dialog>
 
             {/* Report Display */}
-            {reportData && reportData.keywords && reportData.keywords.length > 0 && (
-                <div className="space-y-4 mt-8">
-                    <div className="text-center pt-8 pb-4">
-                        <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
-                            {name || "Custom Search Report"}
-                        </h2>
-                        {pitch && (
-                            <p className="text-lg text-white/70 mt-4 max-w-2xl mx-auto">
-                                {pitch}
-                            </p>
-                        )}
-                    </div>
+            {reportData && reportData.keywords && reportData.keywords.length > 0 && (() => {
+                // Filter keywords with full data if checkbox is checked
+                const filteredKeywords = showOnlyFullData 
+                    ? reportData.keywords.filter((k: any) => k.volume !== null && k.volume !== undefined)
+                    : reportData.keywords;
+                
+                // Slice keywords based on displayedKeywordCount (same logic as standard search)
+                const displayedKeywords = filteredKeywords.slice(0, displayedKeywordCount);
+                const hasMoreToShow = displayedKeywordCount < filteredKeywords.length;
 
-                    <div className="pt-16 space-y-4">
-                        <div>
-                            <h3 className="text-xl font-semibold text-white/90 mb-2">
-                                Generated Keywords ({reportData.keywords.length})
-                            </h3>
-                            <p className="text-sm text-white/60">
-                                Click a keyword to view its trend analysis
-                            </p>
+                return (
+                    <div className="space-y-4 mt-8">
+                        <div className="text-center pt-8 pb-4">
+                            <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
+                                {name || "Custom Search Report"}
+                            </h2>
+                            {pitch && (
+                                <p className="text-lg text-white/70 mt-4 max-w-2xl mx-auto">
+                                    {pitch}
+                                </p>
+                            )}
                         </div>
-                        <KeywordsTable
-                            keywords={reportData.keywords as Keyword[]}
-                            selectedKeyword={selectedKeyword}
-                            onKeywordSelect={setSelectedKeyword}
-                            reportId={currentProjectId || ""}
-                        />
-                    </div>
 
-                    {selectedKeyword &&
-                        reportData.keywords.find(
-                            (k: any) => k.keyword === selectedKeyword,
-                        ) && (
-                            <div className="grid grid-cols-1 lg:grid-cols-[1fr_175px] gap-4">
-                                <TrendChart
-                                    key={`chart-${selectedKeyword}`}
-                                    keywords={reportData.keywords as Keyword[]}
-                                    reportId={currentProjectId || ""}
-                                    selectedKeyword={selectedKeyword}
-                                />
-                                <KeywordMetricsCards
-                                    key={`metrics-${selectedKeyword}`}
-                                    keyword={
-                                        reportData.keywords.find(
-                                            (k: any) => k.keyword === selectedKeyword,
-                                        ) as Keyword
-                                    }
-                                    allKeywords={reportData.keywords as Keyword[]}
-                                />
+                        <div className="pt-16 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-semibold text-white/90 mb-2">
+                                        Top {displayedKeywords.length} Generated Keywords
+                                    </h3>
+                                    <p className="text-sm text-white/60">
+                                        Click a keyword to view its trend analysis
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        id="showOnlyFullData"
+                                        checked={showOnlyFullData}
+                                        onCheckedChange={(checked) => {
+                                            setShowOnlyFullData(checked === true);
+                                            setDisplayedKeywordCount(10); // Reset to 10 when toggling filter
+                                        }}
+                                    />
+                                    <label
+                                        htmlFor="showOnlyFullData"
+                                        className="text-sm text-white/80 cursor-pointer"
+                                    >
+                                        Only keywords with full data
+                                    </label>
+                                </div>
                             </div>
-                        )}
+                            <KeywordsTable
+                                keywords={displayedKeywords as Keyword[]}
+                                selectedKeyword={selectedKeyword}
+                                onKeywordSelect={setSelectedKeyword}
+                                onLoadMore={hasMoreToShow ? handleLoadMore : undefined}
+                                reportId={currentProjectId || ""}
+                            />
+                        </div>
 
-                    <div className="pt-16 space-y-4">
-                        <h3 className="text-xl font-semibold text-white/90">
-                            Aggregated KPIs
-                        </h3>
-                        <MetricsCards keywords={reportData.keywords as Keyword[]} />
-                    </div>
+                        {selectedKeyword &&
+                            displayedKeywords.find(
+                                (k: any) => k.keyword === selectedKeyword,
+                            ) && (
+                                <div className="grid grid-cols-1 lg:grid-cols-[1fr_175px] gap-4">
+                                    <TrendChart
+                                        key={`chart-${selectedKeyword}`}
+                                        keywords={displayedKeywords as Keyword[]}
+                                        reportId={currentProjectId || ""}
+                                        selectedKeyword={selectedKeyword}
+                                    />
+                                    <KeywordMetricsCards
+                                        key={`metrics-${selectedKeyword}`}
+                                        keyword={
+                                            displayedKeywords.find(
+                                                (k: any) => k.keyword === selectedKeyword,
+                                            ) as Keyword
+                                        }
+                                        allKeywords={displayedKeywords as Keyword[]}
+                                    />
+                                </div>
+                            )}
 
-                    <div>
-                        <AverageTrendChart keywords={reportData.keywords as Keyword[]} />
+                        <div className="pt-16 space-y-4">
+                            <h3 className="text-xl font-semibold text-white/90">
+                                Aggregated KPIs
+                            </h3>
+                            <MetricsCards keywords={displayedKeywords as Keyword[]} />
+                        </div>
+
+                        <div>
+                            <AverageTrendChart keywords={displayedKeywords as Keyword[]} />
+                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 }
