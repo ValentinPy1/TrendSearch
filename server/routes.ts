@@ -2107,32 +2107,79 @@ Return ONLY the JSON array, no other text. Example format:
 
             // STEP 3: Fetch DataForSEO (skip if already done)
             if (!savedProgress || !savedProgress.dataForSEOFetched) {
-                sendProgress('fetching-dataforseo', { message: `Fetching DataForSEO metrics for ${finalKeywords.length} keywords...` });
+                sendProgress('fetching-dataforseo', { message: `Finding data for ${finalKeywords.length} keywords...` });
 
-                // Calculate date range: last 4 years from today
-                const today = new Date();
-                const fourYearsAgo = new Date();
-                fourYearsAgo.setFullYear(today.getFullYear() - 4);
-                const dateTo = today.toISOString().split('T')[0];
-                const dateFrom = fourYearsAgo.toISOString().split('T')[0];
+                // Mock DataForSEO: Use existing database keywords instead of API call
+                // Simulate API delay (~30s)
+                await new Promise(resolve => setTimeout(resolve, 30000));
 
-                // Import and call DataForSEO service
-                const { fetchKeywordMetrics } = await import("./dataforseo-service");
-                const apiResponse = await fetchKeywordMetrics(finalKeywords, dateFrom, dateTo);
+                // Get existing keywords from database
+                const existingKeywords = await storage.getGlobalKeywordsByTexts(finalKeywords);
+                const existingKeywordsMap = new Map(existingKeywords.map(kw => [kw.keyword.toLowerCase(), kw]));
 
-                // Process API response and save to database (reuse logic from existing endpoint)
-                const task = apiResponse.tasks[0];
-                if (!task || !task.result) {
-                    throw new Error("No results from DataForSEO API");
+                // Simulate DataForSEO API response structure using existing database data
+                const keywordResults: any[] = [];
+                
+                for (const keywordText of finalKeywords) {
+                    const existingKeyword = existingKeywordsMap.get(keywordText.toLowerCase());
+                    
+                    if (existingKeyword && (
+                        existingKeyword.volume !== null || 
+                        existingKeyword.competition !== null || 
+                        existingKeyword.cpc !== null || 
+                        existingKeyword.topPageBid !== null
+                    )) {
+                        // Convert existing keyword data to DataForSEO response format
+                        const monthlyData = existingKeyword.monthlyData && Array.isArray(existingKeyword.monthlyData)
+                            ? existingKeyword.monthlyData.map((md: any) => {
+                                const [monthName, yearStr] = md.month.split(' ');
+                                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                const month = monthNames.indexOf(monthName) + 1;
+                                const year = parseInt(yearStr);
+                                return {
+                                    year,
+                                    month,
+                                    search_volume: md.volume || 0
+                                };
+                            })
+                            : [];
+
+                        // Convert competition from number to string if needed
+                        let competition = existingKeyword.competition;
+                        if (typeof competition === 'number') {
+                            if (competition === 100) competition = 'HIGH';
+                            else if (competition === 50) competition = 'MEDIUM';
+                            else if (competition === 0) competition = 'LOW';
+                        }
+
+                        keywordResults.push({
+                            keyword: existingKeyword.keyword,
+                            spell: null,
+                            location_code: 2840, // US
+                            language_code: 'en',
+                            search_partners: false,
+                            competition: competition || null,
+                            competition_index: typeof existingKeyword.competition === 'number' ? existingKeyword.competition : null,
+                            search_volume: existingKeyword.volume || null,
+                            cpc: existingKeyword.cpc || null,
+                            low_top_of_page_bid: existingKeyword.topPageBid || null,
+                            high_top_of_page_bid: existingKeyword.topPageBid || null,
+                            monthly_searches: monthlyData
+                        });
+                    }
                 }
-
-                const keywordResults = task.result;
                 let keywordsWithData = 0;
                 const keywordsToInsert: any[] = [];
                 const keywordMap = new Map<string, any>();
 
                 for (const result of keywordResults) {
-                    if (result.search_volume !== null && result.search_volume !== undefined) {
+                    // Count keywords with any data metric
+                    if ((result.search_volume !== null && result.search_volume !== undefined) ||
+                        (result.competition !== null && result.competition !== undefined) ||
+                        (result.competition_index !== null && result.competition_index !== undefined) ||
+                        (result.cpc !== null && result.cpc !== undefined) ||
+                        (result.low_top_of_page_bid !== null && result.low_top_of_page_bid !== undefined) ||
+                        (result.high_top_of_page_bid !== null && result.high_top_of_page_bid !== undefined)) {
                         keywordsWithData++;
                     }
 
@@ -2198,8 +2245,9 @@ Return ONLY the JSON array, no other text. Example format:
                     allKeywordsToLink.push(kw.keyword);
                 });
 
-                const existingKeywords = await storage.getGlobalKeywordsByTexts(finalKeywords);
-                existingKeywords.forEach(kw => {
+                // Get all existing keywords that weren't in savedKeywords (already in DB)
+                const allExistingKeywords = await storage.getGlobalKeywordsByTexts(finalKeywords);
+                allExistingKeywords.forEach(kw => {
                     if (!keywordTextToIdMap.has(kw.keyword.toLowerCase())) {
                         keywordTextToIdMap.set(kw.keyword.toLowerCase(), kw.id);
                         allKeywordsToLink.push(kw.keyword);
@@ -2356,7 +2404,13 @@ Return ONLY the JSON array, no other text. Example format:
 
                 // Reuse logic from existing generate-report endpoint
                 const allKeywords = await storage.getProjectKeywords(projectId);
-                const keywordsWithData = allKeywords.filter(kw => kw.volume !== null && kw.volume !== undefined);
+                // Include keywords with any data metric (volume, competition, cpc, or topPageBid)
+                const keywordsWithData = allKeywords.filter(kw => 
+                    (kw.volume !== null && kw.volume !== undefined) ||
+                    (kw.competition !== null && kw.competition !== undefined) ||
+                    (kw.cpc !== null && kw.cpc !== undefined && kw.cpc !== '') ||
+                    (kw.topPageBid !== null && kw.topPageBid !== undefined && kw.topPageBid !== '')
+                );
 
                 if (keywordsWithData.length === 0) {
                     throw new Error("No keywords with data found");

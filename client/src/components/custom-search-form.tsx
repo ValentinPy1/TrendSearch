@@ -69,8 +69,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         existingKeywords?: string[];
         newKeywords?: string[];
     } | null>(null);
-    const [keywordProgressStartTime, setKeywordProgressStartTime] = useState<number | null>(null);
-    const [metricsProgressStartTime, setMetricsProgressStartTime] = useState<number | null>(null);
+    const [stepStartTimes, setStepStartTimes] = useState<Record<string, number>>({});
+    const [elapsedTimes, setElapsedTimes] = useState<Record<string, number>>({});
     const [generatedKeywords, setGeneratedKeywords] = useState<string[]>([]);
     const [showQuadrantPopup, setShowQuadrantPopup] = useState(false);
     const [quadrantPopupType, setQuadrantPopupType] = useState<'seeds' | 'keywords' | 'duplicates' | 'existing' | null>(null);
@@ -119,6 +119,38 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
         }
     }, [projectsData, currentProjectId]);
+
+    // Update elapsed times every second for active steps
+    useEffect(() => {
+        if (!isGeneratingKeywords || Object.keys(stepStartTimes).length === 0) {
+            return;
+        }
+
+        const interval = setInterval(() => {
+            const currentTimes: Record<string, number> = {};
+            Object.entries(stepStartTimes).forEach(([stepKey, startTime]) => {
+                const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                const stepMap: Record<string, string[]> = {
+                    'generating-seeds': ['generating-seeds'],
+                    'generating-keywords': ['generating-keywords', 'selecting-top-keywords'],
+                    'fetching-dataforseo': ['fetching-dataforseo'],
+                    'computing-metrics': ['computing-metrics'],
+                    'generating-report': ['generating-report']
+                };
+                
+                const isActive = stepMap[stepKey]?.includes(currentStage) || false;
+                if (isActive) {
+                    currentTimes[stepKey] = Math.floor((Date.now() - startTime) / 1000);
+                }
+            });
+            
+            if (Object.keys(currentTimes).length > 0) {
+                setElapsedTimes(currentTimes);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [isGeneratingKeywords, stepStartTimes, keywordProgress]);
 
     // Create project mutation
     const createProjectMutation = useMutation({
@@ -739,9 +771,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             // Reset metrics stats
             setDataForSEOStats(null);
             setMetricsStats(null);
-            // Reset progress start times for fresh generation
-            setKeywordProgressStartTime(null);
-            setMetricsProgressStartTime(null);
+            // Reset step start times for fresh generation
+            setStepStartTimes({});
+            setElapsedTimes({});
         }
 
         try {
@@ -795,14 +827,19 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             if (data.type === "progress") {
                                 const currentStage = data.currentStage || data.stage || 'initializing';
                                 
-                                // Track when keyword generation stage starts for optimistic progress
-                                if ((currentStage === 'generating-keywords' || currentStage === 'selecting-top-keywords') && !keywordProgressStartTime) {
-                                    setKeywordProgressStartTime(Date.now());
-                                }
+                                // Track step start times for elapsed time calculation
+                                const stageMap: Record<string, string> = {
+                                    'generating-seeds': 'generating-seeds',
+                                    'generating-keywords': 'generating-keywords',
+                                    'selecting-top-keywords': 'generating-keywords',
+                                    'fetching-dataforseo': 'fetching-dataforseo',
+                                    'computing-metrics': 'computing-metrics',
+                                    'generating-report': 'generating-report'
+                                };
                                 
-                                // Track when metrics computation stage starts for optimistic progress
-                                if (currentStage === 'computing-metrics' && !metricsProgressStartTime) {
-                                    setMetricsProgressStartTime(Date.now());
+                                const stepKey = stageMap[currentStage] || currentStage;
+                                if (stepKey && !stepStartTimes[stepKey]) {
+                                    setStepStartTimes(prev => ({ ...prev, [stepKey]: Date.now() }));
                                 }
                                 
                                 // Update progress with current stage
@@ -839,9 +876,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     setGeneratedKeywords(data.newKeywords);
                                 }
                                 setKeywordProgress(prev => prev ? { ...prev, stage: 'complete', currentStage: 'complete' } : null);
-                                // Reset progress start times
-                                setKeywordProgressStartTime(null);
-                                setMetricsProgressStartTime(null);
+                                // Reset step start times
+                                setStepStartTimes({});
+                                setElapsedTimes({});
                                 // Update saved progress to mark as complete
                                 if (currentProjectId) {
                                     queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
@@ -871,9 +908,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             });
         } finally {
             setIsGeneratingKeywords(false);
-            // Reset progress start times when generation completes or fails
-            setKeywordProgressStartTime(null);
-            setMetricsProgressStartTime(null);
+            // Reset step start times when generation completes or fails
+            setStepStartTimes({});
+            setElapsedTimes({});
         }
     };
 
@@ -1183,13 +1220,15 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                     {/* Inline Step Indicators */}
                     {isGeneratingKeywords && (
-                        <div className="mt-4 space-y-2">
+                        <div className="mt-4 space-y-2 flex flex-col items-center">
                             {/* Step 1: Generating Seeds */}
                             <div className="flex items-center gap-2">
                                 {(() => {
                                     const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
                                     const isActive = currentStage === 'generating-seeds';
                                     const isCompleted = ['generating-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                    const elapsed = elapsedTimes['generating-seeds'] || 0;
+                                    const estimate = 5;
                                     return (
                                         <>
                                             {isCompleted ? (
@@ -1202,80 +1241,24 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
                                                 Generating seeds
                                             </span>
+                                            {isActive ? (
+                                                <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                            ) : !isCompleted ? (
+                                                <span className="text-xs text-white/40">~{estimate}s</span>
+                                            ) : null}
                                         </>
                                     );
                                 })()}
                             </div>
 
-                            {/* Step 2: Generating Keywords - with progress bar */}
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                    {(() => {
-                                        const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                        const isActive = currentStage === 'generating-keywords' || currentStage === 'selecting-top-keywords';
-                                        const isCompleted = ['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                        return (
-                                            <>
-                                                {isCompleted ? (
-                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                ) : isActive ? (
-                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                ) : (
-                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                )}
-                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                    Generating keywords
-                                                </span>
-                                                {isActive && (
-                                                    <span className="text-xs text-white/60 ml-auto">
-                                                        {keywordProgress?.newKeywordsCollected || 0} / 1000
-                                                    </span>
-                                                )}
-                                            </>
-                                        );
-                                    })()}
-                                </div>
-                                {(() => {
-                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                    const isActive = currentStage === 'generating-keywords' || currentStage === 'selecting-top-keywords';
-                                    if (!isActive) return null;
-                                    
-                                    // Smooth progress: start animating immediately, update with actual progress
-                                    const actualProgress = keywordProgress?.newKeywordsCollected || 0;
-                                    const actualPercent = Math.min((actualProgress / 1000) * 100, 100);
-                                    
-                                    // Optimistic progress: if we just started and have no progress yet, show a small amount
-                                    // This prevents the bar from appearing stuck at 0%
-                                    let optimisticPercent = actualPercent;
-                                    if (actualPercent === 0 && keywordProgressStartTime) {
-                                        const timeSinceStart = Date.now() - keywordProgressStartTime;
-                                        // Show 2% after 500ms, 5% after 2s to give visual feedback
-                                        if (timeSinceStart > 500) {
-                                            optimisticPercent = Math.min(2 + (timeSinceStart - 500) / 300, 5);
-                                        }
-                                    }
-                                    
-                                    return (
-                                        <div className="ml-6">
-                                            <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-purple-600 to-pink-600 transition-all duration-500 ease-out"
-                                                    style={{
-                                                        width: `${Math.max(optimisticPercent, actualPercent)}%`,
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-
-                            {/* Step 3: Fetching DataForSEO */}
+                            {/* Step 2: Generating Keywords */}
                             <div className="flex items-center gap-2">
                                 {(() => {
                                     const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                    const isActive = currentStage === 'fetching-dataforseo';
-                                    const isCompleted = ['computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                    const isActive = currentStage === 'generating-keywords' || currentStage === 'selecting-top-keywords';
+                                    const isCompleted = ['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                    const elapsed = elapsedTimes['generating-keywords'] || 0;
+                                    const estimate = 45;
                                     return (
                                         <>
                                             {isCompleted ? (
@@ -1286,72 +1269,74 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                 <div className="h-4 w-4 rounded-full border-2 border-white/40" />
                                             )}
                                             <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                Fetching DataForSEO metrics
+                                                Generating keywords
                                             </span>
+                                            {isActive ? (
+                                                <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                            ) : !isCompleted ? (
+                                                <span className="text-xs text-white/40">~{estimate}s</span>
+                                            ) : null}
                                         </>
                                     );
                                 })()}
                             </div>
 
-                            {/* Step 4: Computing Metrics - with progress bar */}
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                    {(() => {
-                                        const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                        const isActive = currentStage === 'computing-metrics';
-                                        const isCompleted = ['generating-report', 'complete'].includes(currentStage);
-                                        return (
-                                            <>
-                                                {isCompleted ? (
-                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                ) : isActive ? (
-                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                ) : (
-                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                )}
-                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                    Computing metrics
-                                                </span>
-                                                {isActive && metricsStats && (
-                                                    <span className="text-xs text-white/60 ml-auto">
-                                                        {metricsStats.processedCount} / {metricsStats.totalKeywords}
-                                                    </span>
-                                                )}
-                                            </>
-                                        );
-                                    })()}
-                                </div>
+                            {/* Step 3: Find data */}
+                            <div className="flex items-center gap-2">
+                                {(() => {
+                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                    const isActive = currentStage === 'fetching-dataforseo';
+                                    const isCompleted = ['computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                    const elapsed = elapsedTimes['fetching-dataforseo'] || 0;
+                                    const estimate = 30;
+                                    return (
+                                        <>
+                                            {isCompleted ? (
+                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                            ) : isActive ? (
+                                                <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                            ) : (
+                                                <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                            )}
+                                            <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                Find data
+                                            </span>
+                                            {isActive ? (
+                                                <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                            ) : !isCompleted ? (
+                                                <span className="text-xs text-white/40">~{estimate}s</span>
+                                            ) : null}
+                                        </>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Step 4: Computing Metrics */}
+                            <div className="flex items-center gap-2">
                                 {(() => {
                                     const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
                                     const isActive = currentStage === 'computing-metrics';
-                                    if (!isActive) return null;
-                                    
-                                    // Calculate actual progress
-                                    const actualPercent = metricsStats && metricsStats.totalKeywords > 0
-                                        ? Math.min((metricsStats.processedCount / metricsStats.totalKeywords) * 100, 100)
-                                        : 0;
-                                    
-                                    // Optimistic progress: if we just started and have no progress yet, show a small amount
-                                    let optimisticPercent = actualPercent;
-                                    if (actualPercent === 0 && metricsProgressStartTime) {
-                                        const timeSinceStart = Date.now() - metricsProgressStartTime;
-                                        // Show 2% after 500ms, 5% after 2s to give visual feedback
-                                        if (timeSinceStart > 500) {
-                                            optimisticPercent = Math.min(2 + (timeSinceStart - 500) / 300, 5);
-                                        }
-                                    }
-                                    
+                                    const isCompleted = ['generating-report', 'complete'].includes(currentStage);
+                                    const elapsed = elapsedTimes['computing-metrics'] || 0;
+                                    const estimate = 20;
                                     return (
-                                        <div className="ml-6">
-                                            <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-purple-600 to-pink-600 transition-all duration-500 ease-out"
-                                                    style={{
-                                                        width: `${Math.max(optimisticPercent, actualPercent)}%`,
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
+                                        <>
+                                            {isCompleted ? (
+                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                            ) : isActive ? (
+                                                <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                            ) : (
+                                                <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                            )}
+                                            <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                Computing metrics
+                                            </span>
+                                            {isActive ? (
+                                                <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                            ) : !isCompleted ? (
+                                                <span className="text-xs text-white/40">~{estimate}s</span>
+                                            ) : null}
+                                        </>
                                     );
                                 })()}
                             </div>
@@ -1362,6 +1347,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
                                     const isActive = currentStage === 'generating-report';
                                     const isCompleted = currentStage === 'complete';
+                                    const elapsed = elapsedTimes['generating-report'] || 0;
+                                    const estimate = 10;
                                     return (
                                         <>
                                             {isCompleted ? (
@@ -1374,6 +1361,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
                                                 Generating report
                                             </span>
+                                            {isActive ? (
+                                                <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                            ) : !isCompleted ? (
+                                                <span className="text-xs text-white/40">~{estimate}s</span>
+                                            ) : null}
                                         </>
                                     );
                                 })()}
@@ -1499,6 +1491,15 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             {/* Report Display */}
             {reportData && reportData.keywords && reportData.keywords.length > 0 && (() => {
+                // Count total keywords with data (volume, competition, cpc, or topPageBid)
+                const totalKeywordsWithData = reportData.keywords.filter((k: any) => {
+                    const hasVolume = k.volume !== null && k.volume !== undefined && k.volume !== '';
+                    const hasCompetition = k.competition !== null && k.competition !== undefined && k.competition !== '';
+                    const hasCpc = k.cpc !== null && k.cpc !== undefined && k.cpc !== '';
+                    const hasTopPageBid = k.topPageBid !== null && k.topPageBid !== undefined && k.topPageBid !== '';
+                    return hasVolume || hasCompetition || hasCpc || hasTopPageBid;
+                }).length;
+
                 // Filter keywords with full data if checkbox is checked
                 // A keyword has "full data" if it has all essential metrics: volume, competition, cpc, and topPageBid
                 const filteredKeywords = showOnlyFullData 
@@ -1569,7 +1570,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h3 className="text-xl font-semibold text-white/90 mb-2">
-                                        Top {displayedKeywords.length} Generated Keywords
+                                        {totalKeywordsWithData} generated keywords
                                     </h3>
                                     <p className="text-sm text-white/60">
                                         Click a keyword to view its trend analysis
