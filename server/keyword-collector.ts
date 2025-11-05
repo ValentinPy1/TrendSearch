@@ -21,7 +21,8 @@ export interface ProgressUpdate {
 }
 
 export interface KeywordGenerationProgress {
-    stage: string; // 'generating-seeds' | 'generating-keywords' | 'selecting-top-keywords' | 'complete'
+    currentStage: string; // 'generating-seeds' | 'generating-keywords' | 'fetching-dataforseo' | 'computing-metrics' | 'generating-report' | 'complete'
+    stage: string; // Legacy field for backward compatibility
     seedsGenerated: number;
     keywordsGenerated: number;
     duplicatesFound: number;
@@ -33,6 +34,12 @@ export interface KeywordGenerationProgress {
     existingKeywords?: string[];
     newKeywords?: string[]; // Final list of new keywords
     completedAt?: string; // ISO timestamp
+    // New fields for full pipeline tracking
+    dataForSEOFetched?: boolean;
+    metricsComputed?: boolean;
+    reportGenerated?: boolean;
+    keywordsFetchedCount?: number;
+    metricsProcessedCount?: number;
 }
 
 export interface KeywordCollectionResult {
@@ -122,40 +129,113 @@ export async function collectKeywords(
         progressCallback?.(progress);
     }
 
-    // Step 2: Collect keywords from seeds (or continue from resume point)
+    // Step 2: Collect keywords from seeds (or continue from resume point) with concurrent processing
     progress.stage = 'generating-keywords';
 
-    for (let i = startSeedIndex; i < seedsWithSimilarity.length; i++) {
-        const { seed, similarityScore } = seedsWithSimilarity[i];
+    const CONCURRENT_BATCH_SIZE = 20; // Process 20 seeds concurrently
+
+    // Process seeds in batches of 20 concurrently
+    for (let batchStart = startSeedIndex; batchStart < seedsWithSimilarity.length; batchStart += CONCURRENT_BATCH_SIZE) {
         if (progress.newKeywordsCollected >= targetCount) {
             break; // We have enough new keywords
         }
 
-        progress.currentSeed = seed;
-        progressCallback?.(progress);
+        const batchEnd = Math.min(batchStart + CONCURRENT_BATCH_SIZE, seedsWithSimilarity.length);
+        const batch = seedsWithSimilarity.slice(batchStart, batchEnd);
 
+        // Process all seeds in this batch concurrently
+        const batchPromises = batch.map(async ({ seed, similarityScore }) => {
+            try {
+                // Generate keywords from this seed (~50 per seed)
+                const generatedKeywords = await keywordGenerator.generateKeywordsFromSeed(seed, 50);
+                
+                // Deduplicate within this batch
+                const deduplicated = deduplicateKeywords(generatedKeywords);
+                const duplicatesInBatch = generatedKeywords.filter(kw => {
+                    const normalized = kw.toLowerCase();
+                    return !deduplicated.some(d => d.toLowerCase() === normalized);
+                });
+
+                // Check for existing keywords (vector DB + global DB)
+                const checkResult = await checkKeywords(deduplicated);
+
+                return {
+                    seed,
+                    generatedKeywords,
+                    deduplicated,
+                    duplicatesInBatch,
+                    checkResult,
+                    success: true,
+                };
+            } catch (error) {
+                console.error(`[KeywordCollector] Failed to generate keywords from seed: ${seed}`, error);
+                return {
+                    seed,
+                    generatedKeywords: [],
+                    deduplicated: [],
+                    duplicatesInBatch: [],
+                    checkResult: { existingKeywords: [], newKeywords: [] },
+                    success: false,
+                };
+            }
+        });
+
+        // Wait for all seeds in batch to complete, with timeout protection
+        let batchResults;
         try {
-            // Generate keywords from this seed (~50 per seed)
-            const generatedKeywords = await keywordGenerator.generateKeywordsFromSeed(seed, 50);
-            progress.keywordsGenerated += generatedKeywords.length;
-            allKeywordsList.push(...generatedKeywords);
-
-            // Deduplicate within this batch
-            const deduplicated = deduplicateKeywords(generatedKeywords);
-            const duplicatesInBatch = generatedKeywords.filter(kw => {
-                const normalized = kw.toLowerCase();
-                return !deduplicated.some(d => d.toLowerCase() === normalized);
+            batchResults = await Promise.allSettled(batchPromises);
+            // Convert settled results to regular results format
+            batchResults = batchResults.map((result, index) => {
+                if (result.status === 'fulfilled') {
+                    return result.value;
+                } else {
+                    const seed = batch[index]?.seed || 'unknown';
+                    console.error(`[KeywordCollector] Promise rejected for seed: ${seed}`, result.reason);
+                    return {
+                        seed,
+                        generatedKeywords: [],
+                        deduplicated: [],
+                        duplicatesInBatch: [],
+                        checkResult: { existingKeywords: [], newKeywords: [] },
+                        success: false,
+                    };
+                }
             });
-            progress.duplicatesFound += duplicatesInBatch.length;
-            duplicatesList.push(...duplicatesInBatch);
+        } catch (error) {
+            console.error(`[KeywordCollector] Error processing batch starting at ${batchStart}:`, error);
+            // Create failed results for all seeds in batch
+            batchResults = batch.map(({ seed }) => ({
+                seed,
+                generatedKeywords: [],
+                deduplicated: [],
+                duplicatesInBatch: [],
+                checkResult: { existingKeywords: [], newKeywords: [] },
+                success: false,
+            }));
+        }
 
-            // Check for existing keywords (vector DB + global DB)
-            const checkResult = await checkKeywords(deduplicated);
-            progress.existingKeywordsFound += checkResult.existingKeywords.length;
-            existingKeywordsList.push(...checkResult.existingKeywords);
+        // Process results and update progress
+        for (const result of batchResults) {
+            if (progress.newKeywordsCollected >= targetCount) {
+                break; // We have enough new keywords
+            }
+
+            if (!result.success) {
+                continue; // Skip failed seeds
+            }
+
+            progress.currentSeed = result.seed;
+            progress.keywordsGenerated += result.generatedKeywords.length;
+            allKeywordsList.push(...result.generatedKeywords);
+
+            progress.duplicatesFound += result.duplicatesInBatch.length;
+            duplicatesList.push(...result.duplicatesInBatch);
+
+            progress.existingKeywordsFound += result.checkResult.existingKeywords.length;
+            existingKeywordsList.push(...result.checkResult.existingKeywords);
 
             // Add new keywords to collection
-            const newKeywords = checkResult.newKeywords.filter(kw => {
+            const newKeywords = result.checkResult.newKeywords.filter(kw => {
                 const normalized = kw.toLowerCase();
                 if (!seenKeywords.has(normalized)) {
                     seenKeywords.add(normalized);
@@ -175,15 +255,30 @@ export async function collectKeywords(
             progress.existingKeywords = [...existingKeywordsList];
             progress.newKeywords = [...allGeneratedKeywords]; // Track new keywords for saving
 
-            progressCallback?.(progress);
+            // Call progress callback with error handling
+            try {
+                progressCallback?.(progress);
+            } catch (callbackError) {
+                console.error(`[KeywordCollector] Error in progress callback:`, callbackError);
+                // Continue processing even if callback fails
+            }
 
             // If we have enough, break early
             if (progress.newKeywordsCollected >= targetCount) {
                 break;
             }
-        } catch (error) {
-            console.error(`[KeywordCollector] Failed to generate keywords from seed: ${seed}`, error);
-            // Continue with next seed
+        }
+        
+        // Send progress update after each batch completes
+        try {
+            progressCallback?.(progress);
+        } catch (callbackError) {
+            console.error(`[KeywordCollector] Error in progress callback after batch:`, callbackError);
+        }
+
+        // If we have enough, break out of batch loop
+        if (progress.newKeywordsCollected >= targetCount) {
+            break;
         }
     }
 
@@ -234,7 +329,8 @@ export async function collectKeywords(
  */
 export function progressToSaveFormat(progress: ProgressUpdate, newKeywords: string[]): KeywordGenerationProgress {
     return {
-        stage: progress.stage,
+        currentStage: progress.stage,
+        stage: progress.stage, // Legacy field for backward compatibility
         seedsGenerated: progress.seedsGenerated,
         keywordsGenerated: progress.keywordsGenerated,
         duplicatesFound: progress.duplicatesFound,

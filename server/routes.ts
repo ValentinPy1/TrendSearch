@@ -1932,6 +1932,722 @@ Return ONLY the JSON array, no other text. Example format:
         }
     });
 
+    // Unified endpoint: Generate full report (seeds -> keywords -> DataForSEO -> metrics -> report)
+    app.post("/api/custom-search/generate-full-report", requireAuth, requirePayment, async (req, res) => {
+        const projectIdForError = req.body.projectId; // Capture for error handling
+        let lastProgress: any = null;
+        let lastSaveTime = Date.now();
+        const SAVE_INTERVAL = 10000; // Save every 10 seconds
+
+        try {
+            const { projectId, pitch, topics, personas, painPoints, features, resumeFromProgress } = req.body;
+
+            // Verify project exists and user owns it
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+
+            const project = await storage.getCustomSearchProject(projectId);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (project.userId !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden" });
+            }
+
+            // Set up Server-Sent Events for progress updates
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+            res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+            // Get saved progress or use provided resumeFromProgress
+            const savedProgress = resumeFromProgress || project.keywordGenerationProgress;
+
+            // Helper function to send progress updates
+            const sendProgress = (stage: string, data: any) => {
+                const progress = {
+                    type: 'progress',
+                    stage,
+                    currentStage: stage,
+                    ...data
+                };
+                res.write(`data: ${JSON.stringify(progress)}\n\n`);
+                lastProgress = progress;
+            };
+
+            // Helper function to save progress
+            const saveProgress = async (progressData: any) => {
+                try {
+                    const { progressToSaveFormat } = await import("./keyword-collector");
+                    const progressToSave = progressToSaveFormat(
+                        { stage: progressData.currentStage || progressData.stage, ...progressData },
+                        progressData.newKeywords || []
+                    );
+                    // Add full pipeline tracking fields
+                    progressToSave.currentStage = progressData.currentStage || progressData.stage;
+                    progressToSave.dataForSEOFetched = progressData.dataForSEOFetched || false;
+                    progressToSave.metricsComputed = progressData.metricsComputed || false;
+                    progressToSave.reportGenerated = progressData.reportGenerated || false;
+                    progressToSave.keywordsFetchedCount = progressData.keywordsFetchedCount || 0;
+                    progressToSave.metricsProcessedCount = progressData.metricsProcessedCount || 0;
+                    await storage.saveKeywordGenerationProgress(projectId, progressToSave);
+                    lastSaveTime = Date.now();
+                } catch (error) {
+                    console.error("Error saving progress:", error);
+                }
+            };
+
+            // Use provided inputs or project data
+            const input = {
+                pitch: pitch || project.pitch || "",
+                topics: topics || project.topics || [],
+                personas: personas || project.personas || [],
+                painPoints: painPoints || project.painPoints || [],
+                features: features || project.features || [],
+                competitors: project.competitors || [],
+            };
+
+            let finalKeywords: string[] = [];
+
+            // STEP 1: Generate seeds (skip if already done)
+            if (!savedProgress || !savedProgress.seeds || savedProgress.seeds.length === 0) {
+                sendProgress('generating-seeds', { message: 'Generating 50 seed prompts...' });
+                const { generateSeeds } = await import("./keyword-seed-generator");
+                const seedsWithSimilarity = await generateSeeds(input);
+                const seeds = seedsWithSimilarity.map(s => s.seed);
+                
+                await saveProgress({
+                    currentStage: 'generating-seeds',
+                    seedsGenerated: seeds.length,
+                    seeds,
+                    keywordsGenerated: 0,
+                    duplicatesFound: 0,
+                    existingKeywordsFound: 0,
+                    newKeywordsCollected: 0,
+                });
+                sendProgress('generating-seeds', { message: `Generated ${seeds.length} seeds`, seeds });
+            } else {
+                sendProgress('generating-seeds', { message: 'Seeds already generated, skipping...', seeds: savedProgress.seeds });
+            }
+
+            // STEP 2: Generate keywords (with concurrent processing)
+            if (!savedProgress || !savedProgress.newKeywords || savedProgress.newKeywords.length < 1000) {
+                sendProgress('generating-keywords', { message: 'Generating 1000 keywords with 20 concurrent calls...' });
+                
+                const { collectKeywords, progressToSaveFormat } = await import("./keyword-collector");
+                
+                // Track progress for saving
+                let accumulatedNewKeywords: string[] = [];
+                
+                const progressCallback = async (progress: any) => {
+                    try {
+                        sendProgress('generating-keywords', progress);
+                        accumulatedNewKeywords = progress.newKeywords || accumulatedNewKeywords;
+                        
+                        // Save progress periodically
+                        const now = Date.now();
+                        if (now - lastSaveTime > SAVE_INTERVAL || (progress.newKeywordsCollected > 0 && progress.newKeywordsCollected % 50 === 0)) {
+                            try {
+                                await saveProgress({
+                                    currentStage: 'generating-keywords',
+                                    ...progress,
+                                    newKeywords: accumulatedNewKeywords
+                                });
+                            } catch (saveError) {
+                                console.error("Error saving progress in callback:", saveError);
+                                // Continue even if saving fails
+                            }
+                        }
+                    } catch (callbackError) {
+                        console.error("Error in progress callback:", callbackError);
+                        // Continue processing even if callback fails
+                    }
+                };
+
+                const result = await collectKeywords(
+                    input,
+                    progressCallback,
+                    1000,
+                    savedProgress && savedProgress.newKeywords ? savedProgress : undefined
+                );
+
+                finalKeywords = result.keywords;
+                accumulatedNewKeywords = finalKeywords;
+
+                // Save final keyword generation progress
+                await saveProgress({
+                    currentStage: 'generating-keywords',
+                    ...result.progress,
+                    newKeywords: finalKeywords
+                });
+
+                sendProgress('generating-keywords', { message: `Generated ${finalKeywords.length} keywords`, newKeywords: finalKeywords });
+            } else {
+                finalKeywords = savedProgress.newKeywords;
+                sendProgress('generating-keywords', { message: 'Keywords already generated, skipping...', newKeywords: finalKeywords });
+            }
+
+            // STEP 3: Fetch DataForSEO (skip if already done)
+            if (!savedProgress || !savedProgress.dataForSEOFetched) {
+                sendProgress('fetching-dataforseo', { message: `Fetching DataForSEO metrics for ${finalKeywords.length} keywords...` });
+
+                // Calculate date range: last 4 years from today
+                const today = new Date();
+                const fourYearsAgo = new Date();
+                fourYearsAgo.setFullYear(today.getFullYear() - 4);
+                const dateTo = today.toISOString().split('T')[0];
+                const dateFrom = fourYearsAgo.toISOString().split('T')[0];
+
+                // Import and call DataForSEO service
+                const { fetchKeywordMetrics } = await import("./dataforseo-service");
+                const apiResponse = await fetchKeywordMetrics(finalKeywords, dateFrom, dateTo);
+
+                // Process API response and save to database (reuse logic from existing endpoint)
+                const task = apiResponse.tasks[0];
+                if (!task || !task.result) {
+                    throw new Error("No results from DataForSEO API");
+                }
+
+                const keywordResults = task.result;
+                let keywordsWithData = 0;
+                const keywordsToInsert: any[] = [];
+                const keywordMap = new Map<string, any>();
+
+                for (const result of keywordResults) {
+                    if (result.search_volume !== null && result.search_volume !== undefined) {
+                        keywordsWithData++;
+                    }
+
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const monthlyData = result.monthly_searches?.map(ms => {
+                        const monthName = monthNames[ms.month - 1];
+                        return {
+                            month: `${monthName} ${ms.year}`,
+                            volume: ms.search_volume,
+                            sortKey: `${ms.year}-${String(ms.month).padStart(2, '0')}`
+                        };
+                    }).sort((a, b) => a.sortKey.localeCompare(b.sortKey)).map(({ sortKey, ...rest }) => rest) || [];
+
+                    let competitionIndex = null;
+                    if (result.competition) {
+                        if (result.competition === "HIGH") competitionIndex = 100;
+                        else if (result.competition === "MEDIUM") competitionIndex = 50;
+                        else if (result.competition === "LOW") competitionIndex = 0;
+                    }
+
+                    const avgTopPageBid = result.low_top_of_page_bid && result.high_top_of_page_bid
+                        ? (result.low_top_of_page_bid + result.high_top_of_page_bid) / 2
+                        : null;
+
+                    const keywordData = {
+                        keyword: result.keyword,
+                        volume: result.search_volume || null,
+                        competition: competitionIndex || result.competition_index || null,
+                        cpc: result.cpc || null,
+                        topPageBid: avgTopPageBid,
+                        monthlyData: monthlyData,
+                        source: "dataforseo"
+                    };
+
+                    keywordsToInsert.push(keywordData);
+                    keywordMap.set(result.keyword.toLowerCase(), result);
+                }
+
+                // Add keywords without data
+                for (const keyword of finalKeywords) {
+                    if (!keywordMap.has(keyword.toLowerCase())) {
+                        keywordsToInsert.push({
+                            keyword: keyword,
+                            volume: null,
+                            competition: null,
+                            cpc: null,
+                            topPageBid: null,
+                            monthlyData: [],
+                            source: "dataforseo"
+                        });
+                    }
+                }
+
+                // Save all keywords to globalKeywords table
+                const savedKeywords = await storage.createGlobalKeywords(keywordsToInsert);
+
+                // Link keywords to project
+                const allKeywordsToLink: string[] = [];
+                const keywordTextToIdMap = new Map<string, string>();
+
+                savedKeywords.forEach(kw => {
+                    keywordTextToIdMap.set(kw.keyword.toLowerCase(), kw.id);
+                    allKeywordsToLink.push(kw.keyword);
+                });
+
+                const existingKeywords = await storage.getGlobalKeywordsByTexts(finalKeywords);
+                existingKeywords.forEach(kw => {
+                    if (!keywordTextToIdMap.has(kw.keyword.toLowerCase())) {
+                        keywordTextToIdMap.set(kw.keyword.toLowerCase(), kw.id);
+                        allKeywordsToLink.push(kw.keyword);
+                    }
+                });
+
+                const existingLinks = await storage.getProjectKeywords(projectId);
+                const existingLinkIds = new Set(existingLinks.map(kw => kw.id));
+
+                const pitch = project.pitch || "";
+                const { keywordVectorService } = await import("./keyword-vector-service");
+                const keywordIdsToLink: string[] = [];
+                const similarityScoresToLink: number[] = [];
+
+                for (const keywordText of allKeywordsToLink) {
+                    const keywordId = keywordTextToIdMap.get(keywordText.toLowerCase());
+                    if (keywordId && !existingLinkIds.has(keywordId)) {
+                        keywordIdsToLink.push(keywordId);
+                        let similarity = 0.5;
+                        if (pitch.trim()) {
+                            try {
+                                similarity = await keywordVectorService.calculateTextSimilarity(pitch, keywordText);
+                            } catch (error) {
+                                console.warn(`Failed to calculate similarity for keyword "${keywordText}":`, error);
+                            }
+                        }
+                        similarityScoresToLink.push(similarity);
+                    }
+                }
+
+                if (keywordIdsToLink.length > 0) {
+                    await storage.linkKeywordsToProject(projectId, keywordIdsToLink, similarityScoresToLink);
+                }
+
+                // Save progress
+                await saveProgress({
+                    currentStage: 'fetching-dataforseo',
+                    dataForSEOFetched: true,
+                    keywordsFetchedCount: keywordsWithData,
+                    newKeywords: finalKeywords
+                });
+
+                sendProgress('fetching-dataforseo', { 
+                    message: `Fetched DataForSEO metrics: ${keywordsWithData} out of ${finalKeywords.length} keywords had data`,
+                    keywordsWithData,
+                    totalKeywords: finalKeywords.length
+                });
+            } else {
+                sendProgress('fetching-dataforseo', { message: 'DataForSEO metrics already fetched, skipping...' });
+            }
+
+            // STEP 4: Compute metrics (concurrently in batches)
+            if (!savedProgress || !savedProgress.metricsComputed) {
+                sendProgress('computing-metrics', { message: 'Computing metrics for all keywords concurrently...' });
+
+                const keywords = await storage.getProjectKeywords(projectId);
+                const { calculateVolatility, calculateTrendStrength } = await import("./opportunity-score");
+
+                const BATCH_SIZE = 50; // Process 50 keywords concurrently
+                let processedCount = 0;
+                const totalKeywords = keywords.filter(kw => kw.monthlyData && Array.isArray(kw.monthlyData) && kw.monthlyData.length > 0 && kw.volume !== null).length;
+
+                // Process keywords in batches
+                for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
+                    const batch = keywords.slice(i, i + BATCH_SIZE);
+                    
+                    // Process batch concurrently
+                    const batchPromises = batch.map(async (keyword) => {
+                        if (!keyword.monthlyData || !Array.isArray(keyword.monthlyData) || keyword.monthlyData.length === 0) {
+                            return null;
+                        }
+                        if (keyword.volume === null || keyword.volume === undefined) {
+                            return null;
+                        }
+
+                        const monthlyData = keyword.monthlyData;
+                        const sortedMonthlyData = [...monthlyData].sort((a, b) => {
+                            const dateA = new Date(a.month);
+                            const dateB = new Date(b.month);
+                            return dateA.getTime() - dateB.getTime();
+                        });
+
+                        if (sortedMonthlyData.length < 2) {
+                            return null;
+                        }
+
+                        const lastMonth = sortedMonthlyData[sortedMonthlyData.length - 1];
+                        let yoyGrowth: number | null = null;
+                        if (sortedMonthlyData.length >= 12) {
+                            const sameMonthLastYear = sortedMonthlyData[sortedMonthlyData.length - 12];
+                            yoyGrowth = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
+                        }
+
+                        let threeMonthGrowth: number | null = null;
+                        if (sortedMonthlyData.length >= 3) {
+                            const threeMonthsAgo = sortedMonthlyData[sortedMonthlyData.length - 3];
+                            if (threeMonthsAgo.volume > 0) {
+                                threeMonthGrowth = ((lastMonth.volume - threeMonthsAgo.volume) / threeMonthsAgo.volume) * 100;
+                            }
+                        }
+
+                        const volatility = calculateVolatility(sortedMonthlyData);
+                        const growthYoyValue = yoyGrowth !== null ? yoyGrowth : 0;
+                        const trendStrength = calculateTrendStrength(growthYoyValue, volatility);
+
+                        await storage.updateKeywordMetrics(keyword.id, {
+                            growthYoy: yoyGrowth !== null ? yoyGrowth.toString() : null,
+                            growth3m: threeMonthGrowth !== null ? threeMonthGrowth.toString() : null,
+                            volatility: volatility.toString(),
+                            trendStrength: trendStrength.toString()
+                        });
+
+                        return keyword.id;
+                    });
+
+                    const batchResults = await Promise.all(batchPromises);
+                    processedCount += batchResults.filter(r => r !== null).length;
+
+                    // Send progress update
+                    sendProgress('computing-metrics', {
+                        message: `Processed ${processedCount} out of ${totalKeywords} keywords`,
+                        processedCount,
+                        totalKeywords
+                    });
+
+                    // Save progress after each batch
+                    await saveProgress({
+                        currentStage: 'computing-metrics',
+                        metricsProcessedCount: processedCount,
+                        newKeywords: finalKeywords
+                    });
+                }
+
+                // Save final metrics progress
+                await saveProgress({
+                    currentStage: 'computing-metrics',
+                    metricsComputed: true,
+                    metricsProcessedCount: processedCount,
+                    newKeywords: finalKeywords
+                });
+
+                sendProgress('computing-metrics', { 
+                    message: `Computed metrics for ${processedCount} keywords`,
+                    processedCount,
+                    totalKeywords
+                });
+            } else {
+                sendProgress('computing-metrics', { message: 'Metrics already computed, skipping...' });
+            }
+
+            // STEP 5: Generate report
+            if (!savedProgress || !savedProgress.reportGenerated) {
+                sendProgress('generating-report', { message: 'Generating final report...' });
+
+                // Reuse logic from existing generate-report endpoint
+                const allKeywords = await storage.getProjectKeywords(projectId);
+                const keywordsWithData = allKeywords.filter(kw => kw.volume !== null && kw.volume !== undefined);
+
+                if (keywordsWithData.length === 0) {
+                    throw new Error("No keywords with data found");
+                }
+
+                // Calculate aggregated metrics (reuse logic from existing endpoint)
+                const totalVolume = keywordsWithData.reduce((sum, kw) => sum + (kw.volume || 0), 0);
+                const avgVolume = Math.round(totalVolume / keywordsWithData.length);
+
+                const validCpc = keywordsWithData
+                    .map(kw => kw.cpc ? parseFloat(kw.cpc) : null)
+                    .filter((c): c is number => c !== null);
+                const avgCpc = validCpc.length > 0
+                    ? validCpc.reduce((sum, c) => sum + c, 0) / validCpc.length
+                    : null;
+
+                const validTopPageBid = keywordsWithData
+                    .map(kw => kw.topPageBid ? parseFloat(kw.topPageBid) : null)
+                    .filter((b): b is number => b !== null);
+                const avgTopPageBid = validTopPageBid.length > 0
+                    ? validTopPageBid.reduce((sum, b) => sum + b, 0) / validTopPageBid.length
+                    : null;
+
+                const competitionLevels = keywordsWithData
+                    .map(kw => {
+                        if (!kw.competition) return null;
+                        const comp = kw.competition;
+                        if (comp >= 75) return "high";
+                        if (comp >= 25) return "medium";
+                        return "low";
+                    })
+                    .filter((c): c is string => c !== null);
+
+                const competitionCounts = competitionLevels.reduce((acc, level) => {
+                    acc[level] = (acc[level] || 0) + 1;
+                    return acc;
+                }, {} as Record<string, number>);
+
+                const competition = Object.keys(competitionCounts).length > 0
+                    ? Object.entries(competitionCounts).sort((a, b) => b[1] - a[1])[0][0]
+                    : null;
+
+                const competitionNumber = competition === "high" ? 100 : competition === "medium" ? 50 : 0;
+
+                const monthlyDataMap = new Map<string, { sum: number; count: number }>();
+                keywordsWithData.forEach(kw => {
+                    if (kw.monthlyData && Array.isArray(kw.monthlyData)) {
+                        kw.monthlyData.forEach((md: any) => {
+                            if (md.month && md.volume !== null && md.volume !== undefined) {
+                                const existing = monthlyDataMap.get(md.month) || { sum: 0, count: 0 };
+                                monthlyDataMap.set(md.month, {
+                                    sum: existing.sum + md.volume,
+                                    count: existing.count + 1
+                                });
+                            }
+                        });
+                    }
+                });
+
+                const aggregatedMonthlyData = Array.from(monthlyDataMap.entries())
+                    .map(([month, data]) => ({
+                        month,
+                        volume: Math.round(data.sum / data.count),
+                        sortKey: month
+                    }))
+                    .sort((a, b) => {
+                        const dateA = new Date(a.month);
+                        const dateB = new Date(b.month);
+                        return dateA.getTime() - dateB.getTime();
+                    })
+                    .map(({ sortKey, ...rest }) => rest);
+
+                const { calculateVolatility, calculateTrendStrength, calculateOpportunityScore } = await import("./opportunity-score");
+
+                let aggregatedGrowthYoy: number | null = null;
+                if (aggregatedMonthlyData.length >= 12) {
+                    const lastMonth = aggregatedMonthlyData[aggregatedMonthlyData.length - 1];
+                    const sameMonthLastYear = aggregatedMonthlyData[aggregatedMonthlyData.length - 12];
+                    aggregatedGrowthYoy = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
+                }
+
+                let aggregatedGrowth3m: number | null = null;
+                if (aggregatedMonthlyData.length >= 3) {
+                    const lastMonth = aggregatedMonthlyData[aggregatedMonthlyData.length - 1];
+                    const threeMonthsAgo = aggregatedMonthlyData[aggregatedMonthlyData.length - 3];
+                    aggregatedGrowth3m = ((lastMonth.volume - threeMonthsAgo.volume) / (threeMonthsAgo.volume + 1)) * 100;
+                }
+
+                const aggregatedVolatility = calculateVolatility(aggregatedMonthlyData);
+                const aggregatedTrendStrength = aggregatedGrowthYoy !== null
+                    ? calculateTrendStrength(aggregatedGrowthYoy, aggregatedVolatility)
+                    : 0;
+
+                let aggregatedOpportunityScore = null;
+                let aggregatedBidEfficiency = null;
+                let aggregatedTac = null;
+                let aggregatedSac = null;
+
+                if (avgVolume && avgCpc !== null && avgTopPageBid !== null && aggregatedGrowthYoy !== null && aggregatedMonthlyData.length > 0) {
+                    const oppResult = calculateOpportunityScore({
+                        volume: avgVolume,
+                        competition: competitionNumber,
+                        cpc: avgCpc,
+                        topPageBid: avgTopPageBid,
+                        growthYoy: aggregatedGrowthYoy,
+                        monthlyData: aggregatedMonthlyData
+                    });
+                    aggregatedOpportunityScore = oppResult.opportunityScore;
+                    aggregatedBidEfficiency = oppResult.bidEfficiency;
+                    aggregatedTac = oppResult.tac;
+                    aggregatedSac = oppResult.sac;
+                }
+
+                const keywordIds = keywordsWithData.map(kw => kw.id);
+                const projectLinks = keywordIds.length > 0
+                    ? await db
+                        .select()
+                        .from(customSearchProjectKeywords)
+                        .where(
+                            eq(customSearchProjectKeywords.customSearchProjectId, projectId)
+                        )
+                    : [];
+
+                const similarityScoreMap = new Map<string, string>();
+                const pitch = project.pitch || "";
+
+                const keywordIdToTextMap = new Map<string, string>();
+                keywordsWithData.forEach(kw => {
+                    keywordIdToTextMap.set(kw.id, kw.keyword);
+                });
+
+                for (const link of projectLinks) {
+                    let similarity = link.similarityScore ? parseFloat(link.similarityScore) : null;
+                    if (similarity === null || similarity === 0.8) {
+                        const keywordText = keywordIdToTextMap.get(link.globalKeywordId);
+                        if (keywordText && pitch.trim()) {
+                            try {
+                                similarity = await keywordVectorService.calculateTextSimilarity(pitch, keywordText);
+                                await db
+                                    .update(customSearchProjectKeywords)
+                                    .set({ similarityScore: similarity.toString() })
+                                    .where(eq(customSearchProjectKeywords.id, link.id));
+                            } catch (error) {
+                                console.warn(`Failed to calculate similarity for keyword "${keywordText}":`, error);
+                                similarity = similarity || 0.5;
+                            }
+                        } else {
+                            similarity = similarity || 0.5;
+                        }
+                    }
+                    similarityScoreMap.set(link.globalKeywordId, similarity.toString());
+                }
+
+                const formattedKeywords = keywordsWithData.map(kw => {
+                    let opportunityScore = null;
+                    let bidEfficiency = null;
+                    let tac = null;
+                    let sac = null;
+
+                    if (kw.volume && kw.competition !== null && kw.cpc && kw.topPageBid && kw.growthYoy !== null && kw.monthlyData) {
+                        try {
+                            const oppResult = calculateOpportunityScore({
+                                volume: kw.volume,
+                                competition: kw.competition,
+                                cpc: parseFloat(kw.cpc),
+                                topPageBid: parseFloat(kw.topPageBid),
+                                growthYoy: parseFloat(kw.growthYoy),
+                                monthlyData: kw.monthlyData
+                            });
+                            opportunityScore = oppResult.opportunityScore;
+                            bidEfficiency = oppResult.bidEfficiency;
+                            tac = oppResult.tac;
+                            sac = oppResult.sac;
+                        } catch (error) {
+                            console.error(`Error calculating opportunity score for keyword ${kw.keyword}:`, error);
+                        }
+                    }
+
+                    const similarityScore = similarityScoreMap.get(kw.id) || null;
+
+                    let formattedMonthlyData = kw.monthlyData || [];
+                    if (Array.isArray(formattedMonthlyData) && formattedMonthlyData.length > 0) {
+                        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                        const needsConversion = formattedMonthlyData.some((item: any) =>
+                            typeof item.month === 'string' && /^\d{4}-\d{2}$/.test(item.month)
+                        );
+
+                        if (needsConversion) {
+                            formattedMonthlyData = formattedMonthlyData.map((item: any) => {
+                                if (/^\d{4}-\d{2}$/.test(item.month)) {
+                                    const [year, month] = item.month.split('-');
+                                    const monthIndex = parseInt(month, 10) - 1;
+                                    const monthName = monthNames[monthIndex];
+                                    return {
+                                        month: `${monthName} ${year}`,
+                                        volume: item.volume,
+                                        sortKey: item.month
+                                    };
+                                }
+                                return { ...item, sortKey: item.month };
+                            }).sort((a: any, b: any) => {
+                                if (a.sortKey && b.sortKey) {
+                                    return a.sortKey.localeCompare(b.sortKey);
+                                }
+                                const dateA = new Date(a.month);
+                                const dateB = new Date(b.month);
+                                return dateA.getTime() - dateB.getTime();
+                            }).map(({ sortKey, ...rest }: any) => rest);
+                        } else {
+                            formattedMonthlyData = [...formattedMonthlyData].sort((a: any, b: any) => {
+                                const dateA = new Date(a.month);
+                                const dateB = new Date(b.month);
+                                return dateA.getTime() - dateB.getTime();
+                            });
+                        }
+                    }
+
+                    return {
+                        id: kw.id,
+                        reportId: projectId,
+                        keyword: kw.keyword,
+                        volume: kw.volume,
+                        competition: kw.competition,
+                        cpc: kw.cpc ? parseFloat(kw.cpc).toString() : null,
+                        topPageBid: kw.topPageBid ? parseFloat(kw.topPageBid).toString() : null,
+                        growth3m: kw.growth3m ? parseFloat(kw.growth3m).toString() : null,
+                        growthYoy: kw.growthYoy ? parseFloat(kw.growthYoy).toString() : null,
+                        similarityScore: similarityScore ? parseFloat(similarityScore).toString() : null,
+                        growthSlope: null,
+                        growthR2: null,
+                        growthConsistency: null,
+                        growthStability: null,
+                        sustainedGrowthScore: null,
+                        volatility: kw.volatility ? parseFloat(kw.volatility).toString() : null,
+                        trendStrength: kw.trendStrength ? parseFloat(kw.trendStrength).toString() : null,
+                        bidEfficiency: bidEfficiency ? bidEfficiency.toString() : null,
+                        tac: tac ? tac.toString() : null,
+                        sac: sac ? sac.toString() : null,
+                        opportunityScore: opportunityScore ? opportunityScore.toString() : null,
+                        monthlyData: formattedMonthlyData
+                    };
+                });
+
+                // Save final progress
+                await saveProgress({
+                    currentStage: 'complete',
+                    reportGenerated: true,
+                    newKeywords: finalKeywords
+                });
+
+                // Send complete event with report
+                res.write(`data: ${JSON.stringify({ 
+                    type: 'complete', 
+                    stage: 'complete',
+                    currentStage: 'complete',
+                    report: {
+                        aggregated: {
+                            avgVolume,
+                            growth3m: aggregatedGrowth3m !== null ? aggregatedGrowth3m.toString() : null,
+                            growthYoy: aggregatedGrowthYoy !== null ? aggregatedGrowthYoy.toString() : null,
+                            competition,
+                            avgTopPageBid: avgTopPageBid !== null ? avgTopPageBid.toString() : null,
+                            avgCpc: avgCpc !== null ? avgCpc.toString() : null,
+                            volatility: aggregatedVolatility.toString(),
+                            trendStrength: aggregatedTrendStrength.toString(),
+                            bidEfficiency: aggregatedBidEfficiency !== null ? aggregatedBidEfficiency.toString() : null,
+                            tac: aggregatedTac !== null ? aggregatedTac.toString() : null,
+                            sac: aggregatedSac !== null ? aggregatedSac.toString() : null,
+                            opportunityScore: aggregatedOpportunityScore !== null ? aggregatedOpportunityScore.toString() : null
+                        },
+                        keywords: formattedKeywords,
+                        totalKeywords: keywordsWithData.length
+                    }
+                })}\n\n`);
+            } else {
+                // Report already generated, just send complete
+                res.write(`data: ${JSON.stringify({ 
+                    type: 'complete', 
+                    stage: 'complete',
+                    currentStage: 'complete',
+                    message: 'Report already generated'
+                })}\n\n`);
+            }
+
+            res.end();
+        } catch (error) {
+            console.error("Error generating full report:", error);
+
+            // Save error state if we have a project
+            if (projectIdForError && lastProgress) {
+                try {
+                    const { progressToSaveFormat } = await import("./keyword-collector");
+                    const errorProgress = progressToSaveFormat(lastProgress, lastProgress.newKeywords || []);
+                    errorProgress.currentStage = lastProgress.currentStage || lastProgress.stage || 'error';
+                    await storage.saveKeywordGenerationProgress(projectIdForError, errorProgress);
+                } catch (saveError) {
+                    console.error("Error saving error progress:", saveError);
+                }
+            }
+
+            res.write(`data: ${JSON.stringify({ 
+                type: 'error', 
+                error: error instanceof Error ? error.message : "Unknown error" 
+            })}\n\n`);
+            res.end();
+        }
+    });
+
     // Generate keywords for a custom search project
     app.post("/api/custom-search/generate-keywords", requireAuth, requirePayment, async (req, res) => {
         try {

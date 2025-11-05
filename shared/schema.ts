@@ -69,7 +69,8 @@ export const keywords = pgTable("keywords", {
 });
 
 export interface KeywordGenerationProgress {
-  stage: string; // 'generating-seeds' | 'generating-keywords' | 'selecting-top-keywords' | 'complete'
+  currentStage: string; // 'generating-seeds' | 'generating-keywords' | 'fetching-dataforseo' | 'computing-metrics' | 'generating-report' | 'complete'
+  stage: string; // Legacy field for backward compatibility
   seedsGenerated: number;
   keywordsGenerated: number;
   duplicatesFound: number;
@@ -81,6 +82,12 @@ export interface KeywordGenerationProgress {
   existingKeywords?: string[];
   newKeywords?: string[]; // Final list of new keywords
   completedAt?: string; // ISO timestamp
+  // New fields for full pipeline tracking
+  dataForSEOFetched?: boolean; // Flag to track if DataForSEO fetch completed
+  metricsComputed?: boolean; // Flag to track if metrics computation completed
+  reportGenerated?: boolean; // Flag to track if report generation completed
+  keywordsFetchedCount?: number; // Number of keywords fetched from DataForSEO
+  metricsProcessedCount?: number; // Number of keywords with metrics computed
 }
 
 export const customSearchProjects = pgTable("custom_search_projects", {

@@ -321,9 +321,24 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         // Load saved keyword generation progress
         if (project.keywordGenerationProgress) {
             setSavedProgress(project.keywordGenerationProgress);
-            // If progress exists and is complete, show the keywords
-            if (project.keywordGenerationProgress.stage === 'complete' && project.keywordGenerationProgress.newKeywords) {
-                setGeneratedKeywords(project.keywordGenerationProgress.newKeywords);
+            // If progress exists and is complete, show the keywords and report
+            const progress = project.keywordGenerationProgress;
+            if ((progress.currentStage === 'complete' || progress.stage === 'complete') && progress.newKeywords) {
+                setGeneratedKeywords(progress.newKeywords);
+            }
+            // Restore stage-specific stats if available
+            if (progress.dataForSEOFetched && progress.keywordsFetchedCount !== undefined) {
+                setDataForSEOStats({
+                    keywordsWithData: progress.keywordsFetchedCount,
+                    totalKeywords: progress.newKeywords?.length || 0,
+                    keywordsWithoutData: (progress.newKeywords?.length || 0) - progress.keywordsFetchedCount,
+                });
+            }
+            if (progress.metricsComputed && progress.metricsProcessedCount !== undefined) {
+                setMetricsStats({
+                    processedCount: progress.metricsProcessedCount,
+                    totalKeywords: progress.keywordsFetchedCount || progress.newKeywords?.length || 0,
+                });
             }
         } else {
             setSavedProgress(null);
@@ -355,20 +370,22 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     totalKeywords: status.keywordsWithData,
                 });
 
-                // If metrics are computed, try to load the report
-                try {
-                    const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
-                        projectId: project.id,
-                    });
-                    const reportResult = await reportRes.json();
-                    if (reportResult.success && reportResult.report) {
-                        setReportData(reportResult.report);
-                        setDisplayedKeywordCount(10); // Reset to 10 when loading report
-                        setShowOnlyFullData(false); // Reset filter when loading report
+                // If metrics are computed and report is already generated, try to load the report
+                if (savedProgress?.reportGenerated || savedProgress?.currentStage === 'complete') {
+                    try {
+                        const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
+                            projectId: project.id,
+                        });
+                        const reportResult = await reportRes.json();
+                        if (reportResult.success && reportResult.report) {
+                            setReportData(reportResult.report);
+                            setDisplayedKeywordCount(10); // Reset to 10 when loading report
+                            setShowOnlyFullData(false); // Reset filter when loading report
+                        }
+                    } catch (reportError) {
+                        console.error("Error loading report:", reportError);
+                        // Don't show error, just continue
                     }
-                } catch (reportError) {
-                    console.error("Error loading report:", reportError);
-                    // Don't show error, just continue
                 }
             }
         } catch (error) {
@@ -668,7 +685,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     };
 
-    const handleGenerateKeywords = async (resume: boolean = false) => {
+    const handleGenerateFullReport = async (resume: boolean = false) => {
         if (!pitch || pitch.trim().length === 0) {
             toast({
                 title: "Error",
@@ -694,7 +711,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         // If resuming, restore progress state
         if (resume && savedProgress) {
             setKeywordProgress({
-                stage: savedProgress.stage || 'initializing',
+                stage: savedProgress.currentStage || savedProgress.stage || 'initializing',
                 seedsGenerated: savedProgress.seedsGenerated || 0,
                 keywordsGenerated: savedProgress.keywordsGenerated || 0,
                 duplicatesFound: savedProgress.duplicatesFound || 0,
@@ -729,7 +746,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 headers["Authorization"] = `Bearer ${session.access_token}`;
             }
 
-            const response = await fetch("/api/custom-search/generate-keywords", {
+            const response = await fetch("/api/custom-search/generate-full-report", {
                 method: "POST",
                 headers,
                 body: JSON.stringify({
@@ -769,25 +786,50 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         try {
                             const data = JSON.parse(line.slice(6));
                             if (data.type === "progress") {
-                                setKeywordProgress(data.data);
+                                // Update progress with current stage
+                                setKeywordProgress({
+                                    stage: data.currentStage || data.stage || 'initializing',
+                                    ...data
+                                });
                                 // Update generated keywords if available in progress
-                                if (data.data.newKeywords && Array.isArray(data.data.newKeywords)) {
-                                    setGeneratedKeywords(data.data.newKeywords);
+                                if (data.newKeywords && Array.isArray(data.newKeywords)) {
+                                    setGeneratedKeywords(data.newKeywords);
+                                }
+                                // Update stage-specific stats
+                                if (data.keywordsWithData !== undefined) {
+                                    setDataForSEOStats({
+                                        keywordsWithData: data.keywordsWithData,
+                                        totalKeywords: data.totalKeywords || 0,
+                                        keywordsWithoutData: (data.totalKeywords || 0) - data.keywordsWithData,
+                                    });
+                                }
+                                if (data.processedCount !== undefined) {
+                                    setMetricsStats({
+                                        processedCount: data.processedCount,
+                                        totalKeywords: data.totalKeywords || 0,
+                                    });
                                 }
                             } else if (data.type === "complete") {
-                                setGeneratedKeywords(data.data.keywords || []);
-                                setKeywordProgress(prev => prev ? { ...prev, stage: 'complete', newKeywords: data.data.keywords || [] } : null);
+                                // Final completion - report is ready
+                                if (data.report) {
+                                    setReportData(data.report);
+                                    setDisplayedKeywordCount(10);
+                                    setShowOnlyFullData(false);
+                                }
+                                if (data.newKeywords && Array.isArray(data.newKeywords)) {
+                                    setGeneratedKeywords(data.newKeywords);
+                                }
+                                setKeywordProgress(prev => prev ? { ...prev, stage: 'complete', currentStage: 'complete' } : null);
                                 // Update saved progress to mark as complete
                                 if (currentProjectId) {
                                     queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
-                                    // Refresh saved progress
                                     setTimeout(() => {
                                         queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
                                     }, 500);
                                 }
                                 toast({
-                                    title: "Keywords Generated!",
-                                    description: `Successfully generated ${data.data.keywords?.length || 0} keywords`,
+                                    title: "Report Generated!",
+                                    description: `Successfully generated full report with ${data.report?.totalKeywords || 0} keywords`,
                                 });
                             } else if (data.type === "error") {
                                 throw new Error(data.error || "Unknown error");
@@ -799,141 +841,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 }
             }
         } catch (error) {
-            console.error("Error generating keywords:", error);
+            console.error("Error generating full report:", error);
             toast({
                 title: "Error",
-                description: error instanceof Error ? error.message : "Failed to generate keywords",
+                description: error instanceof Error ? error.message : "Failed to generate full report",
                 variant: "destructive",
             });
         } finally {
             setIsGeneratingKeywords(false);
-        }
-    };
-
-    const handleFetchDataForSEO = async () => {
-        if (!currentProjectId) {
-            toast({
-                title: "Error",
-                description: "Please save your project first",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        setIsFetchingDataForSEO(true);
-        try {
-            const res = await apiRequest("POST", "/api/custom-search/fetch-dataforseo", {
-                projectId: currentProjectId,
-            });
-            const result = await res.json();
-            
-            if (result.success) {
-                setDataForSEOStats({
-                    keywordsWithData: result.keywordsWithData,
-                    totalKeywords: result.totalKeywords,
-                    keywordsWithoutData: result.keywordsWithoutData,
-                });
-                toast({
-                    title: "DataForSEO Metrics Fetched!",
-                    description: `${result.keywordsWithData} out of ${result.totalKeywords} keywords had data`,
-                });
-                // Refresh project data
-                queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
-            } else {
-                throw new Error(result.message || "Failed to fetch DataForSEO metrics");
-            }
-        } catch (error) {
-            console.error("Error fetching DataForSEO metrics:", error);
-            toast({
-                title: "Error",
-                description: error instanceof Error ? error.message : "Failed to fetch DataForSEO metrics",
-                variant: "destructive",
-            });
-        } finally {
-            setIsFetchingDataForSEO(false);
-        }
-    };
-
-    const handleComputeMetrics = async () => {
-        if (!currentProjectId) {
-            toast({
-                title: "Error",
-                description: "Please save your project first",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        setIsComputingMetrics(true);
-        try {
-            const res = await apiRequest("POST", "/api/custom-search/compute-metrics", {
-                projectId: currentProjectId,
-            });
-            const result = await res.json();
-            
-            if (result.success) {
-                setMetricsStats({
-                    processedCount: result.processedCount,
-                    totalKeywords: result.totalKeywords,
-                });
-                toast({
-                    title: "Metrics Computed!",
-                    description: `Processed ${result.processedCount} out of ${result.totalKeywords} keywords`,
-                });
-                // Refresh project data
-                queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
-            } else {
-                throw new Error(result.message || "Failed to compute metrics");
-            }
-        } catch (error) {
-            console.error("Error computing metrics:", error);
-            toast({
-                title: "Error",
-                description: error instanceof Error ? error.message : "Failed to compute metrics",
-                variant: "destructive",
-            });
-        } finally {
-            setIsComputingMetrics(false);
-        }
-    };
-
-    const handleGenerateReport = async () => {
-        if (!currentProjectId) {
-            toast({
-                title: "Error",
-                description: "Please save your project first",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        setIsGeneratingReport(true);
-        try {
-            const res = await apiRequest("POST", "/api/custom-search/generate-report", {
-                projectId: currentProjectId,
-            });
-            const result = await res.json();
-            
-            if (result.success) {
-                setReportData(result.report);
-                setDisplayedKeywordCount(10); // Reset to 10 when generating new report
-                setShowOnlyFullData(false); // Reset filter when generating new report
-                toast({
-                    title: "Report Generated!",
-                    description: `Report generated for ${result.report.totalKeywords} keywords`,
-                });
-            } else {
-                throw new Error(result.message || "Failed to generate report");
-            }
-        } catch (error) {
-            console.error("Error generating report:", error);
-            toast({
-                title: "Error",
-                description: error instanceof Error ? error.message : "Failed to generate report",
-                variant: "destructive",
-            });
-        } finally {
-            setIsGeneratingReport(false);
         }
     };
 
@@ -1179,15 +1094,15 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 {/* Generate Keywords Button */}
                 <div className="pt-4 border-t border-white/10 space-y-3">
                     {/* Show resume option if progress exists and is incomplete */}
-                    {savedProgress && savedProgress.stage !== 'complete' && (
+                    {savedProgress && savedProgress.currentStage !== 'complete' && savedProgress.currentStage !== undefined && (
                         <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
                             <div className="text-sm text-yellow-200 mb-2">
-                                Generation in progress: {savedProgress.newKeywordsCollected} / 1000 keywords
+                                Generation in progress: {savedProgress.newKeywordsCollected || 0} / 1000 keywords
                             </div>
                             <div className="flex gap-2">
                                 <Button
                                     type="button"
-                                    onClick={() => handleGenerateKeywords(true)}
+                                    onClick={() => handleGenerateFullReport(true)}
                                     disabled={isGeneratingKeywords}
                                     className="flex-1 bg-yellow-600 hover:bg-yellow-700"
                                 >
@@ -1207,7 +1122,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     type="button"
                                     onClick={() => {
                                         setSavedProgress(null);
-                                        handleGenerateKeywords(false);
+                                        handleGenerateFullReport(false);
                                     }}
                                     disabled={isGeneratingKeywords}
                                     variant="outline"
@@ -1219,168 +1134,39 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         </div>
                     )}
 
-                    {/* Show completed keywords if generation is complete OR if keywords exist in database */}
-                    {((savedProgress && savedProgress.stage === 'complete' && savedProgress.newKeywords && savedProgress.newKeywords.length > 0) || generatedKeywords.length > 0) && (
-                        <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-3 space-y-3">
-                            <div className="text-sm text-green-200 mb-2">
-                                ✓ {savedProgress?.stage === 'complete' ? 'Generation completed' : 'Keywords loaded'}: {generatedKeywords.length} keywords
-                            </div>
+                    {/* Generate Full Report Button */}
+                    <div className="flex flex-col gap-2">
+                        {isGeneratingKeywords && !showKeywordProgress && (
                             <Button
                                 type="button"
-                                onClick={() => {
-                                    setShowKeywordProgress(true);
-                                    if (savedProgress) {
-                                        setKeywordProgress({
-                                            stage: 'complete',
-                                            seedsGenerated: savedProgress.seedsGenerated || 0,
-                                            keywordsGenerated: savedProgress.keywordsGenerated || 0,
-                                            duplicatesFound: savedProgress.duplicatesFound || 0,
-                                            existingKeywordsFound: savedProgress.existingKeywordsFound || 0,
-                                            newKeywordsCollected: savedProgress.newKeywordsCollected || 0,
-                                            seeds: savedProgress.seeds || [],
-                                            allKeywords: savedProgress.allKeywords || [],
-                                            duplicates: savedProgress.duplicates || [],
-                                            existingKeywords: savedProgress.existingKeywords || [],
-                                        });
-                                        setGeneratedKeywords(savedProgress.newKeywords || generatedKeywords);
-                                    } else {
-                                        // Fallback if no savedProgress but we have generatedKeywords
-                                        setKeywordProgress({
-                                            stage: 'complete',
-                                            seedsGenerated: 0,
-                                            keywordsGenerated: generatedKeywords.length,
-                                            duplicatesFound: 0,
-                                            existingKeywordsFound: 0,
-                                            newKeywordsCollected: generatedKeywords.length,
-                                            seeds: [],
-                                            allKeywords: generatedKeywords,
-                                            duplicates: [],
-                                            existingKeywords: [],
-                                        });
-                                        setGeneratedKeywords(generatedKeywords);
-                                    }
-                                }}
+                                onClick={() => setShowKeywordProgress(true)}
                                 variant="outline"
-                                className="w-full"
+                                className="w-full border-yellow-600 text-yellow-600 hover:bg-yellow-600/10"
                             >
-                                View Keywords
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Show Progress
                             </Button>
-
-                            {/* DataForSEO Fetch Button */}
-                            <div className="space-y-2">
-                                <Button
-                                    type="button"
-                                    onClick={handleFetchDataForSEO}
-                                    disabled={isFetchingDataForSEO || !currentProjectId || dataForSEOStats !== null}
-                                    className="w-full bg-blue-600 hover:bg-blue-700"
-                                >
-                                    {isFetchingDataForSEO ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Fetching DataForSEO...
-                                        </>
-                                    ) : dataForSEOStats ? (
-                                        <>
-                                            <Search className="mr-2 h-4 w-4" />
-                                            DataForSEO Fetched
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Search className="mr-2 h-4 w-4" />
-                                            Fetch DataForSEO
-                                        </>
-                                    )}
-                                </Button>
-                                {dataForSEOStats && (
-                                    <div className="text-xs text-green-200">
-                                        {dataForSEOStats.keywordsWithData} / {dataForSEOStats.totalKeywords} keywords had data
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Compute Metrics Button */}
-                            <div className="space-y-2">
-                                <Button
-                                    type="button"
-                                    onClick={handleComputeMetrics}
-                                    disabled={isComputingMetrics || !currentProjectId || !dataForSEOStats || metricsStats !== null}
-                                    className="w-full bg-purple-600 hover:bg-purple-700"
-                                >
-                                    {isComputingMetrics ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Computing Metrics...
-                                        </>
-                                    ) : metricsStats ? (
-                                        <>
-                                            <Sparkles className="mr-2 h-4 w-4" />
-                                            Metrics Computed
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Sparkles className="mr-2 h-4 w-4" />
-                                            Compute Metrics
-                                        </>
-                                    )}
-                                </Button>
-                                {metricsStats && (
-                                    <div className="text-xs text-green-200">
-                                        Processed {metricsStats.processedCount} / {metricsStats.totalKeywords} keywords
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Generate Report Button */}
-                            <div className="space-y-2">
-                                <Button
-                                    type="button"
-                                    onClick={handleGenerateReport}
-                                    disabled={isGeneratingReport || !currentProjectId || !metricsStats}
-                                    className="w-full bg-indigo-600 hover:bg-indigo-700"
-                                >
-                                    {isGeneratingReport ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Generating Report...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Sparkle className="mr-2 h-4 w-4" />
-                                            Generate Report
-                                        </>
-                                    )}
-                                </Button>
-                                {reportData && (
-                                    <div className="text-xs text-green-200">
-                                        Report generated for {reportData.totalKeywords} keywords
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Generate Keywords Button */}
-                    <div className="flex justify-center">
+                        )}
                         <Button
                             type="button"
-                            onClick={() => handleGenerateKeywords(false)}
+                            onClick={() => handleGenerateFullReport(false)}
                             disabled={
                                 !pitch ||
                                 pitch.trim().length === 0 ||
                                 isGeneratingKeywords ||
                                 !currentProjectId
                             }
-                            className="w-1/2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                         >
                             {isGeneratingKeywords ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Generating Keywords...
+                                    Generating Full Report...
                                 </>
                             ) : (
                                 <>
                                     <Sparkle className="mr-2 h-4 w-4" />
-                                    Generate Keywords
+                                    Generate Full Report
                                 </>
                             )}
                         </Button>
@@ -1435,7 +1221,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             </form>
 
             {/* Keyword Generation Progress Dialog */}
-            <Dialog open={showKeywordProgress} onOpenChange={setShowKeywordProgress}>
+            <Dialog open={showKeywordProgress} onOpenChange={(open) => {
+                // Allow closing, but show button to reopen if generation is in progress
+                setShowKeywordProgress(open);
+            }}>
                 <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Generating Keywords</DialogTitle>
@@ -1563,14 +1352,50 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 </div>
                             )}
 
+                            {/* Stage Progress Indicators */}
+                            <div className="space-y-2">
+                                <div className="text-xs text-white/60 mb-2">Pipeline Stages:</div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {['generating-seeds', 'generating-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report'].map((stage) => {
+                                        const isActive = keywordProgress.stage === stage || keywordProgress.currentStage === stage;
+                                        const isCompleted = ['generating-seeds', 'generating-keywords', 'fetching-dataforseo', 'computing-metrics'].indexOf(stage) < 
+                                            ['generating-seeds', 'generating-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report'].indexOf(keywordProgress.stage || keywordProgress.currentStage || '');
+                                        const stageNames: Record<string, string> = {
+                                            'generating-seeds': 'Seeds',
+                                            'generating-keywords': 'Keywords',
+                                            'fetching-dataforseo': 'DataForSEO',
+                                            'computing-metrics': 'Metrics',
+                                            'generating-report': 'Report'
+                                        };
+                                        return (
+                                            <div
+                                                key={stage}
+                                                className={`p-2 rounded text-xs ${
+                                                    isActive
+                                                        ? 'bg-blue-500/20 border border-blue-500/50'
+                                                        : isCompleted
+                                                        ? 'bg-green-500/20 border border-green-500/30'
+                                                        : 'bg-white/5 border border-white/10'
+                                                }`}
+                                            >
+                                                <div className={`font-medium ${isActive ? 'text-blue-300' : isCompleted ? 'text-green-300' : 'text-white/40'}`}>
+                                                    {isCompleted ? '✓ ' : isActive ? '→ ' : ''}
+                                                    {stageNames[stage] || stage}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
                             {/* Completion Message */}
-                            {keywordProgress.stage === 'complete' && (
+                            {(keywordProgress.stage === 'complete' || keywordProgress.currentStage === 'complete') && (
                                 <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4">
                                     <div className="text-sm font-medium text-green-400">
-                                        ✓ Keywords Generated Successfully!
+                                        ✓ Full Report Generated Successfully!
                                     </div>
                                     <div className="text-xs text-white/60 mt-1">
-                                        {generatedKeywords.length} unique keywords have been generated and saved.
+                                        Report generated with {reportData?.totalKeywords || generatedKeywords.length || 0} keywords.
                                     </div>
                                 </div>
                             )}
