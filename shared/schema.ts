@@ -68,6 +68,20 @@ export const keywords = pgTable("keywords", {
   monthlyData: jsonb("monthly_data").$type<{ month: string; volume: number }[]>(),
 });
 
+export const customSearchProjects = pgTable("custom_search_projects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text("name"),
+  pitch: text("pitch"),
+  topics: jsonb("topics").$type<string[]>().default([]),
+  personas: jsonb("personas").$type<string[]>().default([]),
+  painPoints: jsonb("pain_points").$type<string[]>().default([]),
+  features: jsonb("features").$type<string[]>().default([]),
+  competitors: jsonb("competitors").$type<Array<{ name: string; description: string; url?: string | null }>>().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -97,6 +111,22 @@ export const insertKeywordSchema = createInsertSchema(keywords).omit({
   id: true,
 });
 
+export const insertCustomSearchProjectSchema = createInsertSchema(customSearchProjects).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  topics: z.array(z.string()).default([]),
+  personas: z.array(z.string()).default([]),
+  painPoints: z.array(z.string()).default([]),
+  features: z.array(z.string()).default([]),
+  competitors: z.array(z.object({
+    name: z.string(),
+    description: z.string(),
+    url: z.string().nullable().optional(),
+  })).default([]),
+});
+
 // Select types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -109,6 +139,9 @@ export type InsertReport = z.infer<typeof insertReportSchema>;
 
 export type Keyword = typeof keywords.$inferSelect;
 export type InsertKeyword = z.infer<typeof insertKeywordSchema>;
+
+export type CustomSearchProject = typeof customSearchProjects.$inferSelect;
+export type InsertCustomSearchProject = z.infer<typeof insertCustomSearchProjectSchema>;
 
 // Combined types for frontend
 export type IdeaWithReport = Idea & {

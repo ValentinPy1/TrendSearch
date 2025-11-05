@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ListInput } from "@/components/ui/list-input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Search, ExternalLink, Building2, Sparkles } from "lucide-react";
+import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen } from "lucide-react";
+import { CustomSearchProjectBrowser } from "./custom-search-project-browser";
+import type { CustomSearchProject } from "@shared/schema";
 
 interface CustomSearchFormProps { }
 
@@ -37,6 +39,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [isGeneratingFeatures, setIsGeneratingFeatures] = useState(false);
     const [isFindingCompetitors, setIsFindingCompetitors] = useState(false);
     const [competitors, setCompetitors] = useState<Competitor[]>([]);
+    const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+    const [showProjectBrowser, setShowProjectBrowser] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isLoadingProject, setIsLoadingProject] = useState(false);
+    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const form = useForm<FormData>({
         defaultValues: {
@@ -45,6 +52,187 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     });
 
     const pitch = form.watch("pitch");
+
+    // Query to check if user has any projects
+    const { data: projectsData } = useQuery<{ projects: CustomSearchProject[] }>({
+        queryKey: ["/api/custom-search/projects"],
+        queryFn: async () => {
+            const res = await apiRequest("GET", "/api/custom-search/projects");
+            return res.json();
+        },
+    });
+
+    // Create project mutation
+    const createProjectMutation = useMutation({
+        mutationFn: async (data: {
+            name?: string;
+            pitch?: string;
+            topics?: string[];
+            personas?: string[];
+            painPoints?: string[];
+            features?: string[];
+            competitors?: Competitor[];
+        }) => {
+            const res = await apiRequest("POST", "/api/custom-search/projects", data);
+            return res.json();
+        },
+        onSuccess: (result) => {
+            setCurrentProjectId(result.project.id);
+            queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
+        },
+        onError: (error) => {
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to create project",
+                variant: "destructive",
+            });
+        },
+    });
+
+    // Update project mutation
+    const updateProjectMutation = useMutation({
+        mutationFn: async (data: {
+            id: string;
+            pitch?: string;
+            topics?: string[];
+            personas?: string[];
+            painPoints?: string[];
+            features?: string[];
+            competitors?: Competitor[];
+        }) => {
+            const { id, ...updateData } = data;
+            const res = await apiRequest("PUT", `/api/custom-search/projects/${id}`, updateData);
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
+        },
+        onError: (error) => {
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to save project",
+                variant: "destructive",
+            });
+        },
+    });
+
+    // Auto-save function with debouncing
+    const autoSave = () => {
+        // Skip auto-save if we're loading a project or creating initial project
+        if (isLoadingProject || createProjectMutation.isPending) return;
+        
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+
+        saveTimeoutRef.current = setTimeout(() => {
+            if (!currentProjectId) {
+                // Create new project if none exists
+                createProjectMutation.mutate({
+                    pitch: pitch || "",
+                    topics,
+                    personas,
+                    painPoints,
+                    features,
+                    competitors,
+                });
+            } else {
+                // Update existing project
+                setIsSaving(true);
+                updateProjectMutation.mutate(
+                    {
+                        id: currentProjectId,
+                        pitch: pitch || "",
+                        topics,
+                        personas,
+                        painPoints,
+                        features,
+                        competitors,
+                    },
+                    {
+                        onSettled: () => {
+                            setIsSaving(false);
+                        },
+                    }
+                );
+            }
+        }, 2000); // 2 second debounce
+    };
+
+    // Auto-save on form changes
+    useEffect(() => {
+        autoSave();
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pitch, topics, personas, painPoints, features, competitors, isLoadingProject]);
+
+    // Auto-create project on first mount if no projects exist
+    useEffect(() => {
+        if (!projectsData) return;
+        
+        if (projectsData.projects.length === 0 && !currentProjectId && !createProjectMutation.isPending) {
+            createProjectMutation.mutate({
+                pitch: "",
+                topics: [],
+                personas: [],
+                painPoints: [],
+                features: [],
+                competitors: [],
+            });
+        } else if (projectsData.projects.length > 0 && !currentProjectId) {
+            // Load most recent project
+            const mostRecent = projectsData.projects[0];
+            loadProject(mostRecent);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [projectsData, currentProjectId]);
+
+    // Load project data into form
+    const loadProject = (project: CustomSearchProject) => {
+        setIsLoadingProject(true);
+        setCurrentProjectId(project.id);
+        form.setValue("pitch", project.pitch || "");
+        setTopics(project.topics || []);
+        setPersonas(project.personas || []);
+        setPainPoints(project.painPoints || []);
+        setFeatures(project.features || []);
+        setCompetitors(project.competitors || []);
+        // Allow auto-save after a short delay to ensure form is fully updated
+        setTimeout(() => {
+            setIsLoadingProject(false);
+        }, 100);
+    };
+
+    // Handle new project creation
+    const handleNewProject = () => {
+        // Clear form
+        form.setValue("pitch", "");
+        setTopics([]);
+        setPersonas([]);
+        setPainPoints([]);
+        setFeatures([]);
+        setCompetitors([]);
+        setCurrentProjectId(null);
+        
+        // Create new project
+        createProjectMutation.mutate({
+            pitch: "",
+            topics: [],
+            personas: [],
+            painPoints: [],
+            features: [],
+            competitors: [],
+        });
+    };
+
+    // Handle project selection from browser
+    const handleSelectProject = (project: CustomSearchProject) => {
+        loadProject(project);
+    };
 
     const generateIdeaMutation = useMutation({
         mutationFn: async (data: { originalIdea: string | null; longerDescription?: boolean }) => {
@@ -114,6 +302,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         onSuccess: (result) => {
             if (result.competitors && Array.isArray(result.competitors)) {
                 setCompetitors(result.competitors);
+                // Auto-save will be triggered by useEffect
                 toast({
                     title: "Competitors Found!",
                     description: `Found ${result.competitors.length} competitors.`,
@@ -279,6 +468,45 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     targeted keywords and competitor analysis.
                 </p>
             </div>
+
+            {/* Project Management Buttons */}
+            <div className="flex items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleNewProject}
+                    disabled={createProjectMutation.isPending}
+                    className="flex items-center gap-2"
+                >
+                    <Plus className="h-4 w-4" />
+                    New Project
+                </Button>
+                <div className="flex items-center gap-2">
+                    {isSaving && (
+                        <div className="flex items-center gap-2 text-xs text-white/60">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Saving...
+                        </div>
+                    )}
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowProjectBrowser(true)}
+                        className="flex items-center gap-2"
+                    >
+                        <FolderOpen className="h-4 w-4" />
+                        Browse Projects
+                    </Button>
+                </div>
+            </div>
+
+            {/* Project Browser Modal */}
+            <CustomSearchProjectBrowser
+                open={showProjectBrowser}
+                onOpenChange={setShowProjectBrowser}
+                onSelectProject={handleSelectProject}
+                onCreateNew={handleNewProject}
+            />
 
             <form className="space-y-6">
                 {/* Idea Pitch */}

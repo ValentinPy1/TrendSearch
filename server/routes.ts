@@ -1712,6 +1712,149 @@ Return ONLY the JSON array, no other text. Example format:
         }
     });
 
+    // Custom Search Projects API
+    // Get all projects for user
+    app.get("/api/custom-search/projects", requireAuth, async (req, res) => {
+        try {
+            const projects = await storage.getCustomSearchProjects(req.user.id);
+            res.json({ projects });
+        } catch (error) {
+            console.error("Error fetching projects:", error);
+            res.status(500).json({
+                message: "Failed to fetch projects",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Get single project
+    app.get("/api/custom-search/projects/:id", requireAuth, async (req, res) => {
+        try {
+            const { id } = req.params;
+            const project = await storage.getCustomSearchProject(id);
+            
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+
+            // Verify ownership
+            if (project.userId !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden" });
+            }
+
+            res.json({ project });
+        } catch (error) {
+            console.error("Error fetching project:", error);
+            res.status(500).json({
+                message: "Failed to fetch project",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Create new project
+    app.post("/api/custom-search/projects", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { name, pitch, topics, personas, painPoints, features, competitors } = req.body;
+
+            // Generate project name if not provided
+            let projectName = name;
+            if (!projectName || projectName.trim().length === 0) {
+                if (pitch && pitch.trim().length > 0) {
+                    // Use first sentence of pitch (up to 50 chars)
+                    const firstSentence = pitch.split(/[.!?]/)[0].trim();
+                    projectName = firstSentence.length > 50 
+                        ? firstSentence.substring(0, 47) + "..."
+                        : firstSentence || "Untitled Project";
+                } else {
+                    // Use timestamp
+                    const date = new Date();
+                    projectName = `Project - ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                }
+            }
+
+            const project = await storage.createCustomSearchProject({
+                userId: req.user.id,
+                name: projectName,
+                pitch: pitch || "",
+                topics: topics || [],
+                personas: personas || [],
+                painPoints: painPoints || [],
+                features: features || [],
+                competitors: competitors || [],
+            });
+
+            res.json({ project });
+        } catch (error) {
+            console.error("Error creating project:", error);
+            res.status(500).json({
+                message: "Failed to create project",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Update project
+    app.put("/api/custom-search/projects/:id", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { name, pitch, topics, personas, painPoints, features, competitors } = req.body;
+
+            // Verify project exists and user owns it
+            const existingProject = await storage.getCustomSearchProject(id);
+            if (!existingProject) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (existingProject.userId !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden" });
+            }
+
+            // Build update data (only include provided fields)
+            const updateData: any = {};
+            if (name !== undefined) updateData.name = name;
+            if (pitch !== undefined) updateData.pitch = pitch;
+            if (topics !== undefined) updateData.topics = topics;
+            if (personas !== undefined) updateData.personas = personas;
+            if (painPoints !== undefined) updateData.painPoints = painPoints;
+            if (features !== undefined) updateData.features = features;
+            if (competitors !== undefined) updateData.competitors = competitors;
+
+            const project = await storage.updateCustomSearchProject(id, updateData);
+            res.json({ project });
+        } catch (error) {
+            console.error("Error updating project:", error);
+            res.status(500).json({
+                message: "Failed to update project",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
+    // Delete project
+    app.delete("/api/custom-search/projects/:id", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            // Verify project exists and user owns it
+            const project = await storage.getCustomSearchProject(id);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (project.userId !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden" });
+            }
+
+            await storage.deleteCustomSearchProject(id);
+            res.json({ message: "Project deleted successfully" });
+        } catch (error) {
+            console.error("Error deleting project:", error);
+            res.status(500).json({
+                message: "Failed to delete project",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+        }
+    });
+
     const httpServer = createServer(app);
     return httpServer;
 }

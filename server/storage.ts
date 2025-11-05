@@ -1,12 +1,13 @@
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-    users, ideas, reports, keywords,
+    users, ideas, reports, keywords, customSearchProjects,
     type User, type InsertUser,
     type Idea, type InsertIdea,
     type Report, type InsertReport,
     type Keyword, type InsertKeyword,
-    type IdeaWithReport
+    type IdeaWithReport,
+    type CustomSearchProject, type InsertCustomSearchProject
 } from "@shared/schema";
 
 export interface IStorage {
@@ -33,6 +34,13 @@ export interface IStorage {
     createKeyword(keyword: InsertKeyword): Promise<Keyword>;
     createKeywords(keywords: InsertKeyword[]): Promise<Keyword[]>;
     deleteKeyword(id: string): Promise<void>;
+
+    // Custom Search Project methods
+    getCustomSearchProjects(userId: string): Promise<CustomSearchProject[]>;
+    getCustomSearchProject(id: string): Promise<CustomSearchProject | undefined>;
+    createCustomSearchProject(project: InsertCustomSearchProject): Promise<CustomSearchProject>;
+    updateCustomSearchProject(id: string, project: Partial<InsertCustomSearchProject>): Promise<CustomSearchProject>;
+    deleteCustomSearchProject(id: string): Promise<void>;
 
     // Health check
     healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }>;
@@ -180,6 +188,44 @@ export class DatabaseStorage implements IStorage {
 
     async deleteKeyword(id: string): Promise<void> {
         await db.delete(keywords).where(eq(keywords.id, id));
+    }
+
+    async getCustomSearchProjects(userId: string): Promise<CustomSearchProject[]> {
+        const result = await db
+            .select()
+            .from(customSearchProjects)
+            .where(eq(customSearchProjects.userId, userId))
+            .orderBy(desc(customSearchProjects.updatedAt));
+        return result;
+    }
+
+    async getCustomSearchProject(id: string): Promise<CustomSearchProject | undefined> {
+        const result = await db
+            .select()
+            .from(customSearchProjects)
+            .where(eq(customSearchProjects.id, id));
+        return result[0];
+    }
+
+    async createCustomSearchProject(insertProject: InsertCustomSearchProject): Promise<CustomSearchProject> {
+        const result = await db.insert(customSearchProjects).values(insertProject).returning();
+        return result[0];
+    }
+
+    async updateCustomSearchProject(id: string, updateData: Partial<InsertCustomSearchProject>): Promise<CustomSearchProject> {
+        const result = await db
+            .update(customSearchProjects)
+            .set({
+                ...updateData,
+                updatedAt: sql`now()`,
+            })
+            .where(eq(customSearchProjects.id, id))
+            .returning();
+        return result[0];
+    }
+
+    async deleteCustomSearchProject(id: string): Promise<void> {
+        await db.delete(customSearchProjects).where(eq(customSearchProjects.id, id));
     }
 
     async healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }> {
