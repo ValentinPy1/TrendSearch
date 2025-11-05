@@ -2118,19 +2118,19 @@ Return ONLY the JSON array, no other text. Example format:
                 const existingKeywordsMap = new Map(existingKeywords.map(kw => [kw.keyword.toLowerCase(), kw]));
 
                 // Simulate DataForSEO API response structure using existing database data
-                // For keywords that don't exist in DB, create mock data
+                // For keywords not in DB, generate random mock data (fast)
                 const keywordResults: any[] = [];
                 
                 for (const keywordText of finalKeywords) {
                     const existingKeyword = existingKeywordsMap.get(keywordText.toLowerCase());
                     
                     if (existingKeyword && (
-                        existingKeyword.volume !== null || 
-                        existingKeyword.competition !== null || 
-                        existingKeyword.cpc !== null || 
+                        existingKeyword.volume !== null ||
+                        existingKeyword.competition !== null ||
+                        existingKeyword.cpc !== null ||
                         existingKeyword.topPageBid !== null
                     )) {
-                        // Convert existing keyword data to DataForSEO response format
+                        // Use existing keyword data from database
                         const monthlyData = existingKeyword.monthlyData && Array.isArray(existingKeyword.monthlyData)
                             ? existingKeyword.monthlyData.map((md: any) => {
                                 const [monthName, yearStr] = md.month.split(' ');
@@ -2168,8 +2168,7 @@ Return ONLY the JSON array, no other text. Example format:
                             monthly_searches: monthlyData
                         });
                     } else {
-                        // Create mock data for keywords that don't exist in DB
-                        // Generate realistic-looking mock data based on keyword length/complexity
+                        // Generate random mock data for keywords not in DB (fast)
                         const keywordLength = keywordText.split(' ').length;
                         const baseVolume = keywordLength === 2 ? 1000 : keywordLength === 3 ? 500 : 200;
                         const volume = baseVolume + Math.floor(Math.random() * baseVolume * 0.5);
@@ -2187,7 +2186,6 @@ Return ONLY the JSON array, no other text. Example format:
                             const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
                             const month = date.getMonth() + 1;
                             const year = date.getFullYear();
-                            // Add some variation to monthly volume
                             const monthlyVolume = Math.max(0, Math.floor(volume * (0.8 + Math.random() * 0.4)));
                             monthlyData.push({
                                 year,
@@ -2302,7 +2300,6 @@ Return ONLY the JSON array, no other text. Example format:
                 const existingLinkIds = new Set(existingLinks.map(kw => kw.id));
 
                 const pitch = project.pitch || "";
-                const { keywordVectorService } = await import("./keyword-vector-service");
                 const keywordIdsToLink: string[] = [];
                 const similarityScoresToLink: number[] = [];
 
