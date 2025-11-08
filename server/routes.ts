@@ -382,35 +382,30 @@ async function getKeywordsFromVectorDB(
     topN: number = 10,
     filters?: KeywordFilter[],
     excludeKeywords?: Set<string>, // For load-more: exclude already loaded keywords
+    candidatePoolSize?: number, // Optional: override default candidate pool size
 ) {
     let keywords: any[];
 
     if (filters && filters.length > 0) {
         // OPTIMIZED ALGORITHM: Similarity first, then two-phase filtering
         // Step 1: Get top-N similar keywords (candidate pool) - much faster than processing all
+        const poolSize = candidatePoolSize || SIMILARITY_CANDIDATE_POOL_SIZE;
         const candidatePool = await keywordVectorService.findSimilarKeywords(
             idea,
-            SIMILARITY_CANDIDATE_POOL_SIZE,
+            poolSize,
         );
 
-        // Step 2: Exclude already loaded keywords (for load-more)
-        let candidateKeywords = candidatePool;
-        if (excludeKeywords && excludeKeywords.size > 0) {
-            candidateKeywords = candidateKeywords.filter(
-                (kw) => !excludeKeywords.has(kw.keyword),
-            );
-        }
-
-        // Step 3: Categorize filters into raw vs processed
+        // Step 2: Categorize filters into raw vs processed
         const { rawFilters, processedFilters } = categorizeFilters(filters);
 
-        // Step 4: Phase 1 - Apply raw filters on raw data (fast, no processing needed)
-        let filteredRawKeywords = candidateKeywords;
+        // Step 3: Phase 1 - Apply raw filters on raw data (fast, no processing needed)
+        // Apply filters BEFORE excluding keywords to maximize candidate pool
+        let filteredRawKeywords = candidatePool;
         if (rawFilters.length > 0) {
-            filteredRawKeywords = applyRawFilters(candidateKeywords, rawFilters);
+            filteredRawKeywords = applyRawFilters(candidatePool, rawFilters);
         }
 
-        // Step 5: If no candidates after raw filtering, return empty result
+        // Step 4: If no candidates after raw filtering, return empty result
         if (filteredRawKeywords.length === 0) {
             return {
                 keywords: [],
@@ -423,10 +418,11 @@ async function getKeywordsFromVectorDB(
                     avgCpc: "0",
                 },
                 hasMore: false,
+                exhausted: true, // Indicate that candidate pool was exhausted
             };
         }
 
-        // Step 6: Phase 2 - Process only remaining candidates and apply processed filters
+        // Step 5: Phase 2 - Process only remaining candidates and apply processed filters
         // Only process keywords that passed raw filters (much smaller set)
         const processedKeywords = filteredRawKeywords.map((kw) => lookupOrProcessKeyword(kw));
 
@@ -450,7 +446,15 @@ async function getKeywordsFromVectorDB(
             });
         }
 
-        // Step 7: If no filtered keywords after both phases, return empty result
+        // Step 6: Exclude already loaded keywords AFTER filtering (for load-more)
+        // This ensures we have maximum pool size for filtering
+        if (excludeKeywords && excludeKeywords.size > 0) {
+            filteredKeywords = filteredKeywords.filter(
+                (kw) => !excludeKeywords.has(kw.keyword),
+            );
+        }
+
+        // Step 7: If no filtered keywords after both phases and exclusion, return empty result
         if (filteredKeywords.length === 0) {
             return {
                 keywords: [],
@@ -463,12 +467,13 @@ async function getKeywordsFromVectorDB(
                     avgCpc: "0",
                 },
                 hasMore: false,
+                exhausted: true, // Indicate that candidate pool was exhausted
             };
         }
 
         // Step 8: Map similarity scores (already calculated in findSimilarKeywords)
         const similarityMap = new Map(
-            candidateKeywords.map((kw) => [kw.keyword, kw.similarityScore]),
+            candidatePool.map((kw) => [kw.keyword, kw.similarityScore]),
         );
 
         filteredKeywords.forEach((kw) => {
@@ -554,6 +559,20 @@ async function getKeywordsFromVectorDB(
     if (avgCompetition < 33) competitionText = "low";
     if (avgCompetition >= 66) competitionText = "high";
 
+    // Calculate hasMore accurately
+    let hasMore: boolean | undefined = undefined;
+    if (filters && filters.length > 0) {
+        // For filtered results:
+        // - If we got the full requested count, there might be more available
+        // - If we got less than requested, check if candidate pool was exhausted
+        // - Track if we processed full candidate pool to determine if more exist
+        const gotFullCount = keywords.length >= topN;
+        const candidatePoolExhausted = keywords.length < topN && keywords.length > 0;
+        // If we got full count, assume more might be available
+        // If we got partial count, we've exhausted the filtered results
+        hasMore = gotFullCount;
+    }
+
     return {
         keywords,
         aggregates: {
@@ -564,7 +583,7 @@ async function getKeywordsFromVectorDB(
             avgTopPageBid,
             avgCpc,
         },
-        hasMore: filters && filters.length > 0 ? keywords.length >= topN : undefined, // Indicate if more filtered keywords available
+        hasMore, // Indicate if more filtered keywords available
     };
 }
 
@@ -1266,34 +1285,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Track existing keywords from client request (not from database)
             const existingKeywordSet = new Set(existingKeywords.map((k: any) => k.keyword || k));
-            const currentCount = existingKeywords.length;
-            const newCount = currentCount + 5;
+            const TARGET_NEW_KEYWORDS = 5;
+            const MAX_ITERATIONS = 5; // Prevent infinite loops
+            const MAX_CANDIDATE_POOL = 10000; // Maximum candidate pool size
 
-            // Always generate keywords fresh from vector service (new_keywords CSV)
-            // Use excludeKeywords to avoid fetching already loaded keywords
-            const { keywords: keywordData, hasMore } = await getKeywordsFromVectorDB(
-                idea.generatedIdea,
-                newCount,
-                filters,
-                existingKeywordSet, // Exclude already loaded keywords
-            );
+            // Iterative fetching: expand candidate pool until we get 5 NEW filtered keywords
+            let candidatePoolSize = SIMILARITY_CANDIDATE_POOL_SIZE;
+            let newKeywordsData: any[] = [];
+            let hasMore = false;
+            let iterations = 0;
+            const seenKeywords = new Set<string>(existingKeywordSet); // Track all keywords seen across iterations
 
-            // Get only new keywords (those not already loaded)
-            const newKeywordsData = keywordData.filter(
-                (kw) => !existingKeywordSet.has(kw.keyword),
-            );
+            while (newKeywordsData.length < TARGET_NEW_KEYWORDS && iterations < MAX_ITERATIONS && candidatePoolSize <= MAX_CANDIDATE_POOL) {
+                // Request enough candidates to potentially get 5 new filtered keywords
+                // Use dynamic candidate pool size to expand search space
+                const { keywords: keywordData, hasMore: resultHasMore } = await getKeywordsFromVectorDB(
+                    idea.generatedIdea,
+                    TARGET_NEW_KEYWORDS * 10, // Request more than needed to account for filtering
+                    filters,
+                    seenKeywords, // Exclude already loaded keywords AND keywords from previous iterations
+                    candidatePoolSize, // Use dynamic candidate pool size
+                );
 
-            // If no new filtered keywords and filters are active, indicate no more filtered results
-            if (newKeywordsData.length === 0 && filters && filters.length > 0 && hasMore === false) {
-                return res.status(200).json({
-                    keywords: [],
-                    noMoreFiltered: true,
-                    message: "No more keywords match your filters. Would you like to load keywords without filters?"
-                });
+                // Get only new keywords (those not already seen)
+                const newKeywords = keywordData.filter(
+                    (kw) => !seenKeywords.has(kw.keyword),
+                );
+
+                // Add new keywords to seen set to prevent duplicates in next iteration
+                newKeywords.forEach(kw => seenKeywords.add(kw.keyword));
+
+                newKeywordsData = [...newKeywordsData, ...newKeywords];
+                hasMore = resultHasMore || false;
+
+                // If we got enough new keywords, break
+                if (newKeywordsData.length >= TARGET_NEW_KEYWORDS) {
+                    break;
+                }
+
+                // If no more results available, break
+                if (!resultHasMore && newKeywords.length === 0) {
+                    break;
+                }
+
+                // Expand candidate pool for next iteration
+                candidatePoolSize = Math.min(candidatePoolSize * 2, MAX_CANDIDATE_POOL);
+                iterations++;
             }
 
+            // Limit to exactly 5 new keywords
+            newKeywordsData = newKeywordsData.slice(0, TARGET_NEW_KEYWORDS);
+
+            // Better error handling for edge cases
             if (newKeywordsData.length === 0) {
-                return res.status(400).json({ message: "No more keywords available" });
+                if (filters && filters.length > 0) {
+                    // Check if we exhausted the candidate pool
+                    if (iterations >= MAX_ITERATIONS || candidatePoolSize >= MAX_CANDIDATE_POOL) {
+                        return res.status(200).json({
+                            keywords: [],
+                            noMoreFiltered: true,
+                            exhausted: true,
+                            message: "No more keywords match your filters. We've searched through all available keywords. Would you like to load keywords without filters?"
+                        });
+                    }
+                    // Filters are too restrictive
+                    return res.status(200).json({
+                        keywords: [],
+                        noMoreFiltered: true,
+                        message: "No more keywords match your filters. Would you like to load keywords without filters?"
+                    });
+                } else {
+                    // No filters but no results - exhausted all keywords
+                    return res.status(200).json({
+                        keywords: [],
+                        exhausted: true,
+                        message: "No more keywords available for this idea."
+                    });
+                }
             }
 
             // Attach opportunity metrics to all new keywords before returning
