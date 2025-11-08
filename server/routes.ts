@@ -2809,6 +2809,7 @@ Return ONLY the JSON array, no other text. Example format:
             const SAVE_INTERVAL = 10000; // Save every 10 seconds
             let accumulatedNewKeywords: string[] = []; // Track accumulated new keywords
             const projectIdForError = projectId; // Capture for error handler
+            const progressSaveMutex = new Map<string, Promise<void>>(); // Mutex for progress saving
 
             // Progress callback
             const progressCallback = async (progress: any) => {
@@ -2823,16 +2824,31 @@ Return ONLY the JSON array, no other text. Example format:
                 // Save progress periodically (every 10 seconds or every 50 keywords)
                 const now = Date.now();
                 if (projectId && (now - lastSaveTime > SAVE_INTERVAL || (progress.newKeywordsCollected > 0 && progress.newKeywordsCollected % 50 === 0))) {
-                    try {
-                        // Use newKeywords from progress if available, otherwise use accumulated
-                        const keywordsToSave = progress.newKeywords || accumulatedNewKeywords;
-                        const progressToSave = progressToSaveFormat(progress, keywordsToSave);
-                        await storage.saveKeywordGenerationProgress(projectId, progressToSave);
-                        lastSaveTime = now;
-                    } catch (error) {
-                        console.error("Error saving progress:", error);
-                        // Don't fail the generation if saving fails
+                    // Wait for existing save to complete if in progress
+                    if (progressSaveMutex.has(projectId)) {
+                        try {
+                            await progressSaveMutex.get(projectId);
+                        } catch (error) {
+                            // Ignore errors from previous save
+                        }
                     }
+                    
+                    const savePromise = (async () => {
+                        try {
+                            // Use newKeywords from progress if available, otherwise use accumulated
+                            const keywordsToSave = progress.newKeywords || accumulatedNewKeywords;
+                            const progressToSave = progressToSaveFormat(progress, keywordsToSave);
+                            await storage.saveKeywordGenerationProgress(projectId, progressToSave);
+                            lastSaveTime = now;
+                        } catch (error) {
+                            console.error("Error saving progress:", error);
+                            // Don't fail the generation if saving fails
+                        } finally {
+                            progressSaveMutex.delete(projectId);
+                        }
+                    })();
+                    
+                    progressSaveMutex.set(projectId, savePromise);
                 }
             };
 

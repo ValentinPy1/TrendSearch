@@ -28,7 +28,7 @@ export async function generateSeeds(input: SeedGenerationInput): Promise<SeedWit
     const { pitch, topics, personas, painPoints, features, competitors } = input;
 
     if (!pitch || !pitch.trim()) {
-        return [];
+        throw new Error("Pitch is required to generate seeds");
     }
 
     // Collect all list items
@@ -139,17 +139,17 @@ Each seed must be 2-4 words only.`;
             return [];
         }
 
-        // Rank seeds by semantic similarity to pitch
-        const seedsWithSimilarity: SeedWithSimilarity[] = [];
-        for (const seed of seeds) {
+        // Rank seeds by semantic similarity to pitch (parallelized)
+        const similarityPromises = seeds.map(async (seed) => {
             try {
                 const similarityScore = await keywordVectorService.calculateTextSimilarity(pitch, seed);
-                seedsWithSimilarity.push({ seed, similarityScore });
+                return { seed, similarityScore };
             } catch (error) {
                 console.warn(`[SeedGenerator] Failed to calculate similarity for seed: ${seed}`, error);
-                seedsWithSimilarity.push({ seed, similarityScore: 0.5 });
+                return { seed, similarityScore: 0.5 };
             }
-        }
+        });
+        const seedsWithSimilarity = await Promise.all(similarityPromises);
 
         // Sort by similarity score (highest first)
         seedsWithSimilarity.sort((a, b) => b.similarityScore - a.similarityScore);

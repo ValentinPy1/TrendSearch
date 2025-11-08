@@ -254,12 +254,12 @@ export class DatabaseStorage implements IStorage {
 
     async getGlobalKeywordsByTexts(keywordTexts: string[]): Promise<GlobalKeyword[]> {
         if (keywordTexts.length === 0) return [];
-        // Case-insensitive lookup for multiple keywords
-        // For now, we'll fetch all and filter (can be optimized later with raw SQL)
-        // This is acceptable for the initial implementation since global keywords table will start small
-        const allKeywords = await db.select().from(globalKeywords);
-        const lowerKeywords = new Set(keywordTexts.map(kw => kw.toLowerCase()));
-        return allKeywords.filter(kw => lowerKeywords.has(kw.keyword.toLowerCase()));
+        // Use SQL IN clause with case-insensitive comparison for efficient querying
+        const lowerKeywords = keywordTexts.map(kw => kw.toLowerCase());
+        return await db
+            .select()
+            .from(globalKeywords)
+            .where(sql`LOWER(${globalKeywords.keyword}) = ANY(${lowerKeywords})`);
     }
 
     async createGlobalKeywords(insertKeywords: InsertGlobalKeyword[]): Promise<GlobalKeyword[]> {

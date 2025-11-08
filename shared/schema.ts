@@ -1,7 +1,19 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, jsonb, decimal, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, jsonb, decimal, boolean, customType } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Define custom vector type for pgvector
+const vector = customType<{ data: number[]; driverData: string }>({
+    dataType: () => 'vector(384)',
+    toDriver: (value: number[]): string => {
+        return `[${value.join(',')}]`;
+    },
+    fromDriver: (value: string): number[] => {
+        // Parse vector string like "[1,2,3]" to array
+        return JSON.parse(value);
+    },
+});
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -88,6 +100,9 @@ export interface KeywordGenerationProgress {
   reportGenerated?: boolean; // Flag to track if report generation completed
   keywordsFetchedCount?: number; // Number of keywords fetched from DataForSEO
   metricsProcessedCount?: number; // Number of keywords with metrics computed
+  // Fields for accurate resume
+  processedSeeds?: string[]; // Track which seeds were processed
+  seedSimilarities?: Record<string, number>; // Persist similarity scores
 }
 
 export const customSearchProjects = pgTable("custom_search_projects", {
@@ -139,6 +154,30 @@ export const customSearchProjectKeywords = pgTable("custom_search_project_keywor
   customSearchProjectId: varchar("custom_search_project_id").notNull().references(() => customSearchProjects.id, { onDelete: 'cascade' }),
   globalKeywordId: varchar("global_keyword_id").notNull().references(() => globalKeywords.id, { onDelete: 'cascade' }),
   similarityScore: decimal("similarity_score", { precision: 5, scale: 4 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Keyword embeddings table with vector support (using customType for vector)
+export const keywordEmbeddings = pgTable("keyword_embeddings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  keyword: text("keyword").notNull(),
+  // Use customType for vector type since drizzle doesn't natively support it
+  embedding: vector("embedding").notNull(),
+  searchVolume: integer("search_volume"),
+  competition: integer("competition"),
+  lowTopOfPageBid: decimal("low_top_of_page_bid", { precision: 10, scale: 2 }),
+  highTopOfPageBid: decimal("high_top_of_page_bid", { precision: 10, scale: 2 }),
+  cpc: decimal("cpc", { precision: 10, scale: 2 }),
+  monthlyData: jsonb("monthly_data").$type<{ month: string; volume: number }[]>(),
+  growth3m: decimal("growth_3m", { precision: 10, scale: 2 }),
+  growthYoy: decimal("growth_yoy", { precision: 10, scale: 2 }),
+  volatility: decimal("volatility", { precision: 10, scale: 4 }),
+  trendStrength: decimal("trend_strength", { precision: 10, scale: 4 }),
+  avgTopPageBid: decimal("avg_top_page_bid", { precision: 10, scale: 2 }),
+  bidEfficiency: decimal("bid_efficiency", { precision: 10, scale: 4 }),
+  tac: decimal("tac", { precision: 15, scale: 2 }),
+  sac: decimal("sac", { precision: 15, scale: 2 }),
+  opportunityScore: decimal("opportunity_score", { precision: 10, scale: 4 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -197,6 +236,11 @@ export const insertCustomSearchProjectKeywordSchema = createInsertSchema(customS
   createdAt: true,
 });
 
+export const insertKeywordEmbeddingSchema = createInsertSchema(keywordEmbeddings).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Select types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -218,6 +262,9 @@ export type InsertGlobalKeyword = z.infer<typeof insertGlobalKeywordSchema>;
 
 export type CustomSearchProjectKeyword = typeof customSearchProjectKeywords.$inferSelect;
 export type InsertCustomSearchProjectKeyword = z.infer<typeof insertCustomSearchProjectKeywordSchema>;
+
+export type KeywordEmbedding = typeof keywordEmbeddings.$inferSelect;
+export type InsertKeywordEmbedding = z.infer<typeof insertKeywordEmbeddingSchema>;
 
 // Combined types for frontend
 export type IdeaWithReport = Idea & {
