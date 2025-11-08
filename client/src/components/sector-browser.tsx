@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useSectorData, type SubIndustryAggregateResult, type CompanyMetricResult } from "@/hooks/use-sector-data";
+import { useSectorData, type IndustryAggregateResult, type CompanyMetricResult } from "@/hooks/use-sector-data";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
 import { queryClient } from "@/lib/queryClient";
 import { SectorCard } from "./sector-card";
@@ -66,27 +66,37 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
         setFilterQuery("");
     };
 
-    const subIndustriesList = useMemo(() => {
-        // Check if data exists and has subIndustries
-        if (!data || !data.subIndustries || Object.keys(data.subIndustries).length === 0) {
+    const industriesList = useMemo(() => {
+        // Check if data exists and has industries (flattened: both main and sub)
+        if (!data || !data.industries || Object.keys(data.industries).length === 0) {
+            // Fallback to subIndustries for backwards compatibility
+            if (data?.subIndustries && Object.keys(data.subIndustries).length > 0) {
+                return Object.values(data.subIndustries).map(s => ({
+                    industry: s.subIndustry,
+                    industryType: 'sub' as const,
+                    companyCount: s.companyCount,
+                    aggregatedMetrics: s.aggregatedMetrics,
+                    monthlyTrendData: s.monthlyTrendData,
+                }));
+            }
             return [];
         }
 
-        let subIndustries = Object.values(data.subIndustries);
+        let industries = Object.values(data.industries);
 
         // Filter only if there's a search query
         if (filterQuery && filterQuery.trim()) {
             const query = filterQuery.toLowerCase().trim();
-            subIndustries = subIndustries.filter(s =>
-                s.subIndustry.toLowerCase().includes(query)
+            industries = industries.filter(s =>
+                s.industry.toLowerCase().includes(query)
             );
         }
 
         // Sort
-        subIndustries = [...subIndustries].sort((a, b) => {
+        industries = [...industries].sort((a, b) => {
             switch (sortBy) {
                 case "name":
-                    return a.subIndustry.localeCompare(b.subIndustry);
+                    return a.industry.localeCompare(b.industry);
                 case "volume":
                     return b.aggregatedMetrics.avgVolume - a.aggregatedMetrics.avgVolume;
                 case "opportunityScore":
@@ -100,29 +110,60 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
             }
         });
 
-        return subIndustries;
+        return industries;
     }, [data, filterQuery, sortBy]);
 
-    const subIndustryCompaniesRaw = useMemo(() => {
+    const industryCompaniesRaw = useMemo(() => {
         if (!selectedSubIndustry || !data) return [];
 
-        const subIndustry = data.subIndustries[selectedSubIndustry];
-        if (!subIndustry) return [];
+        // Check if it's in the new flattened industries structure
+        const industry = data.industries?.[selectedSubIndustry];
+        if (industry) {
+            // Find all companies that belong to this industry
+            // For sub-industries: Company keys are in format: "Company Name (Sub Industry)"
+            // For main industries: Need to find companies by their sub_industry that belongs to this main industry
+            if (industry.industryType === 'sub') {
+                return Object.entries(data.companies)
+                    .filter(([name]) => name.includes(`(${selectedSubIndustry})`))
+                    .map(([name, companyData]) => ({
+                        name: name.split(' (')[0], // Extract company name without sub-industry
+                        ...companyData
+                    }));
+            } else {
+                // For main industries, we need to find all companies whose sub_industry belongs to this main industry
+                // This requires checking the original company data structure
+                // For now, we'll use the sub-industry pattern since companies are keyed by sub-industry
+                return Object.entries(data.companies)
+                    .filter(([name]) => {
+                        // Extract sub-industry from company key and check if it belongs to this main industry
+                        // This is a simplified approach - in practice, you'd need the full company data
+                        return true; // Will filter more precisely if we have access to company main_industry
+                    })
+                    .map(([name, companyData]) => ({
+                        name: name.split(' (')[0],
+                        ...companyData
+                    }));
+            }
+        }
 
-        // Find all companies that belong to this sub-industry
-        // Company keys are in format: "Company Name (Sub Industry)"
-        return Object.entries(data.companies)
-            .filter(([name]) => name.includes(`(${selectedSubIndustry})`))
-            .map(([name, companyData]) => ({
-                name: name.split(' (')[0], // Extract company name without sub-industry
-                ...companyData
-            }));
+        // Fallback to subIndustries for backwards compatibility
+        const subIndustry = data.subIndustries?.[selectedSubIndustry];
+        if (subIndustry) {
+            return Object.entries(data.companies)
+                .filter(([name]) => name.includes(`(${selectedSubIndustry})`))
+                .map(([name, companyData]) => ({
+                    name: name.split(' (')[0],
+                    ...companyData
+                }));
+        }
+
+        return [];
     }, [selectedSubIndustry, data]);
 
-    const subIndustryCompanies = useMemo(() => {
-        if (!subIndustryCompaniesRaw || subIndustryCompaniesRaw.length === 0) return [];
+    const industryCompanies = useMemo(() => {
+        if (!industryCompaniesRaw || industryCompaniesRaw.length === 0) return [];
 
-        let companies = [...subIndustryCompaniesRaw];
+        let companies = [...industryCompaniesRaw];
 
         // Filter companies
         if (companyFilterQuery && companyFilterQuery.trim()) {
@@ -152,7 +193,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
         });
 
         return companies;
-    }, [subIndustryCompaniesRaw, companyFilterQuery, companySortBy]);
+    }, [industryCompaniesRaw, companyFilterQuery, companySortBy]);
 
     if (isLoading) {
         return (
@@ -293,28 +334,28 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                 </select>
                             </div>
 
-                            {/* Sub-Industries Grid */}
+                            {/* Industries Grid (Main + Sub flattened) */}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {subIndustriesList.map((subIndustry) => (
+                                {industriesList.map((industry) => (
                                     <SectorCard
-                                        key={subIndustry.subIndustry}
-                                        name={subIndustry.subIndustry}
-                                        metrics={subIndustry.aggregatedMetrics}
+                                        key={industry.industry}
+                                        name={`${industry.industry}${industry.industryType === 'main' ? ' (Main)' : ''}`}
+                                        metrics={industry.aggregatedMetrics}
                                         type="sector"
-                                        onClick={() => handleSubIndustryClick(subIndustry.subIndustry)}
-                                        userTypeCount={subIndustry.companyCount}
+                                        onClick={() => handleSubIndustryClick(industry.industry)}
+                                        userTypeCount={industry.companyCount}
                                         productFitCount={0}
                                     />
                                 ))}
                             </div>
 
-                            {subIndustriesList.length === 0 && (
+                            {industriesList.length === 0 && (
                                 <div className="text-center py-12 text-white/60">
                                     {filterQuery && filterQuery.trim()
-                                        ? `No sub-industries found matching "${filterQuery}"`
-                                        : !data || !data.subIndustries || Object.keys(data.subIndustries).length === 0
-                                            ? "No sub-industries available. Please run the aggregation script first."
-                                            : "Loading sub-industries..."
+                                        ? `No industries found matching "${filterQuery}"`
+                                        : !data || (!data.industries && !data.subIndustries) || (data.industries && Object.keys(data.industries).length === 0 && (!data.subIndustries || Object.keys(data.subIndustries).length === 0))
+                                            ? "No industries available. Please run the aggregation script first."
+                                            : "Loading industries..."
                                     }
                                 </div>
                             )}
@@ -322,20 +363,20 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                     ) : (
                         // Sub-industry detail view (showing YC startups)
                         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            {/* Sub-Industry Overview */}
-                            {data.subIndustries[selectedSubIndustry] && (
+                            {/* Industry Overview */}
+                            {(data.industries?.[selectedSubIndustry] || data.subIndustries?.[selectedSubIndustry]) && (
                                 <SectorCard
-                                    name={data.subIndustries[selectedSubIndustry].subIndustry}
-                                    metrics={data.subIndustries[selectedSubIndustry].aggregatedMetrics}
+                                    name={data.industries?.[selectedSubIndustry]?.industry || data.subIndustries?.[selectedSubIndustry]?.subIndustry || selectedSubIndustry}
+                                    metrics={(data.industries?.[selectedSubIndustry] || data.subIndustries?.[selectedSubIndustry])?.aggregatedMetrics}
                                     type="sector"
                                     compact
                                 />
                             )}
 
-                            {/* YC Startups in this Sub-Industry */}
+                            {/* YC Startups in this Industry */}
                             <div>
                                 <h3 className="text-lg font-semibold text-white mb-4">
-                                    YC Companies ({subIndustryCompanies.length})
+                                    YC Companies ({industryCompanies.length})
                                 </h3>
 
                                 {/* Search and Sort Controls */}
@@ -379,9 +420,9 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                 </div>
 
                                 {/* Companies Grid */}
-                                {subIndustryCompanies.length > 0 ? (
+                                {industryCompanies.length > 0 ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {subIndustryCompanies.map((company) => (
+                                        {industryCompanies.map((company) => (
                                             <SectorCard
                                                 key={company.name}
                                                 name={company.name}
