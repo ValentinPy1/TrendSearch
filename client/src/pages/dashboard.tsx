@@ -179,14 +179,47 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 `/api/reports/${data.reportId}/load-more`,
                 {
                     filters: [], // Load without filters
+                    existingKeywords: selectedIdea?.report?.keywords?.map(k => ({ keyword: k.keyword })) || [],
                 },
             );
             return response.json();
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
+        onSuccess: (result) => {
+            if (result.keywords && selectedIdea?.report) {
+                // Merge new unfiltered keywords into existing state
+                const newKeywords = result.keywords.map((kw: any) => ({
+                    ...kw,
+                    id: kw.id || `temp-${Date.now()}-${Math.random()}`,
+                }));
+                
+                // Merge with existing keywords, avoiding duplicates
+                const existingKeywordSet = new Set(selectedIdea.report.keywords.map(k => k.keyword));
+                const uniqueNewKeywords = newKeywords.filter((kw: any) => !existingKeywordSet.has(kw.keyword));
+                
+                if (uniqueNewKeywords.length > 0) {
+                    // Clear filter flag since we're loading without filters
+                    if (selectedIdea.report.id) {
+                        hasActiveFiltersRef.current.delete(selectedIdea.report.id);
+                    }
+                    
+                    // Merge unfiltered keywords with existing keywords
+                    setSelectedIdea({
+                        ...selectedIdea,
+                        report: {
+                            ...selectedIdea.report,
+                            keywords: [...selectedIdea.report.keywords, ...uniqueNewKeywords],
+                        },
+                    });
+                    
+                    // Update displayed count
+                    setDisplayedKeywordCount(prev => prev + uniqueNewKeywords.length);
+                }
+            }
             setShowNoMoreFilteredDialog(false);
             setPendingLoadMoreWithoutFilters(null);
+        },
+        onError: (error) => {
+            console.error("Error loading keywords without filters:", error);
         },
     });
 
@@ -269,13 +302,23 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     currentKeywords.some(k => !updatedKeywordSet.has(k.keyword)) ||
                     updatedKeywords.some(k => !currentKeywordSet.has(k.keyword));
                 
-                // If we have manually loaded keywords OR filters are active OR keywords are different, preserve them
-                if ((manuallyLoadedSet && manuallyLoadedSet.size > 0) || hasActiveFilters || keywordsAreDifferent) {
-                    // We have manually loaded keywords or filtered keywords - preserve them
-                    // Merge: keep all current keywords (especially manually loaded/filtered ones), 
+                // If filters are active, NEVER merge unfiltered keywords - only preserve current filtered keywords
+                if (hasActiveFilters) {
+                    // Filters are active - preserve ONLY the current filtered keywords
+                    // Don't merge in unfiltered keywords from the query
+                    setSelectedIdea({
+                        ...updated,
+                        report: updated.report ? {
+                            ...updated.report,
+                            keywords: currentKeywords, // Keep only current filtered keywords
+                        } : undefined,
+                    });
+                } else if ((manuallyLoadedSet && manuallyLoadedSet.size > 0) || keywordsAreDifferent) {
+                    // We have manually loaded keywords or keywords are different - preserve them
+                    // Merge: keep all current keywords (especially manually loaded ones), 
                     // add any new ones from updated that aren't already present
                     const mergedKeywords = [
-                        ...currentKeywords, // Preserve all current keywords (including manually loaded/filtered)
+                        ...currentKeywords, // Preserve all current keywords (including manually loaded)
                         ...updatedKeywords.filter(k => !currentKeywordSet.has(k.keyword))
                     ];
                     
@@ -287,7 +330,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                         } : undefined,
                     });
                 } else {
-                    // No manually loaded keywords and keywords match - safe to update
+                    // No manually loaded keywords, no filters, and keywords match - safe to update
                     setSelectedIdea(updated);
                 }
                 
@@ -342,9 +385,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         if (filters && filters.length > 0 && ideaWithReport.report?.id) {
             // Mark that filters are active for this report
             hasActiveFiltersRef.current.set(ideaWithReport.report.id, true);
+            // When filters are active, set displayed count to actual filtered keyword count
+            // Don't force it to 10 - show only what matches the filters
+            const filteredKeywordCount = ideaWithReport.report?.keywords?.length || 0;
+            setDisplayedKeywordCount(Math.min(filteredKeywordCount, 10)); // Show up to 10, but not more than available
         } else if (ideaWithReport.report?.id) {
-            // No filters, clear the flag
+            // No filters, clear the flag and use default count
             hasActiveFiltersRef.current.delete(ideaWithReport.report.id);
+            setDisplayedKeywordCount(10); // Default to 10 when no filters
         }
         if (
             ideaWithReport?.report?.keywords &&
