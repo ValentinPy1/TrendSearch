@@ -1,4 +1,4 @@
-import { eq, desc, inArray, sql } from "drizzle-orm";
+import { eq, desc, inArray, sql, or } from "drizzle-orm";
 import { db } from "./db";
 import {
     users, ideas, reports, keywords, customSearchProjects, globalKeywords, customSearchProjectKeywords,
@@ -256,10 +256,19 @@ export class DatabaseStorage implements IStorage {
         if (keywordTexts.length === 0) return [];
         // Use SQL IN clause with case-insensitive comparison for efficient querying
         const lowerKeywords = keywordTexts.map(kw => kw.toLowerCase());
+        // Use inArray with case-insensitive comparison
+        // We need to use sql template to do case-insensitive comparison
+        // Format array properly for PostgreSQL ANY operator
+        // Create a safe array literal by properly escaping and quoting values
+        const escapedKeywords = lowerKeywords.map(kw => kw.replace(/'/g, "''"));
+        // Use sql template with proper array casting for PostgreSQL
+        // The array needs to be properly formatted as a PostgreSQL array literal
+        // Build the array literal string with proper escaping
+        const arrayLiteral = `ARRAY[${escapedKeywords.map(kw => `'${kw}'`).join(',')}]::text[]`;
         return await db
             .select()
             .from(globalKeywords)
-            .where(sql`LOWER(${globalKeywords.keyword}) = ANY(${lowerKeywords})`);
+            .where(sql`LOWER(${globalKeywords.keyword}) = ANY(${sql.raw(arrayLiteral)})`);
     }
 
     async createGlobalKeywords(insertKeywords: InsertGlobalKeyword[]): Promise<GlobalKeyword[]> {

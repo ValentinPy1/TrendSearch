@@ -1,5 +1,11 @@
 import { keywordVectorService } from "./keyword-vector-service";
 import OpenAI from 'openai';
+import { logger } from "./utils/logger";
+import {
+    MAX_RETRY_ATTEMPTS,
+    RETRY_INITIAL_DELAY_MS,
+    RETRY_MAX_DELAY_MS,
+} from "./config/keyword-generation";
 
 export interface SeedGenerationInput {
     pitch: string;
@@ -92,26 +98,52 @@ Return ONLY the 50 seed prompts, one per line, without numbers, bullets, or expl
 Do not include quotes around the prompts.
 Each seed must be 2-4 words only.`;
 
+    // Retry helper with exponential backoff
+    const retryWithBackoff = async <T>(
+        fn: () => Promise<T>,
+        maxAttempts: number = MAX_RETRY_ATTEMPTS,
+        initialDelay: number = RETRY_INITIAL_DELAY_MS,
+        maxDelay: number = RETRY_MAX_DELAY_MS
+    ): Promise<T> => {
+        let lastError: Error | unknown;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+                return await fn();
+            } catch (error) {
+                lastError = error;
+                if (attempt < maxAttempts - 1) {
+                    // Ensure delay is at least 1ms to prevent negative timeout warnings
+                    const delay = Math.max(1, Math.min(initialDelay * Math.pow(2, attempt), maxDelay));
+                    logger.debug(`Retry attempt ${attempt + 1}/${maxAttempts} after ${delay}ms`, { error: error instanceof Error ? error.message : String(error) });
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+        throw lastError || new Error("Retry failed");
+    };
+
     try {
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
-                {
-                    role: 'system',
-                    content: 'You are a keyword research expert. Generate diverse seed prompts for keyword generation.',
-                },
-                {
-                    role: 'user',
-                    content: prompt,
-                },
-            ],
-            temperature: 0.8,
-            max_tokens: 2000,
-        });
+        const response = await retryWithBackoff(
+            () => openai.chat.completions.create({
+                model: 'gpt-4o-mini',
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'You are a keyword research expert. Generate diverse seed prompts for keyword generation.',
+                    },
+                    {
+                        role: 'user',
+                        content: prompt,
+                    },
+                ],
+                temperature: 0.8,
+                max_tokens: 2000,
+            })
+        );
 
         const content = response.choices[0]?.message?.content || '';
         if (!content) {
-            console.warn('[SeedGenerator] Empty response from LLM');
+            logger.warn("Empty response from LLM", {});
             return [];
         }
 
@@ -135,9 +167,11 @@ Each seed must be 2-4 words only.`;
             });
 
         if (seeds.length === 0) {
-            console.warn('[SeedGenerator] No seeds parsed from LLM response');
+            logger.warn("No seeds parsed from LLM response", {});
             return [];
         }
+
+        logger.debug("Seeds parsed from LLM", { count: seeds.length });
 
         // Rank seeds by semantic similarity to pitch (parallelized)
         const similarityPromises = seeds.map(async (seed) => {
@@ -145,7 +179,7 @@ Each seed must be 2-4 words only.`;
                 const similarityScore = await keywordVectorService.calculateTextSimilarity(pitch, seed);
                 return { seed, similarityScore };
             } catch (error) {
-                console.warn(`[SeedGenerator] Failed to calculate similarity for seed: ${seed}`, error);
+                logger.warn("Failed to calculate similarity for seed", { seed, error });
                 return { seed, similarityScore: 0.5 };
             }
         });
@@ -154,9 +188,10 @@ Each seed must be 2-4 words only.`;
         // Sort by similarity score (highest first)
         seedsWithSimilarity.sort((a, b) => b.similarityScore - a.similarityScore);
 
+        logger.info("Seeds generated and ranked", { count: seedsWithSimilarity.length });
         return seedsWithSimilarity;
     } catch (error) {
-        console.error('[SeedGenerator] Failed to generate seeds:', error);
+        logger.error("Failed to generate seeds", error, {});
         throw error;
     }
 }

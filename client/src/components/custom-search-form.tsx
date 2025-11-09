@@ -140,17 +140,27 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 
                 const isActive = stepMap[stepKey]?.includes(currentStage) || false;
                 if (isActive) {
-                    currentTimes[stepKey] = Math.floor((Date.now() - startTime) / 1000);
+                    // Calculate elapsed time from start time, preserving it even if progress updates reset state
+                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                    currentTimes[stepKey] = elapsed;
+                } else {
+                    // If step is completed, preserve the last elapsed time instead of resetting
+                    // This prevents the time from resetting when progress updates come in
+                    const lastElapsed = elapsedTimes[stepKey];
+                    if (lastElapsed !== undefined && lastElapsed > 0) {
+                        currentTimes[stepKey] = lastElapsed;
+                    }
                 }
             });
             
+            // Always update elapsed times to preserve them across progress updates
             if (Object.keys(currentTimes).length > 0) {
-                setElapsedTimes(currentTimes);
+                setElapsedTimes(prev => ({ ...prev, ...currentTimes }));
             }
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [isGeneratingKeywords, stepStartTimes, keywordProgress]);
+    }, [isGeneratingKeywords, stepStartTimes, keywordProgress, elapsedTimes]);
 
     // Create project mutation
     const createProjectMutation = useMutation({
@@ -838,8 +848,16 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 };
                                 
                                 const stepKey = stageMap[currentStage] || currentStage;
+                                // Only set start time if step key exists and we don't already have a start time for it
+                                // This prevents resetting the start time when progress updates come in periodically
                                 if (stepKey && !stepStartTimes[stepKey]) {
-                                    setStepStartTimes(prev => ({ ...prev, [stepKey]: Date.now() }));
+                                    setStepStartTimes(prev => {
+                                        // Double-check to avoid race conditions
+                                        if (!prev[stepKey]) {
+                                            return { ...prev, [stepKey]: Date.now() };
+                                        }
+                                        return prev;
+                                    });
                                 }
                                 
                                 // Update progress with current stage

@@ -15,6 +15,12 @@ import { calculateOpportunityScore } from "./opportunity-score";
 import OpenAI from "openai";
 import * as fs from "fs";
 import * as path from "path";
+import { logger } from "./utils/logger";
+import {
+    SAVE_INTERVAL_MS,
+    SAVE_KEYWORD_INTERVAL,
+} from "./config/keyword-generation";
+import type { ProgressUpdate } from "./keyword-collector";
 
 type FilterOperator = ">" | ">=" | "<" | "<=" | "=";
 
@@ -2047,20 +2053,39 @@ Return ONLY the JSON array, no other text. Example format:
             // Helper function to save progress
             const saveProgress = async (progressData: any) => {
                 try {
+                    // Get current saved progress to preserve existing state
+                    const currentProgress = project.keywordGenerationProgress || {};
+
                     const { progressToSaveFormat } = await import("./keyword-collector");
                     const progressToSave = progressToSaveFormat(
                         { stage: progressData.currentStage || progressData.stage, ...progressData },
                         progressData.newKeywords || []
                     );
-                    // Add full pipeline tracking fields
-                    progressToSave.currentStage = progressData.currentStage || progressData.stage;
-                    progressToSave.dataForSEOFetched = progressData.dataForSEOFetched || false;
-                    progressToSave.metricsComputed = progressData.metricsComputed || false;
-                    progressToSave.reportGenerated = progressData.reportGenerated || false;
-                    progressToSave.keywordsFetchedCount = progressData.keywordsFetchedCount || 0;
-                    progressToSave.metricsProcessedCount = progressData.metricsProcessedCount || 0;
+
+                    // Add full pipeline tracking fields - preserve existing values if not provided
+                    progressToSave.currentStage = progressData.currentStage || progressData.stage || currentProgress.currentStage;
+                    progressToSave.dataForSEOFetched = progressData.dataForSEOFetched !== undefined ? progressData.dataForSEOFetched : (currentProgress.dataForSEOFetched || false);
+                    progressToSave.metricsComputed = progressData.metricsComputed !== undefined ? progressData.metricsComputed : (currentProgress.metricsComputed || false);
+                    progressToSave.reportGenerated = progressData.reportGenerated !== undefined ? progressData.reportGenerated : (currentProgress.reportGenerated || false);
+                    progressToSave.keywordsFetchedCount = progressData.keywordsFetchedCount !== undefined ? progressData.keywordsFetchedCount : (currentProgress.keywordsFetchedCount || 0);
+                    progressToSave.metricsProcessedCount = progressData.metricsProcessedCount !== undefined ? progressData.metricsProcessedCount : (currentProgress.metricsProcessedCount || 0);
+
+                    // Preserve other fields from current progress if not provided
+                    if (!progressData.seeds && currentProgress.seeds) {
+                        progressToSave.seeds = currentProgress.seeds;
+                    }
+                    if (!progressData.processedSeeds && currentProgress.processedSeeds) {
+                        progressToSave.processedSeeds = currentProgress.processedSeeds;
+                    }
+                    if (!progressData.seedSimilarities && currentProgress.seedSimilarities) {
+                        progressToSave.seedSimilarities = currentProgress.seedSimilarities;
+                    }
+
                     await storage.saveKeywordGenerationProgress(projectId, progressToSave);
                     lastSaveTime = Date.now();
+
+                    // Update local project reference to reflect saved progress
+                    project.keywordGenerationProgress = progressToSave;
                 } catch (error) {
                     console.error("Error saving progress:", error);
                 }
@@ -2084,7 +2109,7 @@ Return ONLY the JSON array, no other text. Example format:
                 const { generateSeeds } = await import("./keyword-seed-generator");
                 const seedsWithSimilarity = await generateSeeds(input);
                 const seeds = seedsWithSimilarity.map(s => s.seed);
-                
+
                 await saveProgress({
                     currentStage: 'generating-seeds',
                     seedsGenerated: seeds.length,
@@ -2100,28 +2125,51 @@ Return ONLY the JSON array, no other text. Example format:
             }
 
             // STEP 2: Generate keywords (with concurrent processing)
-            if (!savedProgress || !savedProgress.newKeywords || savedProgress.newKeywords.length < 1000) {
+            // Check if we need to generate keywords: no progress, no keywords, or less than target
+            // IMPORTANT: Empty array [] is truthy, so we need to check length explicitly
+            const hasValidKeywords = savedProgress &&
+                savedProgress.newKeywords &&
+                Array.isArray(savedProgress.newKeywords) &&
+                savedProgress.newKeywords.length >= 1000;
+
+            const needsKeywordGeneration = !hasValidKeywords;
+
+            logger.info("Checking if keyword generation is needed", {
+                hasSavedProgress: !!savedProgress,
+                hasNewKeywords: !!savedProgress?.newKeywords,
+                isArray: Array.isArray(savedProgress?.newKeywords),
+                keywordsLength: savedProgress?.newKeywords?.length || 0,
+                hasValidKeywords,
+                needsGeneration: needsKeywordGeneration,
+            });
+
+            if (needsKeywordGeneration) {
+                logger.info("Starting keyword generation", {
+                    timestamp: new Date().toISOString(),
+                    resumeFromProgress: !!savedProgress,
+                    existingKeywords: savedProgress?.newKeywords?.length || 0,
+                });
                 console.log(`[KeywordGeneration] Starting keyword generation at ${new Date().toISOString()}`);
                 console.log(`[KeywordGeneration] Resume from progress: ${!!savedProgress}, existing keywords: ${savedProgress?.newKeywords?.length || 0}`);
-                
+
                 sendProgress('generating-keywords', { message: 'Generating 1000 keywords with 20 concurrent calls...' });
-                
+
                 const { collectKeywords, progressToSaveFormat } = await import("./keyword-collector");
-                
+
                 // Track progress for saving
                 let accumulatedNewKeywords: string[] = [];
                 let lastProgressLog = Date.now();
-                
+
                 const progressCallback = async (progress: any) => {
                     const now = Date.now();
                     const timeSinceLastLog = now - lastProgressLog;
-                    
+
                     try {
                         console.log(`[KeywordGeneration] Progress callback: stage=${progress.stage}, newKeywords=${progress.newKeywordsCollected}, keywordsGenerated=${progress.keywordsGenerated}, currentSeed=${progress.currentSeed || 'none'}, timeSinceLastLog=${timeSinceLastLog}ms`);
-                        
+
                         sendProgress('generating-keywords', progress);
                         accumulatedNewKeywords = progress.newKeywords || accumulatedNewKeywords;
-                        
+
                         // Save progress periodically
                         if (now - lastSaveTime > SAVE_INTERVAL || (progress.newKeywordsCollected > 0 && progress.newKeywordsCollected % 50 === 0)) {
                             try {
@@ -2136,7 +2184,7 @@ Return ONLY the JSON array, no other text. Example format:
                                 // Continue even if saving fails
                             }
                         }
-                        
+
                         lastProgressLog = now;
                     } catch (callbackError) {
                         console.error("[KeywordGeneration] Error in progress callback:", callbackError);
@@ -2144,18 +2192,60 @@ Return ONLY the JSON array, no other text. Example format:
                     }
                 };
 
+                logger.info("Calling collectKeywords", {
+                    timestamp: new Date().toISOString(),
+                    hasResumeState: !!(savedProgress && savedProgress.newKeywords && savedProgress.newKeywords.length > 0),
+                    resumeKeywordsCount: savedProgress?.newKeywords?.length || 0,
+                });
                 console.log(`[KeywordGeneration] Calling collectKeywords at ${new Date().toISOString()}`);
                 const startTime = Date.now();
-                
-                const result = await collectKeywords(
-                    input,
-                    progressCallback,
-                    1000,
-                    savedProgress && savedProgress.newKeywords ? savedProgress : undefined
-                );
-                
+
+                // Only pass resume state if we have valid keywords to resume from
+                // If savedProgress has empty or invalid keywords, don't pass it (start fresh)
+                const resumeState = (savedProgress &&
+                    savedProgress.newKeywords &&
+                    Array.isArray(savedProgress.newKeywords) &&
+                    savedProgress.newKeywords.length > 0)
+                    ? savedProgress
+                    : undefined;
+
+                logger.info("Resume state decision", {
+                    willResume: !!resumeState,
+                    resumeKeywordsCount: resumeState?.newKeywords?.length || 0,
+                });
+
+                let result;
+                try {
+                    result = await collectKeywords(
+                        input,
+                        progressCallback,
+                        1000,
+                        resumeState
+                    );
+                } catch (error) {
+                    logger.error("Error in collectKeywords", error, {
+                        hasResumeState: !!resumeState,
+                        resumeKeywordsCount: resumeState?.newKeywords?.length || 0,
+                    });
+                    throw error; // Re-throw to be caught by outer try-catch
+                }
+
                 const duration = Date.now() - startTime;
+                logger.info("collectKeywords completed", {
+                    duration,
+                    keywordsReturned: result.keywords.length,
+                    timestamp: new Date().toISOString(),
+                });
                 console.log(`[KeywordGeneration] collectKeywords completed in ${duration}ms, returned ${result.keywords.length} keywords at ${new Date().toISOString()}`);
+
+                if (!result || !result.keywords || result.keywords.length === 0) {
+                    logger.error("collectKeywords returned 0 keywords", {
+                        result: result ? "exists" : "null",
+                        keywordsLength: result?.keywords?.length || 0,
+                        hasResumeState: !!resumeState,
+                    });
+                    throw new Error("Keyword generation returned 0 keywords. Please check your inputs and try again.");
+                }
 
                 finalKeywords = result.keywords;
                 accumulatedNewKeywords = finalKeywords;
@@ -2169,9 +2259,48 @@ Return ONLY the JSON array, no other text. Example format:
 
                 sendProgress('generating-keywords', { message: `Generated ${finalKeywords.length} keywords`, newKeywords: finalKeywords });
             } else {
-                finalKeywords = savedProgress.newKeywords;
-                sendProgress('generating-keywords', { message: 'Keywords already generated, skipping...', newKeywords: finalKeywords });
+                // Use saved keywords - but validate they exist and are valid
+                finalKeywords = (savedProgress.newKeywords && Array.isArray(savedProgress.newKeywords))
+                    ? savedProgress.newKeywords
+                    : [];
+
+                logger.info("Skipping keyword generation, using saved keywords", {
+                    keywordsCount: finalKeywords.length,
+                    wasArray: Array.isArray(savedProgress.newKeywords),
+                    savedProgressHasNewKeywords: !!savedProgress.newKeywords,
+                });
+
+                if (finalKeywords.length === 0) {
+                    logger.warn("Saved progress has no valid keywords, forcing regeneration", {
+                        savedProgressNewKeywords: savedProgress.newKeywords,
+                        isArray: Array.isArray(savedProgress.newKeywords),
+                    });
+                    // Force regeneration if saved keywords are invalid
+                    finalKeywords = [];
+                    // Don't send progress here - will be handled by validation below
+                } else {
+                    sendProgress('generating-keywords', { message: `Keywords already generated (${finalKeywords.length}), skipping...`, newKeywords: finalKeywords });
+                }
             }
+
+            // Validate that we have keywords before proceeding
+            if (!finalKeywords || finalKeywords.length === 0) {
+                logger.error("No keywords generated or found", {
+                    finalKeywordsLength: finalKeywords?.length || 0,
+                    hasSavedProgress: !!savedProgress,
+                    savedProgressKeywordsLength: savedProgress?.newKeywords?.length || 0,
+                });
+                res.write(`data: ${JSON.stringify({
+                    type: 'error',
+                    error: "No keywords were generated. Please check your inputs and try again."
+                })}\n\n`);
+                res.end();
+                return;
+            }
+
+            logger.info("Keywords ready for next steps", {
+                keywordsCount: finalKeywords.length,
+            });
 
             // STEP 3: Fetch DataForSEO (skip if already done)
             if (!savedProgress || !savedProgress.dataForSEOFetched) {
@@ -2188,10 +2317,10 @@ Return ONLY the JSON array, no other text. Example format:
                 // Simulate DataForSEO API response structure using existing database data
                 // For keywords not in DB, generate random mock data (fast)
                 const keywordResults: any[] = [];
-                
+
                 for (const keywordText of finalKeywords) {
                     const existingKeyword = existingKeywordsMap.get(keywordText.toLowerCase());
-                    
+
                     if (existingKeyword && (
                         existingKeyword.volume !== null ||
                         existingKeyword.competition !== null ||
@@ -2241,9 +2370,9 @@ Return ONLY the JSON array, no other text. Example format:
                         const baseVolume = keywordLength === 2 ? 1000 : keywordLength === 3 ? 500 : 200;
                         const volume = baseVolume + Math.floor(Math.random() * baseVolume * 0.5);
                         const competition = ['LOW', 'MEDIUM', 'HIGH'][Math.floor(Math.random() * 3)];
-                        const competitionIndex = competition === 'HIGH' ? 75 + Math.floor(Math.random() * 25) : 
-                                                competition === 'MEDIUM' ? 25 + Math.floor(Math.random() * 50) : 
-                                                Math.floor(Math.random() * 25);
+                        const competitionIndex = competition === 'HIGH' ? 75 + Math.floor(Math.random() * 25) :
+                            competition === 'MEDIUM' ? 25 + Math.floor(Math.random() * 50) :
+                                Math.floor(Math.random() * 25);
                         const cpc = 0.5 + Math.random() * 2.0; // $0.50 - $2.50
                         const topPageBid = cpc * (0.8 + Math.random() * 0.4); // 80-120% of CPC
 
@@ -2399,7 +2528,7 @@ Return ONLY the JSON array, no other text. Example format:
                     newKeywords: finalKeywords
                 });
 
-                sendProgress('fetching-dataforseo', { 
+                sendProgress('fetching-dataforseo', {
                     message: `Fetched DataForSEO metrics: ${keywordsWithData} out of ${finalKeywords.length} keywords had data`,
                     keywordsWithData,
                     totalKeywords: finalKeywords.length
@@ -2410,6 +2539,12 @@ Return ONLY the JSON array, no other text. Example format:
 
             // STEP 4: Compute metrics (concurrently in batches)
             if (!savedProgress || !savedProgress.metricsComputed) {
+                const metricsStartTime = Date.now();
+                logger.info("=== COMPUTE METRICS PIPELINE START ===", {
+                    projectId,
+                    timestamp: new Date().toISOString(),
+                });
+
                 sendProgress('computing-metrics', { message: 'Computing metrics for all keywords concurrently...' });
 
                 const keywords = await storage.getProjectKeywords(projectId);
@@ -2417,63 +2552,118 @@ Return ONLY the JSON array, no other text. Example format:
 
                 const BATCH_SIZE = 50; // Process 50 keywords concurrently
                 let processedCount = 0;
+                let skippedCount = 0;
+                let errorCount = 0;
                 const totalKeywords = keywords.filter(kw => kw.monthlyData && Array.isArray(kw.monthlyData) && kw.monthlyData.length > 0 && kw.volume !== null).length;
+                const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);
+
+                logger.info("Starting metrics computation", {
+                    totalKeywords: keywords.length,
+                    keywordsWithData: totalKeywords,
+                    batchSize: BATCH_SIZE,
+                    totalBatches,
+                });
 
                 // Process keywords in batches
                 for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
+                    const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+                    const batchStartTime = Date.now();
                     const batch = keywords.slice(i, i + BATCH_SIZE);
-                    
+
+                    logger.debug(`[Batch ${batchNumber}/${totalBatches}] Processing batch`, {
+                        batchNumber,
+                        totalBatches,
+                        batchStart: i + 1,
+                        batchEnd: Math.min(i + BATCH_SIZE, keywords.length),
+                        batchSize: batch.length,
+                    });
+
                     // Process batch concurrently
                     const batchPromises = batch.map(async (keyword) => {
-                        if (!keyword.monthlyData || !Array.isArray(keyword.monthlyData) || keyword.monthlyData.length === 0) {
-                            return null;
-                        }
-                        if (keyword.volume === null || keyword.volume === undefined) {
-                            return null;
-                        }
-
-                        const monthlyData = keyword.monthlyData;
-                        const sortedMonthlyData = [...monthlyData].sort((a, b) => {
-                            const dateA = new Date(a.month);
-                            const dateB = new Date(b.month);
-                            return dateA.getTime() - dateB.getTime();
-                        });
-
-                        if (sortedMonthlyData.length < 2) {
-                            return null;
-                        }
-
-                        const lastMonth = sortedMonthlyData[sortedMonthlyData.length - 1];
-                        let yoyGrowth: number | null = null;
-                        if (sortedMonthlyData.length >= 12) {
-                            const sameMonthLastYear = sortedMonthlyData[sortedMonthlyData.length - 12];
-                            yoyGrowth = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
-                        }
-
-                        let threeMonthGrowth: number | null = null;
-                        if (sortedMonthlyData.length >= 3) {
-                            const threeMonthsAgo = sortedMonthlyData[sortedMonthlyData.length - 3];
-                            if (threeMonthsAgo.volume > 0) {
-                                threeMonthGrowth = ((lastMonth.volume - threeMonthsAgo.volume) / threeMonthsAgo.volume) * 100;
+                        try {
+                            if (!keyword.monthlyData || !Array.isArray(keyword.monthlyData) || keyword.monthlyData.length === 0) {
+                                return { success: false, reason: 'no_monthly_data', keywordId: keyword.id };
                             }
+                            if (keyword.volume === null || keyword.volume === undefined) {
+                                return { success: false, reason: 'no_volume', keywordId: keyword.id };
+                            }
+
+                            const monthlyData = keyword.monthlyData;
+                            const sortedMonthlyData = [...monthlyData].sort((a, b) => {
+                                const dateA = new Date(a.month);
+                                const dateB = new Date(b.month);
+                                return dateA.getTime() - dateB.getTime();
+                            });
+
+                            if (sortedMonthlyData.length < 2) {
+                                return { success: false, reason: 'insufficient_data', keywordId: keyword.id };
+                            }
+
+                            const lastMonth = sortedMonthlyData[sortedMonthlyData.length - 1];
+                            let yoyGrowth: number | null = null;
+                            if (sortedMonthlyData.length >= 12) {
+                                const sameMonthLastYear = sortedMonthlyData[sortedMonthlyData.length - 12];
+                                yoyGrowth = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
+                            }
+
+                            let threeMonthGrowth: number | null = null;
+                            if (sortedMonthlyData.length >= 3) {
+                                const threeMonthsAgo = sortedMonthlyData[sortedMonthlyData.length - 3];
+                                if (threeMonthsAgo.volume > 0) {
+                                    threeMonthGrowth = ((lastMonth.volume - threeMonthsAgo.volume) / threeMonthsAgo.volume) * 100;
+                                }
+                            }
+
+                            const volatility = calculateVolatility(sortedMonthlyData);
+                            const growthYoyValue = yoyGrowth !== null ? yoyGrowth : 0;
+                            const trendStrength = calculateTrendStrength(growthYoyValue, volatility);
+
+                            await storage.updateKeywordMetrics(keyword.id, {
+                                growthYoy: yoyGrowth !== null ? yoyGrowth.toString() : null,
+                                growth3m: threeMonthGrowth !== null ? threeMonthGrowth.toString() : null,
+                                volatility: volatility.toString(),
+                                trendStrength: trendStrength.toString()
+                            });
+
+                            return { success: true, keywordId: keyword.id };
+                        } catch (error) {
+                            logger.error("Error computing metrics for keyword", error, {
+                                keywordId: keyword.id,
+                                keyword: keyword.keyword,
+                            });
+                            return { success: false, reason: 'error', keywordId: keyword.id, error };
                         }
-
-                        const volatility = calculateVolatility(sortedMonthlyData);
-                        const growthYoyValue = yoyGrowth !== null ? yoyGrowth : 0;
-                        const trendStrength = calculateTrendStrength(growthYoyValue, volatility);
-
-                        await storage.updateKeywordMetrics(keyword.id, {
-                            growthYoy: yoyGrowth !== null ? yoyGrowth.toString() : null,
-                            growth3m: threeMonthGrowth !== null ? threeMonthGrowth.toString() : null,
-                            volatility: volatility.toString(),
-                            trendStrength: trendStrength.toString()
-                        });
-
-                        return keyword.id;
                     });
 
                     const batchResults = await Promise.all(batchPromises);
-                    processedCount += batchResults.filter(r => r !== null).length;
+                    const successful = batchResults.filter(r => r.success).length;
+                    const failed = batchResults.filter(r => !r.success);
+                    const skipped = failed.filter(r => r.reason !== 'error').length;
+                    const errors = failed.filter(r => r.reason === 'error').length;
+
+                    processedCount += successful;
+                    skippedCount += skipped;
+                    errorCount += errors;
+
+                    const batchDuration = Date.now() - batchStartTime;
+                    const avgTimePerKeyword = batch.length > 0 ? batchDuration / batch.length : 0;
+
+                    logger.info(`[Batch ${batchNumber}/${totalBatches}] Batch completed`, {
+                        batchNumber,
+                        totalBatches,
+                        duration: `${batchDuration}ms (${(batchDuration / 1000).toFixed(2)}s)`,
+                        avgTimePerKeyword: `${Math.round(avgTimePerKeyword)}ms`,
+                        successful,
+                        skipped,
+                        errors,
+                        cumulativeProgress: {
+                            processed: processedCount,
+                            skipped: skippedCount,
+                            errors: errorCount,
+                            total: totalKeywords,
+                            progressPercent: totalKeywords > 0 ? `${((processedCount / totalKeywords) * 100).toFixed(1)}%` : "0%",
+                        },
+                    });
 
                     // Send progress update
                     sendProgress('computing-metrics', {
@@ -2490,6 +2680,9 @@ Return ONLY the JSON array, no other text. Example format:
                     });
                 }
 
+                const metricsDuration = Date.now() - metricsStartTime;
+                const avgTimePerKeyword = processedCount > 0 ? metricsDuration / processedCount : 0;
+
                 // Save final metrics progress
                 await saveProgress({
                     currentStage: 'computing-metrics',
@@ -2498,33 +2691,68 @@ Return ONLY the JSON array, no other text. Example format:
                     newKeywords: finalKeywords
                 });
 
-                sendProgress('computing-metrics', { 
+                logger.info("=== COMPUTE METRICS PIPELINE COMPLETE ===", {
+                    duration: `${metricsDuration}ms (${(metricsDuration / 1000).toFixed(2)}s)`,
+                    processed: processedCount,
+                    skipped: skippedCount,
+                    errors: errorCount,
+                    totalKeywords,
+                    avgTimePerKeyword: `${Math.round(avgTimePerKeyword)}ms`,
+                    successRate: totalKeywords > 0 ? `${((processedCount / totalKeywords) * 100).toFixed(1)}%` : "0%",
+                    timestamp: new Date().toISOString(),
+                });
+
+                sendProgress('computing-metrics', {
                     message: `Computed metrics for ${processedCount} keywords`,
                     processedCount,
                     totalKeywords
                 });
             } else {
+                logger.info("Skipping metrics computation - already computed", {
+                    projectId,
+                    metricsProcessedCount: savedProgress.metricsProcessedCount,
+                });
                 sendProgress('computing-metrics', { message: 'Metrics already computed, skipping...' });
             }
 
             // STEP 5: Generate report
             if (!savedProgress || !savedProgress.reportGenerated) {
+                const reportStartTime = Date.now();
+                logger.info("=== GENERATE REPORT PIPELINE START ===", {
+                    projectId,
+                    timestamp: new Date().toISOString(),
+                });
+
                 sendProgress('generating-report', { message: 'Generating final report...' });
 
                 // Reuse logic from existing generate-report endpoint
                 const allKeywords = await storage.getProjectKeywords(projectId);
+                logger.debug("Retrieved keywords for report generation", {
+                    totalKeywords: allKeywords.length,
+                });
+
                 // Include keywords with any data metric (volume, competition, cpc, or topPageBid)
-                const keywordsWithData = allKeywords.filter(kw => 
+                const keywordsWithData = allKeywords.filter(kw =>
                     (kw.volume !== null && kw.volume !== undefined) ||
                     (kw.competition !== null && kw.competition !== undefined) ||
                     (kw.cpc !== null && kw.cpc !== undefined && kw.cpc !== '') ||
                     (kw.topPageBid !== null && kw.topPageBid !== undefined && kw.topPageBid !== '')
                 );
 
+                logger.info("Filtered keywords with data", {
+                    totalKeywords: allKeywords.length,
+                    keywordsWithData: keywordsWithData.length,
+                    keywordsWithoutData: allKeywords.length - keywordsWithData.length,
+                });
+
                 if (keywordsWithData.length === 0) {
+                    logger.error("No keywords with data found for report generation", {
+                        projectId,
+                        totalKeywords: allKeywords.length,
+                    });
                     // Instead of throwing, send an error via SSE and generate an empty report
-                    res.write(`data: ${JSON.stringify({ 
-                        type: 'error', 
+                    res.write(`data: ${JSON.stringify({
+                        type: 'error',
                         stage: 'generating-report',
                         error: "No keywords with data found. Please ensure keywords have been generated and DataForSEO metrics have been fetched."
                     })}\n\n`);
@@ -2650,8 +2878,17 @@ Return ONLY the JSON array, no other text. Example format:
                         )
                     : [];
 
+                logger.debug("Calculating similarity scores for keywords", {
+                    projectLinksCount: projectLinks.length,
+                    keywordsWithDataCount: keywordsWithData.length,
+                });
+
+                const similarityStartTime = Date.now();
                 const similarityScoreMap = new Map<string, string>();
                 const pitch = project.pitch || "";
+                let similarityCalculated = 0;
+                let similarityCached = 0;
+                let similarityErrors = 0;
 
                 const keywordIdToTextMap = new Map<string, string>();
                 keywordsWithData.forEach(kw => {
@@ -2669,16 +2906,41 @@ Return ONLY the JSON array, no other text. Example format:
                                     .update(customSearchProjectKeywords)
                                     .set({ similarityScore: similarity.toString() })
                                     .where(eq(customSearchProjectKeywords.id, link.id));
+                                similarityCalculated++;
                             } catch (error) {
-                                console.warn(`Failed to calculate similarity for keyword "${keywordText}":`, error);
+                                logger.warn("Failed to calculate similarity for keyword", {
+                                    keyword: keywordText,
+                                    error: error instanceof Error ? error.message : String(error),
+                                });
                                 similarity = similarity || 0.5;
+                                similarityErrors++;
                             }
                         } else {
                             similarity = similarity || 0.5;
                         }
+                    } else {
+                        similarityCached++;
                     }
                     similarityScoreMap.set(link.globalKeywordId, similarity.toString());
                 }
+
+                const similarityDuration = Date.now() - similarityStartTime;
+                logger.info("Similarity calculation complete", {
+                    duration: `${similarityDuration}ms (${(similarityDuration / 1000).toFixed(2)}s)`,
+                    calculated: similarityCalculated,
+                    cached: similarityCached,
+                    errors: similarityErrors,
+                    total: projectLinks.length,
+                });
+
+                logger.debug("Calculating opportunity scores for keywords", {
+                    keywordsCount: keywordsWithData.length,
+                });
+
+                const opportunityScoreStartTime = Date.now();
+                let opportunityScoresCalculated = 0;
+                let opportunityScoresSkipped = 0;
+                let opportunityScoreErrors = 0;
 
                 const formattedKeywords = keywordsWithData.map(kw => {
                     let opportunityScore = null;
@@ -2700,9 +2962,16 @@ Return ONLY the JSON array, no other text. Example format:
                             bidEfficiency = oppResult.bidEfficiency;
                             tac = oppResult.tac;
                             sac = oppResult.sac;
+                            opportunityScoresCalculated++;
                         } catch (error) {
-                            console.error(`Error calculating opportunity score for keyword ${kw.keyword}:`, error);
+                            logger.error("Error calculating opportunity score for keyword", error, {
+                                keyword: kw.keyword,
+                                keywordId: kw.id,
+                            });
+                            opportunityScoreErrors++;
                         }
+                    } else {
+                        opportunityScoresSkipped++;
                     }
 
                     const similarityScore = similarityScoreMap.get(kw.id) || null;
@@ -2770,6 +3039,46 @@ Return ONLY the JSON array, no other text. Example format:
                     };
                 });
 
+                const opportunityScoreDuration = Date.now() - opportunityScoreStartTime;
+                logger.info("Opportunity score calculation complete", {
+                    duration: `${opportunityScoreDuration}ms (${(opportunityScoreDuration / 1000).toFixed(2)}s)`,
+                    calculated: opportunityScoresCalculated,
+                    skipped: opportunityScoresSkipped,
+                    errors: opportunityScoreErrors,
+                    total: keywordsWithData.length,
+                });
+
+                const reportDuration = Date.now() - reportStartTime;
+                logger.info("=== GENERATE REPORT PIPELINE COMPLETE ===", {
+                    duration: `${reportDuration}ms (${(reportDuration / 1000).toFixed(2)}s)`,
+                    keywordsWithData: keywordsWithData.length,
+                    totalKeywords: allKeywords.length,
+                    aggregatedMetrics: {
+                        avgVolume,
+                        avgCpc: avgCpc !== null ? avgCpc.toFixed(2) : null,
+                        avgTopPageBid: avgTopPageBid !== null ? avgTopPageBid.toFixed(2) : null,
+                        competition,
+                        aggregatedGrowthYoy: aggregatedGrowthYoy !== null ? aggregatedGrowthYoy.toFixed(2) : null,
+                        aggregatedGrowth3m: aggregatedGrowth3m !== null ? aggregatedGrowth3m.toFixed(2) : null,
+                        aggregatedVolatility: aggregatedVolatility.toFixed(2),
+                        aggregatedTrendStrength: aggregatedTrendStrength.toFixed(2),
+                        aggregatedOpportunityScore: aggregatedOpportunityScore !== null ? aggregatedOpportunityScore.toFixed(2) : null,
+                    },
+                    similarityCalculation: {
+                        calculated: similarityCalculated,
+                        cached: similarityCached,
+                        errors: similarityErrors,
+                        duration: `${similarityDuration}ms`,
+                    },
+                    opportunityScoreCalculation: {
+                        calculated: opportunityScoresCalculated,
+                        skipped: opportunityScoresSkipped,
+                        errors: opportunityScoreErrors,
+                        duration: `${opportunityScoreDuration}ms`,
+                    },
+                    timestamp: new Date().toISOString(),
+                });
+
                 // Save final progress
                 await saveProgress({
                     currentStage: 'complete',
@@ -2778,8 +3087,8 @@ Return ONLY the JSON array, no other text. Example format:
                 });
 
                 // Send complete event with report
-                res.write(`data: ${JSON.stringify({ 
-                    type: 'complete', 
+                res.write(`data: ${JSON.stringify({
+                    type: 'complete',
                     stage: 'complete',
                     currentStage: 'complete',
                     report: {
@@ -2802,9 +3111,12 @@ Return ONLY the JSON array, no other text. Example format:
                     }
                 })}\n\n`);
             } else {
+                logger.info("Skipping report generation - already generated", {
+                    projectId,
+                });
                 // Report already generated, just send complete
-                res.write(`data: ${JSON.stringify({ 
-                    type: 'complete', 
+                res.write(`data: ${JSON.stringify({
+                    type: 'complete',
                     stage: 'complete',
                     currentStage: 'complete',
                     message: 'Report already generated'
@@ -2813,7 +3125,11 @@ Return ONLY the JSON array, no other text. Example format:
 
             res.end();
         } catch (error) {
-            console.error("Error generating full report:", error);
+            logger.error("Error generating full report", error, {
+                projectId: projectIdForError,
+                userId: req.user?.id,
+                timestamp: new Date().toISOString(),
+            });
 
             // Save error state if we have a project
             if (projectIdForError && lastProgress) {
@@ -2822,14 +3138,20 @@ Return ONLY the JSON array, no other text. Example format:
                     const errorProgress = progressToSaveFormat(lastProgress, lastProgress.newKeywords || []);
                     errorProgress.currentStage = lastProgress.currentStage || lastProgress.stage || 'error';
                     await storage.saveKeywordGenerationProgress(projectIdForError, errorProgress);
+                    logger.debug("Saved error progress", {
+                        projectId: projectIdForError,
+                        stage: errorProgress.currentStage,
+                    });
                 } catch (saveError) {
-                    console.error("Error saving error progress:", saveError);
+                    logger.error("Error saving error progress", saveError, {
+                        projectId: projectIdForError,
+                    });
                 }
             }
 
-            res.write(`data: ${JSON.stringify({ 
-                type: 'error', 
-                error: error instanceof Error ? error.message : "Unknown error" 
+            res.write(`data: ${JSON.stringify({
+                type: 'error',
+                error: error instanceof Error ? error.message : "Unknown error"
             })}\n\n`);
             res.end();
         }
@@ -2837,22 +3159,104 @@ Return ONLY the JSON array, no other text. Example format:
 
     // Generate keywords for a custom search project
     app.post("/api/custom-search/generate-keywords", requireAuth, requirePayment, async (req, res) => {
-        try {
-            const { projectId, pitch, topics, personas, painPoints, features, resumeFromProgress } = req.body;
+        const requestStartTime = Date.now();
+        let isClientConnected = true;
+        let cancelled = false;
 
-            // Verify project exists and user owns it
-            if (projectId) {
-                const project = await storage.getCustomSearchProject(projectId);
-                if (!project) {
-                    return res.status(404).json({ message: "Project not found" });
-                }
-                if (project.userId !== req.user.id) {
-                    return res.status(403).json({ message: "Forbidden" });
+        logger.info("=== KEYWORD GENERATION REQUEST START ===", {
+            projectId: req.body.projectId,
+            userId: req.user.id,
+            timestamp: new Date().toISOString(),
+        });
+
+        // Handle client disconnection
+        req.on('close', () => {
+            isClientConnected = false;
+            cancelled = true;
+            logger.info("Client disconnected from keyword generation endpoint", {
+                projectId: req.body.projectId,
+                duration: Date.now() - requestStartTime,
+            });
+        });
+
+        try {
+            const { projectId, pitch, topics, personas, painPoints, features, competitors, resumeFromProgress } = req.body;
+
+            logger.info("Processing keyword generation request", {
+                projectId,
+                hasPitch: !!pitch,
+                pitchLength: pitch?.length || 0,
+                topicsCount: topics?.length || 0,
+                personasCount: personas?.length || 0,
+                painPointsCount: painPoints?.length || 0,
+                featuresCount: features?.length || 0,
+                competitorsCount: competitors?.length || 0,
+                hasResumeProgress: !!resumeFromProgress,
+            });
+
+            // Input validation
+            logger.debug("Validating input parameters", { projectId, hasPitch: !!pitch });
+
+            if (projectId && typeof projectId !== 'string') {
+                logger.warn("Invalid projectId type", { projectId, type: typeof projectId });
+                return res.status(400).json({ message: "projectId must be a string" });
+            }
+
+            if (topics !== undefined && !Array.isArray(topics)) {
+                return res.status(400).json({ message: "topics must be an array" });
+            }
+
+            if (personas !== undefined && !Array.isArray(personas)) {
+                return res.status(400).json({ message: "personas must be an array" });
+            }
+
+            if (painPoints !== undefined && !Array.isArray(painPoints)) {
+                return res.status(400).json({ message: "painPoints must be an array" });
+            }
+
+            if (features !== undefined && !Array.isArray(features)) {
+                return res.status(400).json({ message: "features must be an array" });
+            }
+
+            if (competitors !== undefined && !Array.isArray(competitors)) {
+                return res.status(400).json({ message: "competitors must be an array" });
+            }
+
+            if (competitors && Array.isArray(competitors)) {
+                for (const competitor of competitors) {
+                    if (typeof competitor !== 'object' || competitor === null) {
+                        return res.status(400).json({ message: "Each competitor must be an object" });
+                    }
+                    if (competitor.name !== undefined && typeof competitor.name !== 'string') {
+                        return res.status(400).json({ message: "competitor.name must be a string" });
+                    }
+                    if (competitor.description !== undefined && typeof competitor.description !== 'string') {
+                        return res.status(400).json({ message: "competitor.description must be a string" });
+                    }
                 }
             }
 
+            // Verify project exists and user owns it (cache result for reuse)
+            let project = null;
+            if (projectId) {
+                logger.debug("Fetching project from database", { projectId });
+                project = await storage.getCustomSearchProject(projectId);
+                if (!project) {
+                    logger.warn("Project not found", { projectId });
+                    return res.status(404).json({ message: "Project not found" });
+                }
+                if (project.userId !== req.user.id) {
+                    logger.warn("User does not own project", { projectId, userId: req.user.id, projectUserId: project.userId });
+                    return res.status(403).json({ message: "Forbidden" });
+                }
+                logger.info("Project verified", {
+                    projectId,
+                    hasSavedProgress: !!project.keywordGenerationProgress,
+                    savedProgressStage: project.keywordGenerationProgress?.stage,
+                });
+            }
+
             // Use provided inputs or project data
-            const project = projectId ? await storage.getCustomSearchProject(projectId) : null;
             const input = {
                 pitch: pitch || project?.pitch || "",
                 topics: topics || project?.topics || [],
@@ -2862,6 +3266,17 @@ Return ONLY the JSON array, no other text. Example format:
                 competitors: project?.competitors || [],
             };
 
+            // Validate pitch is non-empty
+            if (!input.pitch || !input.pitch.trim()) {
+                logger.warn("Pitch validation failed", { pitch: input.pitch?.substring(0, 50) });
+                return res.status(400).json({ message: "Pitch is required and cannot be empty" });
+            }
+
+            logger.info("Input validation passed, setting up SSE connection", {
+                projectId,
+                pitchLength: input.pitch.length,
+            });
+
             // Set up Server-Sent Events for progress updates
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
@@ -2869,96 +3284,278 @@ Return ONLY the JSON array, no other text. Example format:
             res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
             // Import keyword collector
+            logger.debug("Importing keyword collector module", {});
             const { collectKeywords, progressToSaveFormat } = await import("./keyword-collector");
 
             // Track progress for saving (declare outside try-catch for error handling)
-            let lastProgress: any = null;
+            let lastProgress: ProgressUpdate | null = null;
             let lastSaveTime = Date.now();
-            const SAVE_INTERVAL = 10000; // Save every 10 seconds
-            let accumulatedNewKeywords: string[] = []; // Track accumulated new keywords
+            let accumulatedNewKeywords: string[] = []; // Track accumulated new keywords (full list)
+            let accumulatedAllKeywords: string[] = []; // Track full allKeywords list
+            let accumulatedDuplicates: string[] = []; // Track full duplicates list
+            let accumulatedExistingKeywords: string[] = []; // Track full existingKeywords list
             const projectIdForError = projectId; // Capture for error handler
-            const progressSaveMutex = new Map<string, Promise<void>>(); // Mutex for progress saving
 
-            // Progress callback
-            const progressCallback = async (progress: any) => {
-                res.write(`data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`);
-                lastProgress = progress;
-
-                // Update accumulated new keywords from progress if available
-                if (progress.newKeywords && Array.isArray(progress.newKeywords)) {
-                    accumulatedNewKeywords = [...progress.newKeywords];
+            // Async queue for progress saves to prevent race conditions
+            const progressSaveQueue = new Map<string, Promise<void>>();
+            const enqueueProgressSave = async (projectId: string, progress: ProgressUpdate, keywords: string[]): Promise<void> => {
+                // Wait for existing save to complete if in progress
+                if (progressSaveQueue.has(projectId)) {
+                    try {
+                        await progressSaveQueue.get(projectId);
+                    } catch (error) {
+                        // Ignore errors from previous save
+                        logger.warn("Previous progress save failed", { projectId, error });
+                    }
                 }
 
-                // Save progress periodically (every 10 seconds or every 50 keywords)
-                const now = Date.now();
-                if (projectId && (now - lastSaveTime > SAVE_INTERVAL || (progress.newKeywordsCollected > 0 && progress.newKeywordsCollected % 50 === 0))) {
-                    // Wait for existing save to complete if in progress
-                    if (progressSaveMutex.has(projectId)) {
-                        try {
-                            await progressSaveMutex.get(projectId);
-                        } catch (error) {
-                            // Ignore errors from previous save
-                        }
+                // Create new save promise
+                const savePromise = (async () => {
+                    try {
+                        // Use accumulated full lists if available, otherwise use progress lists (may be truncated)
+                        const progressToSave = progressToSaveFormat(
+                            progress,
+                            keywords,
+                            accumulatedAllKeywords.length > 0 ? accumulatedAllKeywords : undefined,
+                            accumulatedDuplicates.length > 0 ? accumulatedDuplicates : undefined,
+                            accumulatedExistingKeywords.length > 0 ? accumulatedExistingKeywords : undefined
+                        );
+                        await storage.saveKeywordGenerationProgress(projectId, progressToSave);
+                        lastSaveTime = Date.now();
+                        logger.debug("Progress saved successfully", { projectId, newKeywordsCount: keywords.length });
+                    } catch (error) {
+                        logger.error("Error saving progress", error, { projectId });
+                        // Don't fail the generation if saving fails
+                        throw error; // Re-throw to mark promise as failed
+                    } finally {
+                        progressSaveQueue.delete(projectId);
                     }
-                    
-                    const savePromise = (async () => {
-                        try {
-                            // Use newKeywords from progress if available, otherwise use accumulated
-                            const keywordsToSave = progress.newKeywords || accumulatedNewKeywords;
-                            const progressToSave = progressToSaveFormat(progress, keywordsToSave);
-                            await storage.saveKeywordGenerationProgress(projectId, progressToSave);
-                            lastSaveTime = now;
-                        } catch (error) {
-                            console.error("Error saving progress:", error);
-                            // Don't fail the generation if saving fails
-                        } finally {
-                            progressSaveMutex.delete(projectId);
-                        }
-                    })();
-                    
-                    progressSaveMutex.set(projectId, savePromise);
+                })();
+
+                progressSaveQueue.set(projectId, savePromise);
+                return savePromise;
+            };
+
+            // Progress callback
+            const progressCallback = async (progress: ProgressUpdate) => {
+                // Check if client is still connected
+                if (!isClientConnected || cancelled) {
+                    logger.debug("Skipping progress callback - client disconnected", { projectId });
+                    return;
+                }
+
+                try {
+                    logger.debug("Sending progress update to client", {
+                        projectId,
+                        stage: progress.stage,
+                        newKeywordsCollected: progress.newKeywordsCollected,
+                        keywordsGenerated: progress.keywordsGenerated,
+                    });
+                    res.write(`data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`);
+                } catch (error) {
+                    logger.warn("Failed to write progress to client", { projectId, error });
+                    isClientConnected = false;
+                    return;
+                }
+
+                lastProgress = progress;
+
+                // Update accumulated lists from progress
+                // If progress._listsTruncated is false, these are full lists from collector
+                // Otherwise, they're truncated for display and we accumulate them
+                if (progress.newKeywords && Array.isArray(progress.newKeywords)) {
+                    if (!progress._listsTruncated) {
+                        // Full list from collector, replace accumulated
+                        accumulatedNewKeywords = [...progress.newKeywords];
+                    } else {
+                        // Truncated list, merge with existing accumulated list (avoid duplicates)
+                        const newSet = new Set(accumulatedNewKeywords.map(k => k.toLowerCase()));
+                        progress.newKeywords.forEach(kw => {
+                            if (!newSet.has(kw.toLowerCase())) {
+                                accumulatedNewKeywords.push(kw);
+                                newSet.add(kw.toLowerCase());
+                            }
+                        });
+                    }
+                }
+                if (progress.allKeywords && Array.isArray(progress.allKeywords)) {
+                    if (!progress._listsTruncated) {
+                        accumulatedAllKeywords = [...progress.allKeywords];
+                    } else {
+                        const newSet = new Set(accumulatedAllKeywords.map(k => k.toLowerCase()));
+                        progress.allKeywords.forEach(kw => {
+                            if (!newSet.has(kw.toLowerCase())) {
+                                accumulatedAllKeywords.push(kw);
+                                newSet.add(kw.toLowerCase());
+                            }
+                        });
+                    }
+                }
+                if (progress.duplicates && Array.isArray(progress.duplicates)) {
+                    if (!progress._listsTruncated) {
+                        accumulatedDuplicates = [...progress.duplicates];
+                    } else {
+                        const newSet = new Set(accumulatedDuplicates.map(k => k.toLowerCase()));
+                        progress.duplicates.forEach(kw => {
+                            if (!newSet.has(kw.toLowerCase())) {
+                                accumulatedDuplicates.push(kw);
+                                newSet.add(kw.toLowerCase());
+                            }
+                        });
+                    }
+                }
+                if (progress.existingKeywords && Array.isArray(progress.existingKeywords)) {
+                    if (!progress._listsTruncated) {
+                        accumulatedExistingKeywords = [...progress.existingKeywords];
+                    } else {
+                        const newSet = new Set(accumulatedExistingKeywords.map(k => k.toLowerCase()));
+                        progress.existingKeywords.forEach(kw => {
+                            if (!newSet.has(kw.toLowerCase())) {
+                                accumulatedExistingKeywords.push(kw);
+                                newSet.add(kw.toLowerCase());
+                            }
+                        });
+                    }
+                }
+
+                // Save progress periodically (every SAVE_INTERVAL_MS or every SAVE_KEYWORD_INTERVAL keywords)
+                const now = Date.now();
+                const shouldSave = projectId && (now - lastSaveTime > SAVE_INTERVAL_MS || (progress.newKeywordsCollected > 0 && progress.newKeywordsCollected % SAVE_KEYWORD_INTERVAL === 0));
+
+                if (shouldSave) {
+                    logger.debug("Saving progress periodically", {
+                        projectId,
+                        timeSinceLastSave: now - lastSaveTime,
+                        newKeywordsCollected: progress.newKeywordsCollected,
+                        reason: now - lastSaveTime > SAVE_INTERVAL_MS ? "time interval" : "keyword interval",
+                    });
+
+                    // Use newKeywords from progress if available, otherwise use accumulated
+                    // Note: progress.newKeywords may be truncated, but we need full list for saving
+                    // The collector maintains full lists internally and passes them via progressToSaveFormat
+                    const keywordsToSave = accumulatedNewKeywords.length > 0 ? accumulatedNewKeywords : (progress.newKeywords || []);
+                    // Don't await - let it save in background
+                    enqueueProgressSave(projectId, progress, keywordsToSave).catch((error) => {
+                        logger.error("Failed to enqueue progress save", error, { projectId });
+                    });
                 }
             };
 
             // Generate keywords (with resume support if provided)
+            const resumeState = resumeFromProgress || project?.keywordGenerationProgress || undefined;
+            logger.info("Starting keyword collection", {
+                projectId,
+                targetCount: 1000,
+                hasResumeState: !!resumeState,
+                resumeStage: resumeState?.stage,
+                resumeNewKeywords: resumeState?.newKeywords?.length || 0,
+            });
+
+            const collectionStartTime = Date.now();
             const result = await collectKeywords(
                 input,
                 progressCallback,
                 1000,
-                resumeFromProgress || project?.keywordGenerationProgress || undefined
+                resumeState
             );
+            const collectionDuration = Date.now() - collectionStartTime;
+
+            logger.info("Keyword collection completed", {
+                projectId,
+                duration: collectionDuration,
+                keywordsCollected: result.keywords.length,
+                progressStage: result.progress.stage,
+            });
+
+            // Check if cancelled
+            if (cancelled || !isClientConnected) {
+                logger.info("Keyword generation cancelled or client disconnected", {
+                    projectId,
+                    duration: Date.now() - requestStartTime,
+                });
+                return;
+            }
 
             accumulatedNewKeywords = result.keywords;
 
-            // Save final progress
+            // Save final progress with full lists from result
             if (projectId) {
                 try {
-                    const finalProgress = progressToSaveFormat(lastProgress || result.progress, accumulatedNewKeywords);
+                    logger.info("Saving final progress", {
+                        projectId,
+                        keywordsCount: result.keywords.length,
+                        accumulatedAllKeywords: accumulatedAllKeywords.length,
+                        accumulatedDuplicates: accumulatedDuplicates.length,
+                        accumulatedExistingKeywords: accumulatedExistingKeywords.length,
+                    });
+
+                    // Use result.progress which should have full lists, or fall back to accumulated lists
+                    const finalProgress = progressToSaveFormat(
+                        lastProgress || result.progress,
+                        result.keywords, // Full list from result
+                        accumulatedAllKeywords.length > 0 ? accumulatedAllKeywords : undefined,
+                        accumulatedDuplicates.length > 0 ? accumulatedDuplicates : undefined,
+                        accumulatedExistingKeywords.length > 0 ? accumulatedExistingKeywords : undefined
+                    );
                     await storage.saveKeywordGenerationProgress(projectId, finalProgress);
+                    logger.info("Final progress saved successfully", {
+                        projectId,
+                        keywordsCount: result.keywords.length,
+                        stage: finalProgress.stage,
+                    });
                 } catch (error) {
-                    console.error("Error saving final progress:", error);
+                    logger.error("Error saving final progress", error, { projectId });
                 }
             }
 
             // Send final result
-            res.write(`data: ${JSON.stringify({ type: 'complete', data: { keywords: result.keywords } })}\n\n`);
-            res.end();
+            if (isClientConnected) {
+                try {
+                    logger.info("Sending final result to client", {
+                        projectId,
+                        keywordsCount: result.keywords.length,
+                        totalDuration: Date.now() - requestStartTime,
+                    });
+                    res.write(`data: ${JSON.stringify({ type: 'complete', data: { keywords: result.keywords } })}\n\n`);
+                    res.end();
+                    logger.info("=== KEYWORD GENERATION REQUEST COMPLETE ===", {
+                        projectId,
+                        totalDuration: Date.now() - requestStartTime,
+                        keywordsCollected: result.keywords.length,
+                    });
+                } catch (error) {
+                    logger.warn("Failed to send final result to client", { projectId, error });
+                }
+            }
         } catch (error) {
-            console.error("Error generating keywords:", error);
+            logger.error("Error generating keywords", error, { projectId: req.body.projectId });
 
             // Save error state if we have a project
             if (projectIdForError && lastProgress) {
                 try {
                     const { progressToSaveFormat } = await import("./keyword-collector");
-                    const errorProgress = progressToSaveFormat(lastProgress, []);
+                    const errorProgress = progressToSaveFormat(
+                        lastProgress,
+                        accumulatedNewKeywords, // Use accumulated list if available
+                        accumulatedAllKeywords.length > 0 ? accumulatedAllKeywords : undefined,
+                        accumulatedDuplicates.length > 0 ? accumulatedDuplicates : undefined,
+                        accumulatedExistingKeywords.length > 0 ? accumulatedExistingKeywords : undefined
+                    );
                     await storage.saveKeywordGenerationProgress(projectIdForError, errorProgress);
+                    logger.info("Error progress saved", { projectId: projectIdForError });
                 } catch (saveError) {
-                    console.error("Error saving error progress:", saveError);
+                    logger.error("Error saving error progress", saveError, { projectId: projectIdForError });
                 }
             }
 
-            res.write(`data: ${JSON.stringify({ type: 'error', error: error instanceof Error ? error.message : "Unknown error" })}\n\n`);
-            res.end();
+            if (isClientConnected) {
+                try {
+                    res.write(`data: ${JSON.stringify({ type: 'error', error: error instanceof Error ? error.message : "Unknown error" })}\n\n`);
+                    res.end();
+                } catch (writeError) {
+                    logger.warn("Failed to send error to client", { projectId: projectIdForError, error: writeError });
+                }
+            }
         }
     });
 

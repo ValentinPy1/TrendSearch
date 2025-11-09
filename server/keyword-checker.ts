@@ -1,5 +1,11 @@
 import { keywordVectorService } from "./keyword-vector-service";
 import { storage } from "./storage";
+import { logger } from "./utils/logger";
+import {
+    MAX_RETRY_ATTEMPTS,
+    RETRY_INITIAL_DELAY_MS,
+    RETRY_MAX_DELAY_MS,
+} from "./config/keyword-generation";
 
 export interface KeywordCheckResult {
     existingKeywords: string[];
@@ -12,10 +18,10 @@ export interface KeywordCheckResult {
  */
 export async function checkKeywords(keywords: string[]): Promise<KeywordCheckResult> {
     const checkStartTime = Date.now();
-    log(`[KeywordChecker] Starting checkKeywords for ${keywords.length} keywords at ${new Date().toISOString()}`);
-    
+    logger.debug("Starting keyword check", { keywordCount: keywords.length, timestamp: new Date().toISOString() });
+
     if (keywords.length === 0) {
-        log(`[KeywordChecker] No keywords to check, returning empty result`);
+        logger.debug("No keywords to check, returning empty result", {});
         return { existingKeywords: [], newKeywords: [] };
     }
 
@@ -23,23 +29,25 @@ export async function checkKeywords(keywords: string[]): Promise<KeywordCheckRes
     const newKeywords: string[] = [];
 
     // Check against vector DB service (fast path for exact matches)
-    log(`[KeywordChecker] Checking ${keywords.length} keywords against vector DB`);
     const vectorDbStartTime = Date.now();
-    
+
     // Helper function for retry with exponential backoff
     const retryWithBackoff = async <T>(
         fn: () => Promise<T>,
-        maxRetries: number = 2,
-        initialDelay: number = 1000
+        maxRetries: number = MAX_RETRY_ATTEMPTS,
+        initialDelay: number = RETRY_INITIAL_DELAY_MS,
+        maxDelay: number = RETRY_MAX_DELAY_MS
     ): Promise<T> => {
-        let lastError: Error | undefined;
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        let lastError: Error | unknown;
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
                 return await fn();
             } catch (error) {
-                lastError = error instanceof Error ? error : new Error(String(error));
-                if (attempt < maxRetries) {
-                    const delay = initialDelay * Math.pow(2, attempt);
+                lastError = error;
+                if (attempt < maxRetries - 1) {
+                    // Ensure delay is at least 1ms to prevent negative timeout warnings
+                    const delay = Math.max(1, Math.min(initialDelay * Math.pow(2, attempt), maxDelay));
+                    logger.debug(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`, { error: error instanceof Error ? error.message : String(error) });
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
@@ -51,51 +59,58 @@ export async function checkKeywords(keywords: string[]): Promise<KeywordCheckRes
         keywords.map(async (keyword, index) => {
             const keywordStartTime = Date.now();
             try {
-                log(`[KeywordChecker] Checking keyword ${index + 1}/${keywords.length} in vector DB: "${keyword}"`);
                 // Use exactMatchOnly=true for keyword generation - we don't need fuzzy matching
                 // This skips the expensive similarity search (7-10 seconds per non-existing keyword)
                 // Add retry logic for resilience
                 const exists = await retryWithBackoff(
-                    () => keywordVectorService.isKeyword(keyword, 0.95, true),
-                    2,
-                    1000
+                    () => keywordVectorService.isKeyword(keyword, 0.95, true)
                 );
                 const keywordDuration = Date.now() - keywordStartTime;
-                log(`[KeywordChecker] Vector DB check for "${keyword}" completed in ${keywordDuration}ms, exists=${exists}`);
-                return { keyword, exists };
+                // Only log individual keyword checks at trace level (not used) to reduce noise
+                // Summary will be logged once for the whole batch below
+                return { keyword, exists, duration: keywordDuration };
             } catch (error) {
                 const keywordDuration = Date.now() - keywordStartTime;
-                logError(`[KeywordChecker] Vector DB check failed for "${keyword}" after ${keywordDuration}ms after retries:`, error);
+                logger.error("Vector DB check failed after retries", error, { keyword, duration: keywordDuration });
                 // Treat as not existing if check fails after retries
-                return { keyword, exists: false };
+                return { keyword, exists: false, duration: keywordDuration };
             }
         })
     );
-    
+
     const vectorDbDuration = Date.now() - vectorDbStartTime;
-    log(`[KeywordChecker] Vector DB checks completed in ${vectorDbDuration}ms for ${keywords.length} keywords`);
+    const existingCount = vectorDbChecks.filter(c => c.exists).length;
+    const newCount = vectorDbChecks.filter(c => !c.exists).length;
+    const avgDuration = vectorDbChecks.reduce((sum, c) => sum + (c.duration || 0), 0) / vectorDbChecks.length;
+
+    logger.debug("Vector DB checks completed", {
+        duration: vectorDbDuration,
+        keywordCount: keywords.length,
+        existing: existingCount,
+        new: newCount,
+        avgDurationPerKeyword: Math.round(avgDuration),
+    });
 
     // Separate keywords that exist in vector DB
     const vectorDbExisting = vectorDbChecks
         .filter(check => check.exists)
         .map(check => check.keyword);
 
-    log(`[KeywordChecker] Found ${vectorDbExisting.length} keywords in vector DB`);
+    logger.debug("Keywords found in vector DB", { count: vectorDbExisting.length });
     existingKeywords.push(...vectorDbExisting);
 
     // Check remaining keywords against global keywords table
     const remainingKeywords = keywords.filter(kw => !vectorDbExisting.includes(kw));
-    log(`[KeywordChecker] ${remainingKeywords.length} keywords remaining to check in global DB`);
-    
+    logger.debug("Remaining keywords to check in global DB", { count: remainingKeywords.length });
+
     if (remainingKeywords.length > 0) {
         // Batch check against global keywords table
-        log(`[KeywordChecker] Checking ${remainingKeywords.length} keywords against global keywords table`);
         const globalDbStartTime = Date.now();
-        
+
         const globalKeywords = await storage.getGlobalKeywordsByTexts(remainingKeywords);
         const globalDbDuration = Date.now() - globalDbStartTime;
-        log(`[KeywordChecker] Global DB check completed in ${globalDbDuration}ms, found ${globalKeywords.length} existing keywords`);
-        
+        logger.debug("Global DB check completed", { duration: globalDbDuration, found: globalKeywords.length });
+
         const globalKeywordsSet = new Set(globalKeywords.map(kw => kw.keyword.toLowerCase()));
 
         for (const keyword of remainingKeywords) {
@@ -105,13 +120,13 @@ export async function checkKeywords(keywords: string[]): Promise<KeywordCheckRes
                 newKeywords.push(keyword);
             }
         }
-        
-        log(`[KeywordChecker] Global DB check: ${existingKeywords.length - vectorDbExisting.length} existing, ${newKeywords.length} new`);
+
+        logger.debug("Global DB check results", { existing: existingKeywords.length - vectorDbExisting.length, new: newKeywords.length });
     }
 
     const totalDuration = Date.now() - checkStartTime;
-    log(`[KeywordChecker] checkKeywords completed in ${totalDuration}ms: ${existingKeywords.length} existing, ${newKeywords.length} new`);
-    
+    logger.info("Keyword check completed", { duration: totalDuration, existing: existingKeywords.length, new: newKeywords.length });
+
     return { existingKeywords, newKeywords };
 }
 

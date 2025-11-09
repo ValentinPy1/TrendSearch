@@ -1,13 +1,85 @@
 import OpenAI from 'openai';
+import { logger } from "./utils/logger";
+import {
+    MAX_RETRY_ATTEMPTS,
+    RETRY_INITIAL_DELAY_MS,
+    RETRY_MAX_DELAY_MS,
+} from "./config/keyword-generation";
+
+// Circuit breaker pattern for API failures
+class CircuitBreaker {
+    private failures: number = 0;
+    private lastFailureTime: number = 0;
+    private readonly failureThreshold: number = 5;
+    private readonly resetTimeout: number = 60000; // 1 minute
+    private state: 'closed' | 'open' | 'half-open' = 'closed';
+
+    canAttempt(): boolean {
+        const now = Date.now();
+        if (this.state === 'open') {
+            if (now - this.lastFailureTime > this.resetTimeout) {
+                this.state = 'half-open';
+                logger.info("Circuit breaker transitioning to half-open", {});
+                return true;
+            }
+            return false;
+        }
+        return true;
+    }
+
+    recordSuccess(): void {
+        this.failures = 0;
+        this.state = 'closed';
+    }
+
+    recordFailure(): void {
+        this.failures++;
+        this.lastFailureTime = Date.now();
+        if (this.failures >= this.failureThreshold) {
+            this.state = 'open';
+            logger.warn("Circuit breaker opened due to too many failures", { failures: this.failures });
+        }
+    }
+}
 
 class KeywordGenerator {
     private openai: OpenAI;
+    private circuitBreaker: CircuitBreaker;
 
     constructor() {
         this.openai = new OpenAI({
             apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
             baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
         });
+        this.circuitBreaker = new CircuitBreaker();
+    }
+
+    // Retry helper with exponential backoff
+    private async retryWithBackoff<T>(
+        fn: () => Promise<T>,
+        maxAttempts: number = MAX_RETRY_ATTEMPTS,
+        initialDelay: number = RETRY_INITIAL_DELAY_MS,
+        maxDelay: number = RETRY_MAX_DELAY_MS
+    ): Promise<T> {
+        let lastError: Error | unknown;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+                const result = await fn();
+                this.circuitBreaker.recordSuccess();
+                return result;
+            } catch (error) {
+                lastError = error;
+                if (attempt < maxAttempts - 1) {
+                    // Ensure delay is at least 1ms to prevent negative timeout warnings
+                    const delay = Math.max(1, Math.min(initialDelay * Math.pow(2, attempt), maxDelay));
+                    logger.debug(`Retry attempt ${attempt + 1}/${maxAttempts} after ${delay}ms`, { error: error instanceof Error ? error.message : String(error) });
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    this.circuitBreaker.recordFailure();
+                }
+            }
+        }
+        throw lastError || new Error("Retry failed");
     }
 
     /**
@@ -45,47 +117,52 @@ Do not include quotes around keywords.
 Each keyword must be 2-4 words only.`;
 
         const apiCallStartTime = Date.now();
-        console.log(`[KeywordGenerator] Starting API call for seed: "${seed}" at ${new Date().toISOString()}`);
-        
+        logger.debug("Starting API call for seed", { seed, timestamp: new Date().toISOString() });
+
+        // Check circuit breaker
+        if (!this.circuitBreaker.canAttempt()) {
+            logger.warn("Circuit breaker is open, skipping API call", { seed });
+            throw new Error("API circuit breaker is open - too many recent failures");
+        }
+
         try {
-            console.log(`[KeywordGenerator] Creating OpenAI API request for seed: "${seed}"`);
-            const response = await this.openai.chat.completions.create({
-                model: 'gpt-4o-mini',
-                messages: [
-                    {
-                        role: 'system',
-                        content: 'You are a keyword research expert. Generate SHORT commercial keywords (2-4 words max) that users actually search for. Focus on high-volume, transactional keywords. Avoid long-tail phrases.',
-                    },
-                    {
-                        role: 'user',
-                        content: prompt,
-                    },
-                ],
-                temperature: 0.8,
-                max_tokens: 2000,
-            });
+            const response = await this.retryWithBackoff(
+                () => this.openai.chat.completions.create({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are a keyword research expert. Generate SHORT commercial keywords (2-4 words max) that users actually search for. Focus on high-volume, transactional keywords. Avoid long-tail phrases.',
+                        },
+                        {
+                            role: 'user',
+                            content: prompt,
+                        },
+                    ],
+                    temperature: 0.8,
+                    max_tokens: 2000,
+                })
+            );
 
             const apiCallDuration = Date.now() - apiCallStartTime;
-            console.log(`[KeywordGenerator] API call completed for seed: "${seed}" in ${apiCallDuration}ms`);
+            logger.debug("API call completed", { seed, duration: apiCallDuration });
 
             const content = response.choices[0]?.message?.content || '';
             if (!content) {
-                console.warn(`[KeywordGenerator] Empty response for seed: "${seed}"`);
+                logger.warn("Empty response from API", { seed });
                 return [];
             }
 
-            console.log(`[KeywordGenerator] Parsing keywords from response for seed: "${seed}", content length=${content.length}`);
             // Parse keywords from response
             const keywords = this.parseKeywords(content);
-            console.log(`[KeywordGenerator] Parsed ${keywords.length} keywords for seed: "${seed}"`);
+            logger.debug("Keywords parsed", { seed, count: keywords.length });
             return keywords;
         } catch (error) {
             const apiCallDuration = Date.now() - apiCallStartTime;
-            console.error(`[KeywordGenerator] Failed to generate keywords for seed: "${seed}" after ${apiCallDuration}ms`, error);
-            if (error instanceof Error) {
-                console.error(`[KeywordGenerator] Error details: ${error.message}, stack: ${error.stack}`);
-            }
-            throw error;
+            logger.error("Failed to generate keywords for seed", error, { seed, duration: apiCallDuration });
+            // Don't throw - return empty array for graceful degradation
+            // The caller can handle empty results
+            return [];
         }
     }
 
@@ -141,7 +218,7 @@ Return keywords one per line, no numbers or bullets.`,
                     allKeywords.push(...keywords);
                 }
             } catch (error) {
-                console.warn(`[KeywordGenerator] Failed to generate ${variation.angle} keywords for seed: ${seed}`, error);
+                logger.warn("Failed to generate variation keywords", { seed, angle: variation.angle, error });
                 // Continue with other variations
             }
         }
@@ -149,7 +226,7 @@ Return keywords one per line, no numbers or bullets.`,
         // Deduplicate and return
         const uniqueKeywords = Array.from(new Set(allKeywords.map(kw => kw.toLowerCase().trim())))
             .filter(kw => kw.length > 0);
-        
+
         return uniqueKeywords.slice(0, targetCount);
     }
 
