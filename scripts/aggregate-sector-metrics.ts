@@ -137,12 +137,32 @@ async function processKeywords(rawKeywords: any[]): Promise<ProcessedKeyword[]> 
 
     return rawKeywords.map((kw) => {
         // Convert monthly data from CSV format to app format with correct month labels
+        // Keywords from findSimilarKeywords have monthly_data JSONB converted to month columns (e.g., "2024_09")
         const monthlyData = allMonths.map(({ key, label }) => {
+            // Try to get volume from month column (e.g., kw["2024_09"])
+            // If not found, try to get from monthly_data JSONB array if present
+            let volume = (kw[key as keyof typeof kw] as number);
+            
+            // If month column not found, try to extract from monthly_data JSONB array
+            if (volume === undefined || volume === null) {
+                if (kw.monthly_data && Array.isArray(kw.monthly_data)) {
+                    const monthData = kw.monthly_data.find((item: any) => 
+                        item.month === key || item.month === label
+                    );
+                    if (monthData) {
+                        volume = monthData.volume;
+                    }
+                }
+            }
+            
+            // Fallback to search_volume if still not found
+            if (volume === undefined || volume === null) {
+                volume = kw.search_volume || 0;
+            }
+            
             return {
                 month: label,
-                volume: Math.floor(
-                    (kw[key as keyof typeof kw] as number) || kw.search_volume || 0,
-                ),
+                volume: Math.floor(volume),
             };
         });
 
@@ -158,16 +178,37 @@ async function processKeywords(rawKeywords: any[]): Promise<ProcessedKeyword[]> 
 
         let growthYoy = 0;
         if (monthlyData.length >= 12) {
-            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025
-            const oneYearAgo = monthlyData[monthlyData.length - 13].volume; // Sep 2024 (12 months ago)
-            if (oneYearAgo !== 0) {
-                growthYoy = ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
+            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025 (index 47)
+            // For YoY: compare Sep 2025 to Sep 2024 (12 months ago, which is index 35 for 48 months)
+            // With 48 months: length=48, last index=47, 12 months ago = 47-12+1 = 36... wait, that's Oct
+            // Actually: Sep 2025 is at index 47, Sep 2024 is at index 35 (12 months earlier)
+            // So: 47 - 12 = 35, which means we need length - 13
+            const oneYearAgoIndex = monthlyData.length - 13; // Sep 2024 (12 months before Sep 2025)
+            if (oneYearAgoIndex >= 0 && monthlyData[oneYearAgoIndex]) {
+                const oneYearAgo = monthlyData[oneYearAgoIndex].volume;
+                if (oneYearAgo !== 0) {
+                    growthYoy = ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
+                }
             }
         }
 
         const similarityScore = typeof kw.similarityScore === 'number'
             ? kw.similarityScore
             : parseFloat(kw.similarityScore || "0");
+
+        // Use precomputed growth_yoy from database if available, otherwise use calculated value
+        let finalGrowthYoy = growthYoy;
+        if (kw.growth_YoY !== undefined && kw.growth_YoY !== null) {
+            finalGrowthYoy = parseFloat(String(kw.growth_YoY));
+        } else if (kw.growth_yoy !== undefined && kw.growth_yoy !== null) {
+            finalGrowthYoy = parseFloat(String(kw.growth_yoy));
+        }
+
+        // Use precomputed growth_3m from database if available
+        let finalGrowth3m = growth3m;
+        if (kw.growth_3m !== undefined && kw.growth_3m !== null) {
+            finalGrowth3m = parseFloat(String(kw.growth_3m));
+        }
 
         const result: ProcessedKeyword = {
             keyword: kw.keyword,
@@ -177,8 +218,8 @@ async function processKeywords(rawKeywords: any[]): Promise<ProcessedKeyword[]> 
             topPageBid: parseFloat(String(
                 kw.high_top_of_page_bid || kw.low_top_of_page_bid || "0"
             )),
-            growth3m,
-            growthYoy,
+            growth3m: finalGrowth3m,
+            growthYoy: finalGrowthYoy,
             similarityScore,
             monthlyData,
         };
