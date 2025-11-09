@@ -593,6 +593,392 @@ async function getKeywordsFromVectorDB(
     };
 }
 
+/**
+ * Safe setTimeout wrapper that prevents negative timeout values
+ * Node.js will default negative timeouts to 1ms, which can cause issues
+ */
+function safeSetTimeout(callback: () => void, delay: number): NodeJS.Timeout {
+    const safeDelay = Math.max(1, Math.floor(delay));
+    if (delay < 0) {
+        logger.warn("Negative timeout detected, using 1ms", {
+            originalDelay: delay,
+            safeDelay,
+        });
+    }
+    return setTimeout(callback, safeDelay);
+}
+
+/**
+ * Generate report data from keywords
+ * Extracted to reduce code duplication between new report generation and already-generated report paths
+ */
+async function generateReportData(
+    projectId: string,
+    project: any,
+    keywordsWithData: any[],
+    keywordVectorService: any,
+    db: any,
+    customSearchProjectKeywords: any
+): Promise<{
+    aggregated: any;
+    keywords: any[];
+    totalKeywords: number;
+    similarityCalculation: { calculated: number; cached: number; errors: number; duration: string };
+    opportunityScoreCalculation: { calculated: number; skipped: number; errors: number; duration: string };
+}> {
+    const reportStartTime = Date.now();
+
+    // Calculate aggregated metrics
+    const totalVolume = keywordsWithData.reduce((sum, kw) => sum + (kw.volume || 0), 0);
+    const avgVolume = Math.round(totalVolume / keywordsWithData.length);
+
+    const validCpc = keywordsWithData
+        .map(kw => kw.cpc ? parseFloat(kw.cpc) : null)
+        .filter((c): c is number => c !== null && !isNaN(c)); // Filter out NaN values
+    const avgCpc = validCpc.length > 0
+        ? validCpc.reduce((sum, c) => sum + c, 0) / validCpc.length
+        : null;
+
+    const validTopPageBid = keywordsWithData
+        .map(kw => kw.topPageBid ? parseFloat(kw.topPageBid) : null)
+        .filter((b): b is number => b !== null && !isNaN(b)); // Filter out NaN values
+    const avgTopPageBid = validTopPageBid.length > 0
+        ? validTopPageBid.reduce((sum, b) => sum + b, 0) / validTopPageBid.length
+        : null;
+
+    const competitionLevels = keywordsWithData
+        .map(kw => {
+            if (!kw.competition) return null;
+            const comp = kw.competition;
+            if (comp >= 75) return "high";
+            if (comp >= 25) return "medium";
+            return "low";
+        })
+        .filter((c): c is string => c !== null);
+
+    const competitionCounts = competitionLevels.reduce((acc, level) => {
+        acc[level] = (acc[level] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const competition = Object.keys(competitionCounts).length > 0
+        ? Object.entries(competitionCounts).sort((a, b) => b[1] - a[1])[0][0]
+        : null;
+
+    const competitionNumber = competition === "high" ? 100 : competition === "medium" ? 50 : 0;
+
+    const monthlyDataMap = new Map<string, { sum: number; count: number }>();
+    keywordsWithData.forEach(kw => {
+        if (kw.monthlyData && Array.isArray(kw.monthlyData)) {
+            kw.monthlyData.forEach((md: any) => {
+                if (md.month && md.volume !== null && md.volume !== undefined) {
+                    const existing = monthlyDataMap.get(md.month) || { sum: 0, count: 0 };
+                    monthlyDataMap.set(md.month, {
+                        sum: existing.sum + md.volume,
+                        count: existing.count + 1
+                    });
+                }
+            });
+        }
+    });
+
+    const aggregatedMonthlyData = Array.from(monthlyDataMap.entries())
+        .map(([month, data]) => ({
+            month,
+            volume: Math.round(data.sum / data.count),
+            sortKey: month
+        }))
+        .sort((a, b) => {
+            const dateA = new Date(a.month);
+            const dateB = new Date(b.month);
+            return dateA.getTime() - dateB.getTime();
+        })
+        .map(({ sortKey, ...rest }) => rest);
+
+    const { calculateVolatility, calculateTrendStrength, calculateOpportunityScore } = await import("./opportunity-score");
+
+    let aggregatedGrowthYoy: number | null = null;
+    if (aggregatedMonthlyData.length >= 12) {
+        const lastMonth = aggregatedMonthlyData[aggregatedMonthlyData.length - 1];
+        const sameMonthLastYear = aggregatedMonthlyData[aggregatedMonthlyData.length - 12];
+        aggregatedGrowthYoy = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
+    }
+
+    let aggregatedGrowth3m: number | null = null;
+    if (aggregatedMonthlyData.length >= 3) {
+        const lastMonth = aggregatedMonthlyData[aggregatedMonthlyData.length - 1];
+        const threeMonthsAgo = aggregatedMonthlyData[aggregatedMonthlyData.length - 3];
+        aggregatedGrowth3m = ((lastMonth.volume - threeMonthsAgo.volume) / (threeMonthsAgo.volume + 1)) * 100;
+    }
+
+    const aggregatedVolatility = calculateVolatility(aggregatedMonthlyData);
+    const aggregatedTrendStrength = aggregatedGrowthYoy !== null
+        ? calculateTrendStrength(aggregatedGrowthYoy, aggregatedVolatility)
+        : 0;
+
+    let aggregatedOpportunityScore = null;
+    let aggregatedBidEfficiency = null;
+    let aggregatedTac = null;
+    let aggregatedSac = null;
+
+    if (avgVolume && avgCpc !== null && avgTopPageBid !== null && aggregatedGrowthYoy !== null && aggregatedMonthlyData.length > 0) {
+        const oppResult = calculateOpportunityScore({
+            volume: avgVolume,
+            competition: competitionNumber,
+            cpc: avgCpc,
+            topPageBid: avgTopPageBid,
+            growthYoy: aggregatedGrowthYoy,
+            monthlyData: aggregatedMonthlyData
+        });
+        aggregatedOpportunityScore = oppResult.opportunityScore;
+        aggregatedBidEfficiency = oppResult.bidEfficiency;
+        aggregatedTac = oppResult.tac;
+        aggregatedSac = oppResult.sac;
+    }
+
+    const keywordIds = keywordsWithData.map(kw => kw.id);
+    const projectLinks = keywordIds.length > 0
+        ? await db
+            .select()
+            .from(customSearchProjectKeywords)
+            .where(
+                eq(customSearchProjectKeywords.customSearchProjectId, projectId)
+            )
+        : [];
+
+    logger.debug("Calculating similarity scores for keywords", {
+        projectLinksCount: projectLinks.length,
+        keywordsWithDataCount: keywordsWithData.length,
+    });
+
+    const similarityStartTime = Date.now();
+    const similarityScoreMap = new Map<string, string>();
+    const pitch = project.pitch || "";
+    let similarityCalculated = 0;
+    let similarityCached = 0;
+    let similarityErrors = 0;
+
+    const keywordIdToTextMap = new Map<string, string>();
+    keywordsWithData.forEach(kw => {
+        keywordIdToTextMap.set(kw.id, kw.keyword);
+    });
+
+    for (const link of projectLinks) {
+        let similarity = link.similarityScore ? parseFloat(link.similarityScore) : null;
+        if (similarity === null || similarity === 0.8) {
+            const keywordText = keywordIdToTextMap.get(link.globalKeywordId);
+            if (keywordText && pitch.trim()) {
+                try {
+                    similarity = await keywordVectorService.calculateTextSimilarity(pitch, keywordText);
+                    await db
+                        .update(customSearchProjectKeywords)
+                        .set({ similarityScore: similarity.toString() })
+                        .where(eq(customSearchProjectKeywords.id, link.id));
+                    similarityCalculated++;
+                } catch (error) {
+                    logger.warn("Failed to calculate similarity for keyword", {
+                        keyword: keywordText,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                    similarity = similarity || 0.5;
+                    similarityErrors++;
+                }
+            } else {
+                similarity = similarity || 0.5;
+            }
+        } else {
+            similarityCached++;
+        }
+        similarityScoreMap.set(link.globalKeywordId, similarity.toString());
+    }
+
+    const similarityDuration = Date.now() - similarityStartTime;
+    logger.info("Similarity calculation complete", {
+        duration: `${similarityDuration}ms (${(similarityDuration / 1000).toFixed(2)}s)`,
+        calculated: similarityCalculated,
+        cached: similarityCached,
+        errors: similarityErrors,
+        total: projectLinks.length,
+    });
+
+    logger.debug("Calculating opportunity scores for keywords", {
+        keywordsCount: keywordsWithData.length,
+    });
+
+    const opportunityScoreStartTime = Date.now();
+    let opportunityScoresCalculated = 0;
+    let opportunityScoresSkipped = 0;
+    let opportunityScoreErrors = 0;
+
+    const formattedKeywords = keywordsWithData.map(kw => {
+        let opportunityScore = null;
+        let bidEfficiency = null;
+        let tac = null;
+        let sac = null;
+
+        if (kw.volume && kw.competition !== null && kw.cpc && kw.topPageBid && kw.growthYoy !== null && kw.monthlyData) {
+            try {
+                const oppResult = calculateOpportunityScore({
+                    volume: kw.volume,
+                    competition: kw.competition,
+                    cpc: parseFloat(kw.cpc),
+                    topPageBid: parseFloat(kw.topPageBid),
+                    growthYoy: parseFloat(kw.growthYoy),
+                    monthlyData: kw.monthlyData
+                });
+                opportunityScore = oppResult.opportunityScore;
+                bidEfficiency = oppResult.bidEfficiency;
+                tac = oppResult.tac;
+                sac = oppResult.sac;
+                opportunityScoresCalculated++;
+            } catch (error) {
+                logger.error("Error calculating opportunity score for keyword", error, {
+                    keyword: kw.keyword,
+                    keywordId: kw.id,
+                });
+                opportunityScoreErrors++;
+            }
+        } else {
+            opportunityScoresSkipped++;
+        }
+
+        const similarityScore = similarityScoreMap.get(kw.id) || null;
+
+        let formattedMonthlyData = kw.monthlyData || [];
+        if (Array.isArray(formattedMonthlyData) && formattedMonthlyData.length > 0) {
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const needsConversion = formattedMonthlyData.some((item: any) =>
+                typeof item.month === 'string' && /^\d{4}-\d{2}$/.test(item.month)
+            );
+
+            if (needsConversion) {
+                formattedMonthlyData = formattedMonthlyData.map((item: any) => {
+                    if (/^\d{4}-\d{2}$/.test(item.month)) {
+                        const [year, month] = item.month.split('-');
+                        const monthIndex = parseInt(month, 10) - 1;
+                        const monthName = monthNames[monthIndex];
+                        return {
+                            month: `${monthName} ${year}`,
+                            volume: item.volume,
+                            sortKey: item.month
+                        };
+                    }
+                    return { ...item, sortKey: item.month };
+                }).sort((a: any, b: any) => {
+                    if (a.sortKey && b.sortKey) {
+                        return a.sortKey.localeCompare(b.sortKey);
+                    }
+                    const dateA = new Date(a.month);
+                    const dateB = new Date(b.month);
+                    return dateA.getTime() - dateB.getTime();
+                }).map(({ sortKey, ...rest }: any) => rest);
+            } else {
+                formattedMonthlyData = [...formattedMonthlyData].sort((a: any, b: any) => {
+                    const dateA = new Date(a.month);
+                    const dateB = new Date(b.month);
+                    return dateA.getTime() - dateB.getTime();
+                });
+            }
+        }
+
+        return {
+            id: kw.id,
+            reportId: projectId,
+            keyword: kw.keyword,
+            volume: kw.volume,
+            competition: kw.competition,
+            cpc: kw.cpc ? parseFloat(kw.cpc).toString() : null,
+            topPageBid: kw.topPageBid ? parseFloat(kw.topPageBid).toString() : null,
+            growth3m: kw.growth3m ? parseFloat(kw.growth3m).toString() : null,
+            growthYoy: kw.growthYoy ? parseFloat(kw.growthYoy).toString() : null,
+            similarityScore: similarityScore ? parseFloat(similarityScore).toString() : null,
+            growthSlope: null,
+            growthR2: null,
+            growthConsistency: null,
+            growthStability: null,
+            sustainedGrowthScore: null,
+            volatility: kw.volatility ? parseFloat(kw.volatility).toString() : null,
+            trendStrength: kw.trendStrength ? parseFloat(kw.trendStrength).toString() : null,
+            bidEfficiency: bidEfficiency ? bidEfficiency.toString() : null,
+            tac: tac ? tac.toString() : null,
+            sac: sac ? sac.toString() : null,
+            opportunityScore: opportunityScore ? opportunityScore.toString() : null,
+            monthlyData: formattedMonthlyData
+        };
+    });
+
+    const opportunityScoreDuration = Date.now() - opportunityScoreStartTime;
+    logger.info("Opportunity score calculation complete", {
+        duration: `${opportunityScoreDuration}ms (${(opportunityScoreDuration / 1000).toFixed(2)}s)`,
+        calculated: opportunityScoresCalculated,
+        skipped: opportunityScoresSkipped,
+        errors: opportunityScoreErrors,
+        total: keywordsWithData.length,
+    });
+
+    const reportDuration = Date.now() - reportStartTime;
+    logger.info("=== GENERATE REPORT PIPELINE COMPLETE ===", {
+        duration: `${reportDuration}ms (${(reportDuration / 1000).toFixed(2)}s)`,
+        keywordsWithData: keywordsWithData.length,
+        totalKeywords: keywordsWithData.length,
+        aggregatedMetrics: {
+            avgVolume,
+            avgCpc: avgCpc !== null ? avgCpc.toFixed(2) : null,
+            avgTopPageBid: avgTopPageBid !== null ? avgTopPageBid.toFixed(2) : null,
+            competition,
+            aggregatedGrowthYoy: aggregatedGrowthYoy !== null ? aggregatedGrowthYoy.toFixed(2) : null,
+            aggregatedGrowth3m: aggregatedGrowth3m !== null ? aggregatedGrowth3m.toFixed(2) : null,
+            aggregatedVolatility: aggregatedVolatility.toFixed(2),
+            aggregatedTrendStrength: aggregatedTrendStrength.toFixed(2),
+            aggregatedOpportunityScore: aggregatedOpportunityScore !== null ? aggregatedOpportunityScore.toFixed(2) : null,
+        },
+        similarityCalculation: {
+            calculated: similarityCalculated,
+            cached: similarityCached,
+            errors: similarityErrors,
+            duration: `${similarityDuration}ms`,
+        },
+        opportunityScoreCalculation: {
+            calculated: opportunityScoresCalculated,
+            skipped: opportunityScoresSkipped,
+            errors: opportunityScoreErrors,
+            duration: `${opportunityScoreDuration}ms`,
+        },
+        timestamp: new Date().toISOString(),
+    });
+
+    return {
+        aggregated: {
+            avgVolume,
+            growth3m: aggregatedGrowth3m !== null ? aggregatedGrowth3m.toString() : null,
+            growthYoy: aggregatedGrowthYoy !== null ? aggregatedGrowthYoy.toString() : null,
+            competition,
+            avgTopPageBid: avgTopPageBid !== null ? avgTopPageBid.toString() : null,
+            avgCpc: avgCpc !== null ? avgCpc.toString() : null,
+            volatility: aggregatedVolatility.toString(),
+            trendStrength: aggregatedTrendStrength.toString(),
+            bidEfficiency: aggregatedBidEfficiency !== null ? aggregatedBidEfficiency.toString() : null,
+            tac: aggregatedTac !== null ? aggregatedTac.toString() : null,
+            sac: aggregatedSac !== null ? aggregatedSac.toString() : null,
+            opportunityScore: aggregatedOpportunityScore !== null ? aggregatedOpportunityScore.toString() : null
+        },
+        keywords: formattedKeywords,
+        totalKeywords: keywordsWithData.length,
+        similarityCalculation: {
+            calculated: similarityCalculated,
+            cached: similarityCached,
+            errors: similarityErrors,
+            duration: `${similarityDuration}ms`,
+        },
+        opportunityScoreCalculation: {
+            calculated: opportunityScoresCalculated,
+            skipped: opportunityScoresSkipped,
+            errors: opportunityScoreErrors,
+            duration: `${opportunityScoreDuration}ms`,
+        },
+    };
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
     // Auth middleware - verify Supabase JWT token
     const requireAuth = async (req: any, res: any, next: any) => {
@@ -2537,187 +2923,9 @@ Return ONLY the JSON array, no other text. Example format:
                 sendProgress('fetching-dataforseo', { message: 'DataForSEO metrics already fetched, skipping...' });
             }
 
-            // STEP 4: Compute metrics (concurrently in batches)
-            if (!savedProgress || !savedProgress.metricsComputed) {
-                const metricsStartTime = Date.now();
-                logger.info("=== COMPUTE METRICS PIPELINE START ===", {
-                    projectId,
-                    timestamp: new Date().toISOString(),
-                });
-
-                sendProgress('computing-metrics', { message: 'Computing metrics for all keywords concurrently...' });
-
-                const keywords = await storage.getProjectKeywords(projectId);
-                const { calculateVolatility, calculateTrendStrength } = await import("./opportunity-score");
-
-                const BATCH_SIZE = 50; // Process 50 keywords concurrently
-                let processedCount = 0;
-                let skippedCount = 0;
-                let errorCount = 0;
-                const totalKeywords = keywords.filter(kw => kw.monthlyData && Array.isArray(kw.monthlyData) && kw.monthlyData.length > 0 && kw.volume !== null).length;
-                const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);
-
-                logger.info("Starting metrics computation", {
-                    totalKeywords: keywords.length,
-                    keywordsWithData: totalKeywords,
-                    batchSize: BATCH_SIZE,
-                    totalBatches,
-                });
-
-                // Process keywords in batches
-                for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
-                    const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-                    const batchStartTime = Date.now();
-                    const batch = keywords.slice(i, i + BATCH_SIZE);
-
-                    logger.debug(`[Batch ${batchNumber}/${totalBatches}] Processing batch`, {
-                        batchNumber,
-                        totalBatches,
-                        batchStart: i + 1,
-                        batchEnd: Math.min(i + BATCH_SIZE, keywords.length),
-                        batchSize: batch.length,
-                    });
-
-                    // Process batch concurrently
-                    const batchPromises = batch.map(async (keyword) => {
-                        try {
-                            if (!keyword.monthlyData || !Array.isArray(keyword.monthlyData) || keyword.monthlyData.length === 0) {
-                                return { success: false, reason: 'no_monthly_data', keywordId: keyword.id };
-                            }
-                            if (keyword.volume === null || keyword.volume === undefined) {
-                                return { success: false, reason: 'no_volume', keywordId: keyword.id };
-                            }
-
-                            const monthlyData = keyword.monthlyData;
-                            const sortedMonthlyData = [...monthlyData].sort((a, b) => {
-                                const dateA = new Date(a.month);
-                                const dateB = new Date(b.month);
-                                return dateA.getTime() - dateB.getTime();
-                            });
-
-                            if (sortedMonthlyData.length < 2) {
-                                return { success: false, reason: 'insufficient_data', keywordId: keyword.id };
-                            }
-
-                            const lastMonth = sortedMonthlyData[sortedMonthlyData.length - 1];
-                            let yoyGrowth: number | null = null;
-                            if (sortedMonthlyData.length >= 12) {
-                                const sameMonthLastYear = sortedMonthlyData[sortedMonthlyData.length - 12];
-                                yoyGrowth = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
-                            }
-
-                            let threeMonthGrowth: number | null = null;
-                            if (sortedMonthlyData.length >= 3) {
-                                const threeMonthsAgo = sortedMonthlyData[sortedMonthlyData.length - 3];
-                                if (threeMonthsAgo.volume > 0) {
-                                    threeMonthGrowth = ((lastMonth.volume - threeMonthsAgo.volume) / threeMonthsAgo.volume) * 100;
-                                }
-                            }
-
-                            const volatility = calculateVolatility(sortedMonthlyData);
-                            const growthYoyValue = yoyGrowth !== null ? yoyGrowth : 0;
-                            const trendStrength = calculateTrendStrength(growthYoyValue, volatility);
-
-                            await storage.updateKeywordMetrics(keyword.id, {
-                                growthYoy: yoyGrowth !== null ? yoyGrowth.toString() : null,
-                                growth3m: threeMonthGrowth !== null ? threeMonthGrowth.toString() : null,
-                                volatility: volatility.toString(),
-                                trendStrength: trendStrength.toString()
-                            });
-
-                            return { success: true, keywordId: keyword.id };
-                        } catch (error) {
-                            logger.error("Error computing metrics for keyword", error, {
-                                keywordId: keyword.id,
-                                keyword: keyword.keyword,
-                            });
-                            return { success: false, reason: 'error', keywordId: keyword.id, error };
-                        }
-                    });
-
-                    const batchResults = await Promise.all(batchPromises);
-                    const successful = batchResults.filter(r => r.success).length;
-                    const failed = batchResults.filter(r => !r.success);
-                    const skipped = failed.filter(r => r.reason !== 'error').length;
-                    const errors = failed.filter(r => r.reason === 'error').length;
-
-                    processedCount += successful;
-                    skippedCount += skipped;
-                    errorCount += errors;
-
-                    const batchDuration = Date.now() - batchStartTime;
-                    const avgTimePerKeyword = batch.length > 0 ? batchDuration / batch.length : 0;
-
-                    logger.info(`[Batch ${batchNumber}/${totalBatches}] Batch completed`, {
-                        batchNumber,
-                        totalBatches,
-                        duration: `${batchDuration}ms (${(batchDuration / 1000).toFixed(2)}s)`,
-                        avgTimePerKeyword: `${Math.round(avgTimePerKeyword)}ms`,
-                        successful,
-                        skipped,
-                        errors,
-                        cumulativeProgress: {
-                            processed: processedCount,
-                            skipped: skippedCount,
-                            errors: errorCount,
-                            total: totalKeywords,
-                            progressPercent: totalKeywords > 0 ? `${((processedCount / totalKeywords) * 100).toFixed(1)}%` : "0%",
-                        },
-                    });
-
-                    // Send progress update
-                    sendProgress('computing-metrics', {
-                        message: `Processed ${processedCount} out of ${totalKeywords} keywords`,
-                        processedCount,
-                        totalKeywords
-                    });
-
-                    // Save progress after each batch
-                    await saveProgress({
-                        currentStage: 'computing-metrics',
-                        metricsProcessedCount: processedCount,
-                        newKeywords: finalKeywords
-                    });
-                }
-
-                const metricsDuration = Date.now() - metricsStartTime;
-                const avgTimePerKeyword = processedCount > 0 ? metricsDuration / processedCount : 0;
-
-                // Save final metrics progress
-                await saveProgress({
-                    currentStage: 'computing-metrics',
-                    metricsComputed: true,
-                    metricsProcessedCount: processedCount,
-                    newKeywords: finalKeywords
-                });
-
-                logger.info("=== COMPUTE METRICS PIPELINE COMPLETE ===", {
-                    duration: `${metricsDuration}ms (${(metricsDuration / 1000).toFixed(2)}s)`,
-                    processed: processedCount,
-                    skipped: skippedCount,
-                    errors: errorCount,
-                    totalKeywords,
-                    avgTimePerKeyword: `${Math.round(avgTimePerKeyword)}ms`,
-                    successRate: totalKeywords > 0 ? `${((processedCount / totalKeywords) * 100).toFixed(1)}%` : "0%",
-                    timestamp: new Date().toISOString(),
-                });
-
-                sendProgress('computing-metrics', {
-                    message: `Computed metrics for ${processedCount} keywords`,
-                    processedCount,
-                    totalKeywords
-                });
-            } else {
-                logger.info("Skipping metrics computation - already computed", {
-                    projectId,
-                    metricsProcessedCount: savedProgress.metricsProcessedCount,
-                });
-                sendProgress('computing-metrics', { message: 'Metrics already computed, skipping...' });
-            }
-
-            // STEP 5: Generate report
+            // STEP 4: Generate report FIRST (before computing metrics)
+            // This allows users to see the report immediately while metrics are computed in the background
             if (!savedProgress || !savedProgress.reportGenerated) {
-                const reportStartTime = Date.now();
                 logger.info("=== GENERATE REPORT PIPELINE START ===", {
                     projectId,
                     timestamp: new Date().toISOString(),
@@ -2760,324 +2968,15 @@ Return ONLY the JSON array, no other text. Example format:
                     return;
                 }
 
-                // Calculate aggregated metrics (reuse logic from existing endpoint)
-                const totalVolume = keywordsWithData.reduce((sum, kw) => sum + (kw.volume || 0), 0);
-                const avgVolume = Math.round(totalVolume / keywordsWithData.length);
-
-                const validCpc = keywordsWithData
-                    .map(kw => kw.cpc ? parseFloat(kw.cpc) : null)
-                    .filter((c): c is number => c !== null);
-                const avgCpc = validCpc.length > 0
-                    ? validCpc.reduce((sum, c) => sum + c, 0) / validCpc.length
-                    : null;
-
-                const validTopPageBid = keywordsWithData
-                    .map(kw => kw.topPageBid ? parseFloat(kw.topPageBid) : null)
-                    .filter((b): b is number => b !== null);
-                const avgTopPageBid = validTopPageBid.length > 0
-                    ? validTopPageBid.reduce((sum, b) => sum + b, 0) / validTopPageBid.length
-                    : null;
-
-                const competitionLevels = keywordsWithData
-                    .map(kw => {
-                        if (!kw.competition) return null;
-                        const comp = kw.competition;
-                        if (comp >= 75) return "high";
-                        if (comp >= 25) return "medium";
-                        return "low";
-                    })
-                    .filter((c): c is string => c !== null);
-
-                const competitionCounts = competitionLevels.reduce((acc, level) => {
-                    acc[level] = (acc[level] || 0) + 1;
-                    return acc;
-                }, {} as Record<string, number>);
-
-                const competition = Object.keys(competitionCounts).length > 0
-                    ? Object.entries(competitionCounts).sort((a, b) => b[1] - a[1])[0][0]
-                    : null;
-
-                const competitionNumber = competition === "high" ? 100 : competition === "medium" ? 50 : 0;
-
-                const monthlyDataMap = new Map<string, { sum: number; count: number }>();
-                keywordsWithData.forEach(kw => {
-                    if (kw.monthlyData && Array.isArray(kw.monthlyData)) {
-                        kw.monthlyData.forEach((md: any) => {
-                            if (md.month && md.volume !== null && md.volume !== undefined) {
-                                const existing = monthlyDataMap.get(md.month) || { sum: 0, count: 0 };
-                                monthlyDataMap.set(md.month, {
-                                    sum: existing.sum + md.volume,
-                                    count: existing.count + 1
-                                });
-                            }
-                        });
-                    }
-                });
-
-                const aggregatedMonthlyData = Array.from(monthlyDataMap.entries())
-                    .map(([month, data]) => ({
-                        month,
-                        volume: Math.round(data.sum / data.count),
-                        sortKey: month
-                    }))
-                    .sort((a, b) => {
-                        const dateA = new Date(a.month);
-                        const dateB = new Date(b.month);
-                        return dateA.getTime() - dateB.getTime();
-                    })
-                    .map(({ sortKey, ...rest }) => rest);
-
-                const { calculateVolatility, calculateTrendStrength, calculateOpportunityScore } = await import("./opportunity-score");
-
-                let aggregatedGrowthYoy: number | null = null;
-                if (aggregatedMonthlyData.length >= 12) {
-                    const lastMonth = aggregatedMonthlyData[aggregatedMonthlyData.length - 1];
-                    const sameMonthLastYear = aggregatedMonthlyData[aggregatedMonthlyData.length - 12];
-                    aggregatedGrowthYoy = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
-                }
-
-                let aggregatedGrowth3m: number | null = null;
-                if (aggregatedMonthlyData.length >= 3) {
-                    const lastMonth = aggregatedMonthlyData[aggregatedMonthlyData.length - 1];
-                    const threeMonthsAgo = aggregatedMonthlyData[aggregatedMonthlyData.length - 3];
-                    aggregatedGrowth3m = ((lastMonth.volume - threeMonthsAgo.volume) / (threeMonthsAgo.volume + 1)) * 100;
-                }
-
-                const aggregatedVolatility = calculateVolatility(aggregatedMonthlyData);
-                const aggregatedTrendStrength = aggregatedGrowthYoy !== null
-                    ? calculateTrendStrength(aggregatedGrowthYoy, aggregatedVolatility)
-                    : 0;
-
-                let aggregatedOpportunityScore = null;
-                let aggregatedBidEfficiency = null;
-                let aggregatedTac = null;
-                let aggregatedSac = null;
-
-                if (avgVolume && avgCpc !== null && avgTopPageBid !== null && aggregatedGrowthYoy !== null && aggregatedMonthlyData.length > 0) {
-                    const oppResult = calculateOpportunityScore({
-                        volume: avgVolume,
-                        competition: competitionNumber,
-                        cpc: avgCpc,
-                        topPageBid: avgTopPageBid,
-                        growthYoy: aggregatedGrowthYoy,
-                        monthlyData: aggregatedMonthlyData
-                    });
-                    aggregatedOpportunityScore = oppResult.opportunityScore;
-                    aggregatedBidEfficiency = oppResult.bidEfficiency;
-                    aggregatedTac = oppResult.tac;
-                    aggregatedSac = oppResult.sac;
-                }
-
-                const keywordIds = keywordsWithData.map(kw => kw.id);
-                const projectLinks = keywordIds.length > 0
-                    ? await db
-                        .select()
-                        .from(customSearchProjectKeywords)
-                        .where(
-                            eq(customSearchProjectKeywords.customSearchProjectId, projectId)
-                        )
-                    : [];
-
-                logger.debug("Calculating similarity scores for keywords", {
-                    projectLinksCount: projectLinks.length,
-                    keywordsWithDataCount: keywordsWithData.length,
-                });
-
-                const similarityStartTime = Date.now();
-                const similarityScoreMap = new Map<string, string>();
-                const pitch = project.pitch || "";
-                let similarityCalculated = 0;
-                let similarityCached = 0;
-                let similarityErrors = 0;
-
-                const keywordIdToTextMap = new Map<string, string>();
-                keywordsWithData.forEach(kw => {
-                    keywordIdToTextMap.set(kw.id, kw.keyword);
-                });
-
-                for (const link of projectLinks) {
-                    let similarity = link.similarityScore ? parseFloat(link.similarityScore) : null;
-                    if (similarity === null || similarity === 0.8) {
-                        const keywordText = keywordIdToTextMap.get(link.globalKeywordId);
-                        if (keywordText && pitch.trim()) {
-                            try {
-                                similarity = await keywordVectorService.calculateTextSimilarity(pitch, keywordText);
-                                await db
-                                    .update(customSearchProjectKeywords)
-                                    .set({ similarityScore: similarity.toString() })
-                                    .where(eq(customSearchProjectKeywords.id, link.id));
-                                similarityCalculated++;
-                            } catch (error) {
-                                logger.warn("Failed to calculate similarity for keyword", {
-                                    keyword: keywordText,
-                                    error: error instanceof Error ? error.message : String(error),
-                                });
-                                similarity = similarity || 0.5;
-                                similarityErrors++;
-                            }
-                        } else {
-                            similarity = similarity || 0.5;
-                        }
-                    } else {
-                        similarityCached++;
-                    }
-                    similarityScoreMap.set(link.globalKeywordId, similarity.toString());
-                }
-
-                const similarityDuration = Date.now() - similarityStartTime;
-                logger.info("Similarity calculation complete", {
-                    duration: `${similarityDuration}ms (${(similarityDuration / 1000).toFixed(2)}s)`,
-                    calculated: similarityCalculated,
-                    cached: similarityCached,
-                    errors: similarityErrors,
-                    total: projectLinks.length,
-                });
-
-                logger.debug("Calculating opportunity scores for keywords", {
-                    keywordsCount: keywordsWithData.length,
-                });
-
-                const opportunityScoreStartTime = Date.now();
-                let opportunityScoresCalculated = 0;
-                let opportunityScoresSkipped = 0;
-                let opportunityScoreErrors = 0;
-
-                const formattedKeywords = keywordsWithData.map(kw => {
-                    let opportunityScore = null;
-                    let bidEfficiency = null;
-                    let tac = null;
-                    let sac = null;
-
-                    if (kw.volume && kw.competition !== null && kw.cpc && kw.topPageBid && kw.growthYoy !== null && kw.monthlyData) {
-                        try {
-                            const oppResult = calculateOpportunityScore({
-                                volume: kw.volume,
-                                competition: kw.competition,
-                                cpc: parseFloat(kw.cpc),
-                                topPageBid: parseFloat(kw.topPageBid),
-                                growthYoy: parseFloat(kw.growthYoy),
-                                monthlyData: kw.monthlyData
-                            });
-                            opportunityScore = oppResult.opportunityScore;
-                            bidEfficiency = oppResult.bidEfficiency;
-                            tac = oppResult.tac;
-                            sac = oppResult.sac;
-                            opportunityScoresCalculated++;
-                        } catch (error) {
-                            logger.error("Error calculating opportunity score for keyword", error, {
-                                keyword: kw.keyword,
-                                keywordId: kw.id,
-                            });
-                            opportunityScoreErrors++;
-                        }
-                    } else {
-                        opportunityScoresSkipped++;
-                    }
-
-                    const similarityScore = similarityScoreMap.get(kw.id) || null;
-
-                    let formattedMonthlyData = kw.monthlyData || [];
-                    if (Array.isArray(formattedMonthlyData) && formattedMonthlyData.length > 0) {
-                        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                        const needsConversion = formattedMonthlyData.some((item: any) =>
-                            typeof item.month === 'string' && /^\d{4}-\d{2}$/.test(item.month)
-                        );
-
-                        if (needsConversion) {
-                            formattedMonthlyData = formattedMonthlyData.map((item: any) => {
-                                if (/^\d{4}-\d{2}$/.test(item.month)) {
-                                    const [year, month] = item.month.split('-');
-                                    const monthIndex = parseInt(month, 10) - 1;
-                                    const monthName = monthNames[monthIndex];
-                                    return {
-                                        month: `${monthName} ${year}`,
-                                        volume: item.volume,
-                                        sortKey: item.month
-                                    };
-                                }
-                                return { ...item, sortKey: item.month };
-                            }).sort((a: any, b: any) => {
-                                if (a.sortKey && b.sortKey) {
-                                    return a.sortKey.localeCompare(b.sortKey);
-                                }
-                                const dateA = new Date(a.month);
-                                const dateB = new Date(b.month);
-                                return dateA.getTime() - dateB.getTime();
-                            }).map(({ sortKey, ...rest }: any) => rest);
-                        } else {
-                            formattedMonthlyData = [...formattedMonthlyData].sort((a: any, b: any) => {
-                                const dateA = new Date(a.month);
-                                const dateB = new Date(b.month);
-                                return dateA.getTime() - dateB.getTime();
-                            });
-                        }
-                    }
-
-                    return {
-                        id: kw.id,
-                        reportId: projectId,
-                        keyword: kw.keyword,
-                        volume: kw.volume,
-                        competition: kw.competition,
-                        cpc: kw.cpc ? parseFloat(kw.cpc).toString() : null,
-                        topPageBid: kw.topPageBid ? parseFloat(kw.topPageBid).toString() : null,
-                        growth3m: kw.growth3m ? parseFloat(kw.growth3m).toString() : null,
-                        growthYoy: kw.growthYoy ? parseFloat(kw.growthYoy).toString() : null,
-                        similarityScore: similarityScore ? parseFloat(similarityScore).toString() : null,
-                        growthSlope: null,
-                        growthR2: null,
-                        growthConsistency: null,
-                        growthStability: null,
-                        sustainedGrowthScore: null,
-                        volatility: kw.volatility ? parseFloat(kw.volatility).toString() : null,
-                        trendStrength: kw.trendStrength ? parseFloat(kw.trendStrength).toString() : null,
-                        bidEfficiency: bidEfficiency ? bidEfficiency.toString() : null,
-                        tac: tac ? tac.toString() : null,
-                        sac: sac ? sac.toString() : null,
-                        opportunityScore: opportunityScore ? opportunityScore.toString() : null,
-                        monthlyData: formattedMonthlyData
-                    };
-                });
-
-                const opportunityScoreDuration = Date.now() - opportunityScoreStartTime;
-                logger.info("Opportunity score calculation complete", {
-                    duration: `${opportunityScoreDuration}ms (${(opportunityScoreDuration / 1000).toFixed(2)}s)`,
-                    calculated: opportunityScoresCalculated,
-                    skipped: opportunityScoresSkipped,
-                    errors: opportunityScoreErrors,
-                    total: keywordsWithData.length,
-                });
-
-                const reportDuration = Date.now() - reportStartTime;
-                logger.info("=== GENERATE REPORT PIPELINE COMPLETE ===", {
-                    duration: `${reportDuration}ms (${(reportDuration / 1000).toFixed(2)}s)`,
-                    keywordsWithData: keywordsWithData.length,
-                    totalKeywords: allKeywords.length,
-                    aggregatedMetrics: {
-                        avgVolume,
-                        avgCpc: avgCpc !== null ? avgCpc.toFixed(2) : null,
-                        avgTopPageBid: avgTopPageBid !== null ? avgTopPageBid.toFixed(2) : null,
-                        competition,
-                        aggregatedGrowthYoy: aggregatedGrowthYoy !== null ? aggregatedGrowthYoy.toFixed(2) : null,
-                        aggregatedGrowth3m: aggregatedGrowth3m !== null ? aggregatedGrowth3m.toFixed(2) : null,
-                        aggregatedVolatility: aggregatedVolatility.toFixed(2),
-                        aggregatedTrendStrength: aggregatedTrendStrength.toFixed(2),
-                        aggregatedOpportunityScore: aggregatedOpportunityScore !== null ? aggregatedOpportunityScore.toFixed(2) : null,
-                    },
-                    similarityCalculation: {
-                        calculated: similarityCalculated,
-                        cached: similarityCached,
-                        errors: similarityErrors,
-                        duration: `${similarityDuration}ms`,
-                    },
-                    opportunityScoreCalculation: {
-                        calculated: opportunityScoresCalculated,
-                        skipped: opportunityScoresSkipped,
-                        errors: opportunityScoreErrors,
-                        duration: `${opportunityScoreDuration}ms`,
-                    },
-                    timestamp: new Date().toISOString(),
-                });
+                // Use helper function to generate report data
+                const reportData = await generateReportData(
+                    projectId,
+                    project,
+                    keywordsWithData,
+                    keywordVectorService,
+                    db,
+                    customSearchProjectKeywords
+                );
 
                 // Save final progress
                 await saveProgress({
@@ -3092,38 +2991,278 @@ Return ONLY the JSON array, no other text. Example format:
                     stage: 'complete',
                     currentStage: 'complete',
                     report: {
-                        aggregated: {
-                            avgVolume,
-                            growth3m: aggregatedGrowth3m !== null ? aggregatedGrowth3m.toString() : null,
-                            growthYoy: aggregatedGrowthYoy !== null ? aggregatedGrowthYoy.toString() : null,
-                            competition,
-                            avgTopPageBid: avgTopPageBid !== null ? avgTopPageBid.toString() : null,
-                            avgCpc: avgCpc !== null ? avgCpc.toString() : null,
-                            volatility: aggregatedVolatility.toString(),
-                            trendStrength: aggregatedTrendStrength.toString(),
-                            bidEfficiency: aggregatedBidEfficiency !== null ? aggregatedBidEfficiency.toString() : null,
-                            tac: aggregatedTac !== null ? aggregatedTac.toString() : null,
-                            sac: aggregatedSac !== null ? aggregatedSac.toString() : null,
-                            opportunityScore: aggregatedOpportunityScore !== null ? aggregatedOpportunityScore.toString() : null
-                        },
-                        keywords: formattedKeywords,
-                        totalKeywords: keywordsWithData.length
+                        aggregated: reportData.aggregated,
+                        keywords: reportData.keywords,
+                        totalKeywords: reportData.totalKeywords
                     }
                 })}\n\n`);
             } else {
-                logger.info("Skipping report generation - already generated", {
+                logger.info("Report already generated, fetching and sending report data", {
                     projectId,
                 });
-                // Report already generated, just send complete
+
+                // Report already generated, but we still need to fetch and send the data
+                const allKeywords = await storage.getProjectKeywords(projectId);
+                const keywordsWithData = allKeywords.filter(kw =>
+                    (kw.volume !== null && kw.volume !== undefined) ||
+                    (kw.competition !== null && kw.competition !== undefined) ||
+                    (kw.cpc !== null && kw.cpc !== undefined && kw.cpc !== '') ||
+                    (kw.topPageBid !== null && kw.topPageBid !== undefined && kw.topPageBid !== '')
+                );
+
+                if (keywordsWithData.length === 0) {
+                    logger.error("No keywords with data found for existing report", {
+                        projectId,
+                        totalKeywords: allKeywords.length,
+                    });
+                    res.write(`data: ${JSON.stringify({
+                        type: 'error',
+                        stage: 'generating-report',
+                        error: "No keywords with data found."
+                    })}\n\n`);
+                    res.end();
+                    return;
+                }
+
+                // Use helper function to generate report data
+                const reportData = await generateReportData(
+                    projectId,
+                    project,
+                    keywordsWithData,
+                    keywordVectorService,
+                    db,
+                    customSearchProjectKeywords
+                );
+
+                // Send complete event with report
                 res.write(`data: ${JSON.stringify({
                     type: 'complete',
                     stage: 'complete',
                     currentStage: 'complete',
-                    message: 'Report already generated'
+                    report: {
+                        aggregated: reportData.aggregated,
+                        keywords: reportData.keywords,
+                        totalKeywords: reportData.totalKeywords
+                    }
                 })}\n\n`);
             }
 
+            // Close the response so user can see the report immediately
             res.end();
+
+            // STEP 5: Compute metrics in the background (asynchronously, after sending report)
+            // This runs after the response is sent, so it doesn't block the user
+            if (!savedProgress || !savedProgress.metricsComputed) {
+                // Start metrics computation asynchronously (fire and forget, but with error handling)
+                (async () => {
+                    try {
+                        const metricsStartTime = Date.now();
+                        logger.info("=== COMPUTE METRICS PIPELINE START (BACKGROUND) ===", {
+                            projectId,
+                            timestamp: new Date().toISOString(),
+                        });
+
+                        const keywords = await storage.getProjectKeywords(projectId);
+                        const { calculateVolatility, calculateTrendStrength } = await import("./opportunity-score");
+
+                        const BATCH_SIZE = 50; // Process 50 keywords concurrently
+                        let processedCount = 0;
+                        let skippedCount = 0;
+                        let errorCount = 0;
+                        const totalKeywords = keywords.filter(kw => kw.monthlyData && Array.isArray(kw.monthlyData) && kw.monthlyData.length > 0 && kw.volume !== null).length;
+                        const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);
+
+                        logger.info("Starting background metrics computation", {
+                            totalKeywords: keywords.length,
+                            keywordsWithData: totalKeywords,
+                            batchSize: BATCH_SIZE,
+                            totalBatches,
+                        });
+
+                        // Process keywords in batches
+                        for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
+                            const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+                            const batchStartTime = Date.now();
+                            const batch = keywords.slice(i, i + BATCH_SIZE);
+
+                            logger.debug(`[Batch ${batchNumber}/${totalBatches}] Processing batch (background)`, {
+                                batchNumber,
+                                totalBatches,
+                                batchStart: i + 1,
+                                batchEnd: Math.min(i + BATCH_SIZE, keywords.length),
+                                batchSize: batch.length,
+                            });
+
+                            // Process batch concurrently - compute metrics first, then bulk update
+                            const batchPromises = batch.map(async (keyword) => {
+                                try {
+                                    if (!keyword.monthlyData || !Array.isArray(keyword.monthlyData) || keyword.monthlyData.length === 0) {
+                                        return { success: false, reason: 'no_monthly_data', keywordId: keyword.id, metrics: null };
+                                    }
+                                    if (keyword.volume === null || keyword.volume === undefined) {
+                                        return { success: false, reason: 'no_volume', keywordId: keyword.id, metrics: null };
+                                    }
+
+                                    const monthlyData = keyword.monthlyData;
+                                    const sortedMonthlyData = [...monthlyData].sort((a, b) => {
+                                        const dateA = new Date(a.month);
+                                        const dateB = new Date(b.month);
+                                        return dateA.getTime() - dateB.getTime();
+                                    });
+
+                                    if (sortedMonthlyData.length < 2) {
+                                        return { success: false, reason: 'insufficient_data', keywordId: keyword.id, metrics: null };
+                                    }
+
+                                    const lastMonth = sortedMonthlyData[sortedMonthlyData.length - 1];
+                                    let yoyGrowth: number | null = null;
+                                    if (sortedMonthlyData.length >= 12) {
+                                        const sameMonthLastYear = sortedMonthlyData[sortedMonthlyData.length - 12];
+                                        yoyGrowth = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
+                                    }
+
+                                    let threeMonthGrowth: number | null = null;
+                                    if (sortedMonthlyData.length >= 3) {
+                                        const threeMonthsAgo = sortedMonthlyData[sortedMonthlyData.length - 3];
+                                        if (threeMonthsAgo.volume > 0) {
+                                            threeMonthGrowth = ((lastMonth.volume - threeMonthsAgo.volume) / threeMonthsAgo.volume) * 100;
+                                        }
+                                    }
+
+                                    const volatility = calculateVolatility(sortedMonthlyData);
+                                    const growthYoyValue = yoyGrowth !== null ? yoyGrowth : 0;
+                                    const trendStrength = calculateTrendStrength(growthYoyValue, volatility);
+
+                                    // Return metrics instead of updating immediately
+                                    return {
+                                        success: true,
+                                        keywordId: keyword.id,
+                                        metrics: {
+                                            growthYoy: yoyGrowth !== null ? yoyGrowth.toString() : null,
+                                            growth3m: threeMonthGrowth !== null ? threeMonthGrowth.toString() : null,
+                                            volatility: volatility.toString(),
+                                            trendStrength: trendStrength.toString()
+                                        }
+                                    };
+                                } catch (error) {
+                                    logger.error("Error computing metrics for keyword (background)", error, {
+                                        keywordId: keyword.id,
+                                        keyword: keyword.keyword,
+                                    });
+                                    return { success: false, reason: 'error', keywordId: keyword.id, error, metrics: null };
+                                }
+                            });
+
+                            const batchResults = await Promise.all(batchPromises);
+                            
+                            // Bulk update all successful metrics in a single database call
+                            const updatesToApply = batchResults
+                                .filter(r => r.success && r.metrics)
+                                .map(r => ({ keywordId: r.keywordId, metrics: r.metrics! }));
+                            
+                            if (updatesToApply.length > 0) {
+                                await storage.bulkUpdateKeywordMetrics(updatesToApply);
+                            }
+                            const successful = batchResults.filter(r => r.success).length;
+                            const failed = batchResults.filter(r => !r.success);
+                            const skipped = failed.filter(r => r.reason !== 'error').length;
+                            const errors = failed.filter(r => r.reason === 'error').length;
+
+                            processedCount += successful;
+                            skippedCount += skipped;
+                            errorCount += errors;
+
+                            const batchDuration = Date.now() - batchStartTime;
+                            const avgTimePerKeyword = batch.length > 0 ? batchDuration / batch.length : 0;
+
+                            logger.info(`[Batch ${batchNumber}/${totalBatches}] Batch completed (background)`, {
+                                batchNumber,
+                                totalBatches,
+                                duration: `${batchDuration}ms (${(batchDuration / 1000).toFixed(2)}s)`,
+                                avgTimePerKeyword: `${Math.round(avgTimePerKeyword)}ms`,
+                                successful,
+                                skipped,
+                                errors,
+                                cumulativeProgress: {
+                                    processed: processedCount,
+                                    skipped: skippedCount,
+                                    errors: errorCount,
+                                    total: totalKeywords,
+                                    progressPercent: totalKeywords > 0 ? `${((processedCount / totalKeywords) * 100).toFixed(1)}%` : "0%",
+                                },
+                            });
+
+                            // Save progress after each batch (but don't send SSE since response is closed)
+                            try {
+                                const currentProgress = project.keywordGenerationProgress || {};
+                                const { progressToSaveFormat } = await import("./keyword-collector");
+                                const progressToSave = progressToSaveFormat(
+                                    { stage: 'computing-metrics', currentStage: 'computing-metrics' },
+                                    finalKeywords
+                                );
+                                progressToSave.currentStage = 'computing-metrics';
+                                progressToSave.metricsProcessedCount = processedCount;
+                                progressToSave.metricsComputed = false; // Still computing
+                                progressToSave.dataForSEOFetched = currentProgress.dataForSEOFetched || false;
+                                progressToSave.reportGenerated = currentProgress.reportGenerated || false;
+                                progressToSave.keywordsFetchedCount = currentProgress.keywordsFetchedCount || 0;
+                                progressToSave.newKeywords = finalKeywords;
+                                await storage.saveKeywordGenerationProgress(projectId, progressToSave);
+                            } catch (saveError) {
+                                logger.error("Error saving metrics progress (background)", saveError, {
+                                    projectId,
+                                });
+                            }
+                        }
+
+                        const metricsDuration = Date.now() - metricsStartTime;
+                        const avgTimePerKeyword = processedCount > 0 ? metricsDuration / processedCount : 0;
+
+                        // Save final metrics progress
+                        try {
+                            const currentProgress = project.keywordGenerationProgress || {};
+                            const { progressToSaveFormat } = await import("./keyword-collector");
+                            const progressToSave = progressToSaveFormat(
+                                { stage: 'computing-metrics', currentStage: 'computing-metrics' },
+                                finalKeywords
+                            );
+                            progressToSave.currentStage = 'complete';
+                            progressToSave.metricsComputed = true;
+                            progressToSave.metricsProcessedCount = processedCount;
+                            progressToSave.dataForSEOFetched = currentProgress.dataForSEOFetched || false;
+                            progressToSave.reportGenerated = currentProgress.reportGenerated || false;
+                            progressToSave.keywordsFetchedCount = currentProgress.keywordsFetchedCount || 0;
+                            progressToSave.newKeywords = finalKeywords;
+                            await storage.saveKeywordGenerationProgress(projectId, progressToSave);
+                        } catch (saveError) {
+                            logger.error("Error saving final metrics progress (background)", saveError, {
+                                projectId,
+                            });
+                        }
+
+                        logger.info("=== COMPUTE METRICS PIPELINE COMPLETE (BACKGROUND) ===", {
+                            duration: `${metricsDuration}ms (${(metricsDuration / 1000).toFixed(2)}s)`,
+                            processed: processedCount,
+                            skipped: skippedCount,
+                            errors: errorCount,
+                            totalKeywords,
+                            avgTimePerKeyword: `${Math.round(avgTimePerKeyword)}ms`,
+                            successRate: totalKeywords > 0 ? `${((processedCount / totalKeywords) * 100).toFixed(1)}%` : "0%",
+                            timestamp: new Date().toISOString(),
+                        });
+                    } catch (error) {
+                        logger.error("Error in background metrics computation", error, {
+                            projectId,
+                            timestamp: new Date().toISOString(),
+                        });
+                    }
+                })();
+            } else {
+                logger.info("Skipping metrics computation - already computed", {
+                    projectId,
+                    metricsProcessedCount: savedProgress.metricsProcessedCount,
+                });
+            }
         } catch (error) {
             logger.error("Error generating full report", error, {
                 projectId: projectIdForError,

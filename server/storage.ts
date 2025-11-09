@@ -52,6 +52,7 @@ export interface IStorage {
     linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[]): Promise<void>;
     getProjectKeywords(projectId: string): Promise<GlobalKeyword[]>;
     updateKeywordMetrics(keywordId: string, metrics: Partial<GlobalKeyword>): Promise<void>;
+    bulkUpdateKeywordMetrics(updates: Array<{ keywordId: string; metrics: Partial<GlobalKeyword> }>): Promise<void>;
 
     // Keyword Generation Progress methods
     saveKeywordGenerationProgress(projectId: string, progress: KeywordGenerationProgress): Promise<void>;
@@ -323,6 +324,28 @@ export class DatabaseStorage implements IStorage {
             .update(globalKeywords)
             .set(metrics as any)
             .where(eq(globalKeywords.id, keywordId));
+    }
+
+    async bulkUpdateKeywordMetrics(updates: Array<{ keywordId: string; metrics: Partial<GlobalKeyword> }>): Promise<void> {
+        if (updates.length === 0) return;
+
+        // Optimize: Use sequential updates in smaller batches instead of parallel updates
+        // This reduces lock contention and is faster for bulk operations
+        const batchSize = 50; // Process 50 updates at a time
+        
+        for (let i = 0; i < updates.length; i += batchSize) {
+            const batch = updates.slice(i, i + batchSize);
+            
+            // Use a transaction for each batch
+            await db.transaction(async (tx) => {
+                // Process updates sequentially within the transaction (faster than parallel for bulk)
+                for (const update of batch) {
+                    await tx.update(globalKeywords)
+                        .set(update.metrics as any)
+                        .where(eq(globalKeywords.id, update.keywordId));
+                }
+            });
+        }
     }
 
     async saveKeywordGenerationProgress(projectId: string, progress: KeywordGenerationProgress): Promise<void> {

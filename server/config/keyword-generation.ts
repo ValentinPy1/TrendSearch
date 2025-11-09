@@ -22,8 +22,8 @@ export const PROGRESS_CALLBACK_THROTTLE_MS = parseInt(process.env.PROGRESS_CALLB
 
 // Similarity calculation configuration
 export const SIMILARITY_BATCH_SIZE = parseInt(process.env.SIMILARITY_BATCH_SIZE || '100', 10);
-// Lowered from 1.05 to 1.02 to allow similarity calculation when slightly over target
-export const SIMILARITY_THRESHOLD_MULTIPLIER = parseFloat(process.env.SIMILARITY_THRESHOLD_MULTIPLIER || '1.02', 10);
+// Lowered from 1.05 to 1.02 to 1.01 to allow similarity calculation when slightly over target
+export const SIMILARITY_THRESHOLD_MULTIPLIER = parseFloat(process.env.SIMILARITY_THRESHOLD_MULTIPLIER || '1.01', 10);
 
 // Retry configuration
 export const MAX_RETRY_ATTEMPTS = parseInt(process.env.MAX_RETRY_ATTEMPTS || '3', 10);
