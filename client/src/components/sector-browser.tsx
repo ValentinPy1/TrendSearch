@@ -336,9 +336,9 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
 
                             {/* Industries Grid (Main + Sub flattened) */}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {industriesList.map((industry) => (
+                                {industriesList.map((industry, index) => (
                                     <SectorCard
-                                        key={industry.industry}
+                                        key={`${industry.industry}-${industry.industryType || 'sub'}-${index}`}
                                         name={`${industry.industry}${industry.industryType === 'main' ? ' (Main)' : ''}`}
                                         metrics={industry.aggregatedMetrics}
                                         type="sector"
@@ -422,9 +422,9 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                 {/* Companies Grid */}
                                 {industryCompanies.length > 0 ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {industryCompanies.map((company) => (
+                                        {industryCompanies.map((company, index) => (
                                             <SectorCard
-                                                key={company.name}
+                                                key={`${company.name}-${index}${company.url ? `-${company.url}` : ''}`}
                                                 name={company.name}
                                                 metrics={company.aggregatedMetrics}
                                                 description={company.description}

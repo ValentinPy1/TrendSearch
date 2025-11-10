@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ListInput } from "@/components/ui/list-input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabase";
@@ -86,6 +87,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
     const [displayedKeywordCount, setDisplayedKeywordCount] = useState(10);
     const [showOnlyFullData, setShowOnlyFullData] = useState(false);
+    const [websiteUrl, setWebsiteUrl] = useState<string>("");
+    const [isFindingKeywordsFromWebsite, setIsFindingKeywordsFromWebsite] = useState(false);
+    const [activeSubTab, setActiveSubTab] = useState<string>("competitors");
 
     const form = useForm<FormData>({
         defaultValues: {
@@ -130,13 +134,16 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             const currentTimes: Record<string, number> = {};
             Object.entries(stepStartTimes).forEach(([stepKey, startTime]) => {
                 const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                const stepMap: Record<string, string[]> = {
-                    'generating-seeds': ['generating-seeds'],
-                    'generating-keywords': ['generating-keywords', 'selecting-top-keywords'],
-                    'fetching-dataforseo': ['fetching-dataforseo'],
-                    'computing-metrics': ['computing-metrics'],
-                    'generating-report': ['generating-report']
-                };
+                                const stepMap: Record<string, string[]> = {
+                                    'generating-seeds': ['generating-seeds'],
+                                    'generating-keywords': ['generating-keywords', 'selecting-top-keywords'],
+                                    'creating-task': ['creating-task'],
+                                    'polling-task': ['polling-task'],
+                                    'extracting-keywords': ['extracting-keywords'],
+                                    'fetching-dataforseo': ['fetching-dataforseo'],
+                                    'computing-metrics': ['computing-metrics'],
+                                    'generating-report': ['generating-report']
+                                };
                 
                 const isActive = stepMap[stepKey]?.includes(currentStage) || false;
                 if (isActive) {
@@ -728,6 +735,174 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     };
 
+    const handleFindKeywordsFromWebsite = async () => {
+        if (!websiteUrl || websiteUrl.trim().length === 0) {
+            toast({
+                title: "Error",
+                description: "Please enter a website URL",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        if (!currentProjectId) {
+            toast({
+                title: "Error",
+                description: "Please save your project first",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setIsFindingKeywordsFromWebsite(true);
+        setIsGeneratingKeywords(true);
+        setShowQuadrantPopup(false);
+        
+        // Initialize progress state
+        setKeywordProgress({
+            stage: 'creating-task',
+            seedsGenerated: 0,
+            keywordsGenerated: 0,
+            duplicatesFound: 0,
+            existingKeywordsFound: 0,
+            newKeywordsCollected: 0,
+        });
+        setGeneratedKeywords([]);
+        setDataForSEOStats(null);
+        setMetricsStats(null);
+        setStepStartTimes({});
+        setElapsedTimes({});
+
+        try {
+            // Get Supabase session token
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (session?.access_token) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
+            }
+
+            const response = await fetch("/api/custom-search/find-keywords-from-website", {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                    projectId: currentProjectId,
+                    target: websiteUrl.trim(),
+                    location_code: 2840, // US
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
+                throw new Error(errorData.message || "Failed to find keywords from website");
+            }
+
+            // Handle Server-Sent Events
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+
+            if (!reader) {
+                throw new Error("No response body");
+            }
+
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            
+                            if (data.type === "progress") {
+                                const stage = data.stage || data.currentStage || "";
+                                
+                                // Update progress state
+                                setKeywordProgress(prev => ({
+                                    ...prev,
+                                    stage: stage,
+                                    currentStage: stage,
+                                    seedsGenerated: data.seedsGenerated || prev?.seedsGenerated || 0,
+                                    keywordsGenerated: data.keywordsGenerated || prev?.keywordsGenerated || 0,
+                                    duplicatesFound: data.duplicatesFound || prev?.duplicatesFound || 0,
+                                    existingKeywordsFound: data.existingKeywordsFound || prev?.existingKeywordsFound || 0,
+                                    newKeywordsCollected: data.newKeywordsCollected || prev?.newKeywordsCollected || 0,
+                                    newKeywords: data.newKeywords || prev?.newKeywords || [],
+                                }));
+
+                                // Track step start times
+                                if (stage && !stepStartTimes[stage]) {
+                                    setStepStartTimes(prev => ({ ...prev, [stage]: Date.now() }));
+                                }
+
+                                // Update stats
+                                if (data.keywordsWithData !== undefined && data.totalKeywords !== undefined) {
+                                    setDataForSEOStats({
+                                        keywordsWithData: data.keywordsWithData,
+                                        totalKeywords: data.totalKeywords,
+                                        keywordsWithoutData: data.totalKeywords - data.keywordsWithData,
+                                    });
+                                }
+
+                                if (data.processedCount !== undefined && data.totalKeywords !== undefined) {
+                                    setMetricsStats({
+                                        processedCount: data.processedCount,
+                                        totalKeywords: data.totalKeywords,
+                                    });
+                                }
+
+                                // Update generated keywords if available
+                                if (data.newKeywords && Array.isArray(data.newKeywords)) {
+                                    setGeneratedKeywords(data.newKeywords);
+                                }
+                            } else if (data.type === "complete") {
+                                // Report generation complete
+                                setKeywordProgress(prev => ({
+                                    ...prev,
+                                    stage: 'complete',
+                                    currentStage: 'complete',
+                                }));
+
+                                if (data.report) {
+                                    setReportData(data.report);
+                                }
+
+                                if (data.newKeywords && Array.isArray(data.newKeywords)) {
+                                    setGeneratedKeywords(data.newKeywords);
+                                }
+
+                                toast({
+                                    title: "Success!",
+                                    description: `Successfully found keywords from website with ${data.report?.totalKeywords || 0} keywords`,
+                                });
+                            } else if (data.type === "error") {
+                                throw new Error(data.error || "Unknown error occurred");
+                            }
+                        } catch (parseError) {
+                            console.error("Error parsing SSE data:", parseError);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error finding keywords from website:", error);
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to find keywords from website",
+                variant: "destructive",
+            });
+        } finally {
+            setIsFindingKeywordsFromWebsite(false);
+            setIsGeneratingKeywords(false);
+        }
+    };
+
     const handleGenerateFullReport = async (resume: boolean = false) => {
         if (!pitch || pitch.trim().length === 0) {
             toast({
@@ -1095,365 +1270,639 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     </p>
                 </div>
 
-                {/* List Inputs in 2x2 Grid */}
-                <div className="grid grid-cols-2 gap-6">
-                    {/* Topics */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-white">
-                            Topics
-                        </label>
-                        <ListInput
-                            value={topics}
-                            onChange={setTopics}
-                            placeholder="Add topics related to your idea"
-                            onGenerate={handleGenerateTopics}
-                            isGenerating={isGeneratingTopics}
-                            generateLabel="Generate from Pitch"
-                            badgeColor="bg-blue-600/80 text-blue-100 border-blue-500/50"
-                        />
-                    </div>
-
-                    {/* Personas */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-white">
-                            Personas
-                        </label>
-                        <ListInput
-                            value={personas}
-                            onChange={setPersonas}
-                            placeholder="Add target personas"
-                            onGenerate={handleGeneratePersonas}
-                            isGenerating={isGeneratingPersonas}
-                            generateLabel="Generate from Pitch"
-                            badgeColor="bg-emerald-600/80 text-emerald-100 border-emerald-500/50"
-                        />
-                    </div>
-
-                    {/* Pain Points */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-white">
-                            Pain Points
-                        </label>
-                        <ListInput
-                            value={painPoints}
-                            onChange={setPainPoints}
-                            placeholder="Add pain points your idea addresses"
-                            onGenerate={handleGeneratePainPoints}
-                            isGenerating={isGeneratingPainPoints}
-                            generateLabel="Generate from Pitch"
-                            badgeColor="bg-amber-600/80 text-amber-100 border-amber-500/50"
-                        />
-                    </div>
-
-                    {/* Features */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-white">
-                            Features
-                        </label>
-                        <ListInput
-                            value={features}
-                            onChange={setFeatures}
-                            placeholder="Add key features"
-                            onGenerate={handleGenerateFeatures}
-                            isGenerating={isGeneratingFeatures}
-                            generateLabel="Generate from Pitch"
-                            badgeColor="bg-purple-600/80 text-purple-100 border-purple-500/50"
-                        />
-                    </div>
-                </div>
-
-                {/* Find Competitors and Find Custom Keywords Buttons */}
-                <div className="pt-4 border-t border-white/10">
-                    <div className="flex gap-3">
-                        <Button
-                            type="button"
-                            onClick={handleFindCompetitors}
-                            disabled={
-                                !pitch ||
-                                pitch.trim().length === 0 ||
-                                isFindingCompetitors
-                            }
-                            className="flex-1"
+                {/* Sub-Tabs Section */}
+                <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
+                    <TabsList className="flex gap-8 bg-transparent p-0 h-auto mb-6 border-b border-white/10">
+                        <TabsTrigger 
+                            value="competitors" 
+                            className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
                         >
-                            {isFindingCompetitors ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Finding Competitors...
-                                </>
-                            ) : (
-                                <>
-                                    <Search className="mr-2 h-4 w-4" />
-                                    Find Competitors
-                                </>
-                            )}
-                        </Button>
-                        <Button
-                            type="button"
-                            onClick={() => handleGenerateFullReport(false)}
-                            disabled={
-                                !pitch ||
-                                pitch.trim().length === 0 ||
-                                isGeneratingKeywords ||
-                                !currentProjectId
-                            }
-                            className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                            Competitors
+                        </TabsTrigger>
+                        <TabsTrigger 
+                            value="custom-keywords" 
+                            className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
                         >
-                            {isGeneratingKeywords ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Finding Keywords...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkle className="mr-2 h-4 w-4" />
-                                    Find custom keywords
-                                </>
-                            )}
-                        </Button>
-                    </div>
+                            Custom Keywords
+                        </TabsTrigger>
+                    </TabsList>
 
-                    {/* Show resume option if progress exists and is incomplete */}
-                    {savedProgress && savedProgress.currentStage !== 'complete' && savedProgress.currentStage !== undefined && (
-                        <div className="mt-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
-                            <div className="text-sm text-yellow-200 mb-2">
-                                Generation in progress: {savedProgress.newKeywordsCollected || 0} / 1000 keywords
-                            </div>
-                            <div className="flex gap-2">
-                                <Button
-                                    type="button"
-                                    onClick={() => handleGenerateFullReport(true)}
-                                    disabled={isGeneratingKeywords}
-                                    className="flex-1 bg-yellow-600 hover:bg-yellow-700"
-                                >
-                                    {isGeneratingKeywords ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Resuming...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Sparkle className="mr-2 h-4 w-4" />
-                                            Resume Generation
-                                        </>
-                                    )}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    onClick={() => {
-                                        setSavedProgress(null);
-                                        handleGenerateFullReport(false);
-                                    }}
-                                    disabled={isGeneratingKeywords}
-                                    variant="outline"
-                                    className="flex-1"
-                                >
-                                    Start Fresh
-                                </Button>
-                            </div>
-                        </div>
-                    )}
+                    {/* Tab 1: Competitors */}
+                    <TabsContent value="competitors" className="space-y-6 mt-6">
+                        {/* Find Competitors Button */}
+                        <div className="space-y-4">
+                            <Button
+                                type="button"
+                                onClick={handleFindCompetitors}
+                                disabled={
+                                    !pitch ||
+                                    pitch.trim().length === 0 ||
+                                    isFindingCompetitors
+                                }
+                                className="w-full"
+                            >
+                                {isFindingCompetitors ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Finding Competitors...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Search className="mr-2 h-4 w-4" />
+                                        Find Competitors
+                                    </>
+                                )}
+                            </Button>
 
-                    {/* Inline Step Indicators */}
-                    {isGeneratingKeywords && (
-                        <div className="mt-4 space-y-2 flex flex-col items-center">
-                            {/* Step 1: Generating Seeds */}
-                            <div className="flex items-center gap-2">
-                                {(() => {
-                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                    const isActive = currentStage === 'generating-seeds';
-                                    const isCompleted = ['generating-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                    const elapsed = elapsedTimes['generating-seeds'] || 0;
-                                    const estimate = 5;
-                                    return (
-                                        <>
-                                            {isCompleted ? (
-                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                            ) : isActive ? (
-                                                <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                            ) : (
-                                                <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                            )}
-                                            <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                Generating seeds
-                                            </span>
-                                            {isActive ? (
-                                                <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                            ) : !isCompleted ? (
-                                                <span className="text-xs text-white/40">~{estimate}s</span>
-                                            ) : null}
-                                        </>
-                                    );
-                                })()}
-                            </div>
-
-                            {/* Step 2: Generating Keywords */}
-                            <div className="flex items-center gap-2">
-                                {(() => {
-                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                    const isActive = currentStage === 'generating-keywords' || currentStage === 'selecting-top-keywords';
-                                    const isCompleted = ['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                    const elapsed = elapsedTimes['generating-keywords'] || 0;
-                                    const estimate = 45;
-                                    return (
-                                        <>
-                                            {isCompleted ? (
-                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                            ) : isActive ? (
-                                                <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                            ) : (
-                                                <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                            )}
-                                            <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                Generating keywords
-                                            </span>
-                                            {isActive ? (
-                                                <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                            ) : !isCompleted ? (
-                                                <span className="text-xs text-white/40">~{estimate}s</span>
-                                            ) : null}
-                                        </>
-                                    );
-                                })()}
-                            </div>
-
-                            {/* Step 3: Find data */}
-                            <div className="flex items-center gap-2">
-                                {(() => {
-                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                    const isActive = currentStage === 'fetching-dataforseo';
-                                    const isCompleted = ['computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                    const elapsed = elapsedTimes['fetching-dataforseo'] || 0;
-                                    const estimate = 30;
-                                    return (
-                                        <>
-                                            {isCompleted ? (
-                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                            ) : isActive ? (
-                                                <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                            ) : (
-                                                <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                            )}
-                                            <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                Find data
-                                            </span>
-                                            {isActive ? (
-                                                <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                            ) : !isCompleted ? (
-                                                <span className="text-xs text-white/40">~{estimate}s</span>
-                                            ) : null}
-                                        </>
-                                    );
-                                })()}
-                            </div>
-
-                            {/* Step 4: Computing Metrics */}
-                            <div className="flex items-center gap-2">
-                                {(() => {
-                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                    const isActive = currentStage === 'computing-metrics';
-                                    const isCompleted = ['generating-report', 'complete'].includes(currentStage);
-                                    const elapsed = elapsedTimes['computing-metrics'] || 0;
-                                    const estimate = 20;
-                                    return (
-                                        <>
-                                            {isCompleted ? (
-                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                            ) : isActive ? (
-                                                <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                            ) : (
-                                                <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                            )}
-                                            <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                Computing metrics
-                                            </span>
-                                            {isActive ? (
-                                                <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                            ) : !isCompleted ? (
-                                                <span className="text-xs text-white/40">~{estimate}s</span>
-                                            ) : null}
-                                        </>
-                                    );
-                                })()}
-                            </div>
-
-                            {/* Step 5: Generating Report */}
-                            <div className="flex items-center gap-2">
-                                {(() => {
-                                    const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                    const isActive = currentStage === 'generating-report';
-                                    const isCompleted = currentStage === 'complete';
-                                    const elapsed = elapsedTimes['generating-report'] || 0;
-                                    const estimate = 10;
-                                    return (
-                                        <>
-                                            {isCompleted ? (
-                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                            ) : isActive ? (
-                                                <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                            ) : (
-                                                <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                            )}
-                                            <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                Generating report
-                                            </span>
-                                            {isActive ? (
-                                                <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                            ) : !isCompleted ? (
-                                                <span className="text-xs text-white/40">~{estimate}s</span>
-                                            ) : null}
-                                        </>
-                                    );
-                                })()}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Competitors List */}
-                {competitors.length > 0 && (
-                    <div className="pt-4 border-t border-white/10">
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                                <Building2 className="h-5 w-5 text-white/60" />
-                                <h3 className="text-sm font-semibold text-white">
-                                    Found Competitors ({competitors.length})
-                                </h3>
-                            </div>
-                            <div className="grid grid-cols-3 gap-3">
-                                {competitors.map((competitor, index) => (
-                                    <div
-                                        key={index}
-                                        className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg p-3 transition-colors"
+                            {/* Find Keywords from Website */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-white">
+                                    Find Keywords from Website
+                                </label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        type="text"
+                                        placeholder="Enter website URL (e.g., dataforseo.com)"
+                                        value={websiteUrl}
+                                        onChange={(e) => setWebsiteUrl(e.target.value)}
+                                        disabled={isFindingKeywordsFromWebsite || isGeneratingKeywords}
+                                        className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/40"
+                                    />
+                                    <Button
+                                        type="button"
+                                        onClick={handleFindKeywordsFromWebsite}
+                                        disabled={
+                                            !websiteUrl ||
+                                            websiteUrl.trim().length === 0 ||
+                                            isFindingKeywordsFromWebsite ||
+                                            isGeneratingKeywords ||
+                                            !currentProjectId
+                                        }
+                                        className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
                                     >
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <h4 className="text-sm font-medium text-white">
-                                                        {competitor.name}
-                                                    </h4>
-                                                    {competitor.url && (
-                                                        <a
-                                                            href={competitor.url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-primary hover:text-primary/80 transition-colors"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            <ExternalLink className="h-3.5 w-3.5" />
-                                                        </a>
-                                                    )}
+                                        {isFindingKeywordsFromWebsite ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Finding...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Search className="mr-2 h-4 w-4" />
+                                                Find from Website
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {/* Progress Indicators for Website Discovery */}
+                            {isFindingKeywordsFromWebsite && isGeneratingKeywords && (
+                                <div className="mt-4 space-y-2 flex flex-col items-center">
+                                    {(() => {
+                                        const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                        const isWebsiteDiscovery = ['creating-task', 'polling-task', 'extracting-keywords'].includes(currentStage);
+                                        
+                                        if (isWebsiteDiscovery) {
+                                            // Website discovery pipeline steps
+                                            return (
+                                                <>
+                                                    {/* Step 1: Creating Task */}
+                                                    <div className="flex items-center gap-2">
+                                                        {(() => {
+                                                            const isActive = currentStage === 'creating-task';
+                                                            const isCompleted = ['polling-task', 'extracting-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                                            const elapsed = elapsedTimes['creating-task'] || 0;
+                                                            const estimate = 5;
+                                                            return (
+                                                                <>
+                                                                    {isCompleted ? (
+                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                    ) : isActive ? (
+                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                    ) : (
+                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                    )}
+                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                        Creating task
+                                                                    </span>
+                                                                    {isActive ? (
+                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                    ) : !isCompleted ? (
+                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                    ) : null}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+
+                                                    {/* Step 2: Polling Task */}
+                                                    <div className="flex items-center gap-2">
+                                                        {(() => {
+                                                            const isActive = currentStage === 'polling-task';
+                                                            const isCompleted = ['extracting-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                                            const elapsed = elapsedTimes['polling-task'] || 0;
+                                                            const estimate = 60;
+                                                            return (
+                                                                <>
+                                                                    {isCompleted ? (
+                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                    ) : isActive ? (
+                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                    ) : (
+                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                    )}
+                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                        Polling task
+                                                                    </span>
+                                                                    {isActive ? (
+                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                    ) : !isCompleted ? (
+                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                    ) : null}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+
+                                                    {/* Step 3: Extracting Keywords */}
+                                                    <div className="flex items-center gap-2">
+                                                        {(() => {
+                                                            const isActive = currentStage === 'extracting-keywords';
+                                                            const isCompleted = ['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                                            const elapsed = elapsedTimes['extracting-keywords'] || 0;
+                                                            const estimate = 5;
+                                                            return (
+                                                                <>
+                                                                    {isCompleted ? (
+                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                    ) : isActive ? (
+                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                    ) : (
+                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                    )}
+                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                        Extracting keywords
+                                                                    </span>
+                                                                    {isActive ? (
+                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                    ) : !isCompleted ? (
+                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                    ) : null}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                </>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
+
+                                    {/* Common steps after keyword extraction */}
+                                    {(() => {
+                                        const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                        if (['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage)) {
+                                            return (
+                                                <>
+                                                    {/* Step 4: Find data */}
+                                                    <div className="flex items-center gap-2">
+                                                        {(() => {
+                                                            const isActive = currentStage === 'fetching-dataforseo';
+                                                            const isCompleted = ['computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                                            const elapsed = elapsedTimes['fetching-dataforseo'] || 0;
+                                                            const estimate = 30;
+                                                            return (
+                                                                <>
+                                                                    {isCompleted ? (
+                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                    ) : isActive ? (
+                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                    ) : (
+                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                    )}
+                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                        Find data
+                                                                    </span>
+                                                                    {isActive ? (
+                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                    ) : !isCompleted ? (
+                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                    ) : null}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+
+                                                    {/* Step 5: Computing Metrics */}
+                                                    <div className="flex items-center gap-2">
+                                                        {(() => {
+                                                            const isActive = currentStage === 'computing-metrics';
+                                                            const isCompleted = ['generating-report', 'complete'].includes(currentStage);
+                                                            const elapsed = elapsedTimes['computing-metrics'] || 0;
+                                                            const estimate = 20;
+                                                            return (
+                                                                <>
+                                                                    {isCompleted ? (
+                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                    ) : isActive ? (
+                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                    ) : (
+                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                    )}
+                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                        Computing metrics
+                                                                    </span>
+                                                                    {isActive ? (
+                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                    ) : !isCompleted ? (
+                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                    ) : null}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+
+                                                    {/* Step 6: Generating Report */}
+                                                    <div className="flex items-center gap-2">
+                                                        {(() => {
+                                                            const isActive = currentStage === 'generating-report';
+                                                            const isCompleted = currentStage === 'complete';
+                                                            const elapsed = elapsedTimes['generating-report'] || 0;
+                                                            const estimate = 10;
+                                                            return (
+                                                                <>
+                                                                    {isCompleted ? (
+                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                    ) : isActive ? (
+                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                    ) : (
+                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                    )}
+                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                        Generating report
+                                                                    </span>
+                                                                    {isActive ? (
+                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                    ) : !isCompleted ? (
+                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                    ) : null}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                </>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
+                                </div>
+                            )}
+
+                            {/* Competitors List */}
+                            {competitors.length > 0 && (
+                                <div className="pt-4 border-t border-white/10">
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <Building2 className="h-5 w-5 text-white/60" />
+                                            <h3 className="text-sm font-semibold text-white">
+                                                Found Competitors ({competitors.length})
+                                            </h3>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-3">
+                                            {competitors.map((competitor, index) => (
+                                                <div
+                                                    key={index}
+                                                    className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg p-3 transition-colors"
+                                                >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <h4 className="text-sm font-medium text-white">
+                                                                    {competitor.name}
+                                                                </h4>
+                                                                {competitor.url && (
+                                                                    <a
+                                                                        href={competitor.url}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="text-primary hover:text-primary/80 transition-colors"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        <ExternalLink className="h-3.5 w-3.5" />
+                                                                    </a>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-xs text-white/60 line-clamp-2">
+                                                                {competitor.description}
+                                                            </p>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <p className="text-xs text-white/60 line-clamp-2">
-                                                    {competitor.description}
-                                                </p>
-                                            </div>
+                                            ))}
                                         </div>
                                     </div>
-                                ))}
+                                </div>
+                            )}
+                        </div>
+                    </TabsContent>
+
+                    {/* Tab 2: Custom Keywords */}
+                    <TabsContent value="custom-keywords" className="space-y-6 mt-6">
+                        {/* List Inputs in 2x2 Grid */}
+                        <div className="grid grid-cols-2 gap-6">
+                            {/* Topics */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-white">
+                                    Topics
+                                </label>
+                                <ListInput
+                                    value={topics}
+                                    onChange={setTopics}
+                                    placeholder="Add topics related to your idea"
+                                    onGenerate={handleGenerateTopics}
+                                    isGenerating={isGeneratingTopics}
+                                    generateLabel="Generate from Pitch"
+                                    badgeColor="bg-blue-600/80 text-blue-100 border-blue-500/50"
+                                />
+                            </div>
+
+                            {/* Personas */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-white">
+                                    Personas
+                                </label>
+                                <ListInput
+                                    value={personas}
+                                    onChange={setPersonas}
+                                    placeholder="Add target personas"
+                                    onGenerate={handleGeneratePersonas}
+                                    isGenerating={isGeneratingPersonas}
+                                    generateLabel="Generate from Pitch"
+                                    badgeColor="bg-emerald-600/80 text-emerald-100 border-emerald-500/50"
+                                />
+                            </div>
+
+                            {/* Pain Points */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-white">
+                                    Pain Points
+                                </label>
+                                <ListInput
+                                    value={painPoints}
+                                    onChange={setPainPoints}
+                                    placeholder="Add pain points your idea addresses"
+                                    onGenerate={handleGeneratePainPoints}
+                                    isGenerating={isGeneratingPainPoints}
+                                    generateLabel="Generate from Pitch"
+                                    badgeColor="bg-amber-600/80 text-amber-100 border-amber-500/50"
+                                />
+                            </div>
+
+                            {/* Features */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-white">
+                                    Features
+                                </label>
+                                <ListInput
+                                    value={features}
+                                    onChange={setFeatures}
+                                    placeholder="Add key features"
+                                    onGenerate={handleGenerateFeatures}
+                                    isGenerating={isGeneratingFeatures}
+                                    generateLabel="Generate from Pitch"
+                                    badgeColor="bg-purple-600/80 text-purple-100 border-purple-500/50"
+                                />
                             </div>
                         </div>
-                    </div>
-                )}
+
+                        {/* Find Custom Keywords Button */}
+                        <div className="pt-4 border-t border-white/10">
+                            <Button
+                                type="button"
+                                onClick={() => handleGenerateFullReport(false)}
+                                disabled={
+                                    !pitch ||
+                                    pitch.trim().length === 0 ||
+                                    isGeneratingKeywords ||
+                                    !currentProjectId
+                                }
+                                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                            >
+                                {isGeneratingKeywords ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Finding Keywords...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkle className="mr-2 h-4 w-4" />
+                                        Find custom keywords
+                                    </>
+                                )}
+                            </Button>
+
+                            {/* Show resume option if progress exists and is incomplete */}
+                            {savedProgress && savedProgress.currentStage !== 'complete' && savedProgress.currentStage !== undefined && (
+                                <div className="mt-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
+                                    <div className="text-sm text-yellow-200 mb-2">
+                                        Generation in progress: {savedProgress.newKeywordsCollected || 0} / 1000 keywords
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button
+                                            type="button"
+                                            onClick={() => handleGenerateFullReport(true)}
+                                            disabled={isGeneratingKeywords}
+                                            className="flex-1 bg-yellow-600 hover:bg-yellow-700"
+                                        >
+                                            {isGeneratingKeywords ? (
+                                                <>
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    Resuming...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Sparkle className="mr-2 h-4 w-4" />
+                                                    Resume Generation
+                                                </>
+                                            )}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            onClick={() => {
+                                                setSavedProgress(null);
+                                                handleGenerateFullReport(false);
+                                            }}
+                                            disabled={isGeneratingKeywords}
+                                            variant="outline"
+                                            className="flex-1"
+                                        >
+                                            Start Fresh
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Progress Indicators for Custom Keywords */}
+                            {isGeneratingKeywords && !isFindingKeywordsFromWebsite && (
+                                <div className="mt-4 space-y-2 flex flex-col items-center">
+                                    {/* Custom keyword generation pipeline steps */}
+                                    {(() => {
+                                        const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                        
+                                        return (
+                                            <>
+                                                {/* Step 1: Generating Seeds */}
+                                                <div className="flex items-center gap-2">
+                                                    {(() => {
+                                                        const isActive = currentStage === 'generating-seeds';
+                                                        const isCompleted = ['generating-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                                        const elapsed = elapsedTimes['generating-seeds'] || 0;
+                                                        const estimate = 5;
+                                                        return (
+                                                            <>
+                                                                {isCompleted ? (
+                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                ) : isActive ? (
+                                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                ) : (
+                                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                )}
+                                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                    Generating seeds
+                                                                </span>
+                                                                {isActive ? (
+                                                                    <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                ) : !isCompleted ? (
+                                                                    <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                ) : null}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </div>
+
+                                                {/* Step 2: Generating Keywords */}
+                                                <div className="flex items-center gap-2">
+                                                    {(() => {
+                                                        const isActive = currentStage === 'generating-keywords' || currentStage === 'selecting-top-keywords';
+                                                        const isCompleted = ['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                                        const elapsed = elapsedTimes['generating-keywords'] || 0;
+                                                        const estimate = 45;
+                                                        return (
+                                                            <>
+                                                                {isCompleted ? (
+                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                ) : isActive ? (
+                                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                ) : (
+                                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                )}
+                                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                    Generating keywords
+                                                                </span>
+                                                                {isActive ? (
+                                                                    <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                ) : !isCompleted ? (
+                                                                    <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                ) : null}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </div>
+
+                                                {/* Step 3: Find data */}
+                                                <div className="flex items-center gap-2">
+                                                    {(() => {
+                                                        const isActive = currentStage === 'fetching-dataforseo';
+                                                        const isCompleted = ['computing-metrics', 'generating-report', 'complete'].includes(currentStage);
+                                                        const elapsed = elapsedTimes['fetching-dataforseo'] || 0;
+                                                        const estimate = 30;
+                                                        return (
+                                                            <>
+                                                                {isCompleted ? (
+                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                ) : isActive ? (
+                                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                ) : (
+                                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                )}
+                                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                    Find data
+                                                                </span>
+                                                                {isActive ? (
+                                                                    <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                ) : !isCompleted ? (
+                                                                    <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                ) : null}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </div>
+
+                                                {/* Step 4: Computing Metrics */}
+                                                <div className="flex items-center gap-2">
+                                                    {(() => {
+                                                        const isActive = currentStage === 'computing-metrics';
+                                                        const isCompleted = ['generating-report', 'complete'].includes(currentStage);
+                                                        const elapsed = elapsedTimes['computing-metrics'] || 0;
+                                                        const estimate = 20;
+                                                        return (
+                                                            <>
+                                                                {isCompleted ? (
+                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                ) : isActive ? (
+                                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                ) : (
+                                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                )}
+                                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                    Computing metrics
+                                                                </span>
+                                                                {isActive ? (
+                                                                    <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                ) : !isCompleted ? (
+                                                                    <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                ) : null}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </div>
+
+                                                {/* Step 5: Generating Report */}
+                                                <div className="flex items-center gap-2">
+                                                    {(() => {
+                                                        const isActive = currentStage === 'generating-report';
+                                                        const isCompleted = currentStage === 'complete';
+                                                        const elapsed = elapsedTimes['generating-report'] || 0;
+                                                        const estimate = 10;
+                                                        return (
+                                                            <>
+                                                                {isCompleted ? (
+                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                ) : isActive ? (
+                                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                                                ) : (
+                                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
+                                                                )}
+                                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
+                                                                    Generating report
+                                                                </span>
+                                                                {isActive ? (
+                                                                    <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
+                                                                ) : !isCompleted ? (
+                                                                    <span className="text-xs text-white/40">~{estimate}s</span>
+                                                                ) : null}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            )}
+                        </div>
+                    </TabsContent>
+                </Tabs>
             </form>
 
             {/* Quadrant Popup Dialog */}
