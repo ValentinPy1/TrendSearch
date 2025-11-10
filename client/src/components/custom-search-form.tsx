@@ -929,16 +929,19 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 ? (savedProgress.target || websiteUrl?.trim() || '') 
                 : websiteUrl?.trim() || '';
 
+            // Ensure all values are serializable (primitives only)
+            const requestBody = {
+                projectId: String(currentProjectId || ''),
+                target: String(targetToSend || ''),
+                location_code: selectedLocation?.code != null ? Number(selectedLocation.code) : undefined,
+                location_name: selectedLocation?.name ? String(selectedLocation.name) : undefined,
+                resume: Boolean(resume),
+            };
+
             const response = await fetch("/api/custom-search/find-keywords-from-website", {
                 method: "POST",
                 headers,
-                body: JSON.stringify({
-                    projectId: currentProjectId,
-                    target: targetToSend,
-                    location_code: selectedLocation?.code,
-                    location_name: selectedLocation?.name,
-                    resume: resume, // Signal to server that we're resuming
-                }),
+                body: JSON.stringify(requestBody),
             });
 
             if (!response.ok) {

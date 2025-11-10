@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { GlassmorphicCard } from "./glassmorphic-card";
 import { Loader2, Trash2, FileText, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -92,6 +92,9 @@ export function CustomSearchProjectBrowser({
             <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col bg-background border-white/10">
                 <DialogHeader>
                     <DialogTitle className="text-white text-xl">Your Custom Search Projects</DialogTitle>
+                    <DialogDescription className="text-white/60">
+                        Select an existing project or create a new one to get started
+                    </DialogDescription>
                 </DialogHeader>
                 
                 <div className="flex-1 overflow-y-auto space-y-3 pr-2">
