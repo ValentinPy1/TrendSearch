@@ -114,6 +114,24 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         },
     });
 
+    // Track which project the report is for
+    const reportProjectIdRef = useRef<string | null>(null);
+    
+    // Clear report data when project changes
+    const previousProjectIdRef = useRef<string | null>(null);
+    useEffect(() => {
+        // If project ID changed, clear report data
+        if (previousProjectIdRef.current !== null && previousProjectIdRef.current !== currentProjectId) {
+            setReportData(null);
+            reportProjectIdRef.current = null;
+            setGeneratedKeywords([]);
+            setSelectedKeyword(null);
+            setDisplayedKeywordCount(10);
+            setShowOnlyFullData(false);
+        }
+        previousProjectIdRef.current = currentProjectId;
+    }, [currentProjectId]);
+
     // Update saved progress when project data changes
     useEffect(() => {
         if (currentProjectId && projectsData?.projects) {
@@ -127,12 +145,49 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     setGeneratedKeywords(progress.newKeywords);
                 }
                 
-                // Always display report if it exists
-                if (progress.reportGenerated) {
-                    // Fetch and display report
-                    loadReportForProject(currentProjectId);
+                // Always display report if it exists (only for current project)
+                // Check both reportGenerated flag and stage === 'complete' (in case reportGenerated is not set)
+                if (currentProject.id === currentProjectId) {
+                    if (progress.reportGenerated || progress.stage === 'complete') {
+                        // Only load if report data doesn't already exist for this project
+                        if (reportProjectIdRef.current !== currentProjectId) {
+                            loadReportForProject(currentProjectId);
+                        }
+                    }
+                }
+            } else if (currentProject) {
+                // If no progress object exists, still try to load report if project might have keywords
+                // This handles cases where projects were completed before progress tracking was added
+                if (currentProject.id === currentProjectId && reportProjectIdRef.current !== currentProjectId) {
+                    // Try to load report via generate-report endpoint (which will generate if keywords exist)
+                    // This is a fallback for projects without progress tracking
+                    (async () => {
+                        try {
+                            const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
+                                projectId: currentProjectId,
+                            });
+                            const reportResult = await reportRes.json();
+                            // Double-check that this is still the current project before setting report data
+                            if (reportResult.success && reportResult.report) {
+                                setReportData(reportResult.report);
+                                reportProjectIdRef.current = currentProjectId;
+                                setDisplayedKeywordCount(10);
+                                setShowOnlyFullData(false);
+                            }
+                        } catch (error) {
+                            // Silently fail if no report exists - this is expected for projects without keywords
+                            console.log("No report available for project without progress tracking:", currentProjectId);
+                        }
+                    })();
+                } else if (reportProjectIdRef.current === currentProjectId) {
+                    // If we already have report data for this project, don't clear it
+                    // This preserves the report even if progress object is missing
                 }
             }
+        } else if (!currentProjectId) {
+            // If no project selected, clear report data
+            setReportData(null);
+            reportProjectIdRef.current = null;
         }
     }, [projectsData, currentProjectId]);
 
@@ -191,6 +246,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
     // Load report for a project
     const loadReportForProject = async (projectId: string) => {
+        // Only load report if it's for the current project
+        if (projectId !== currentProjectId) {
+            return;
+        }
+
         try {
             const { data: { session } } = await supabase.auth.getSession();
             const headers: Record<string, string> = {};
@@ -205,8 +265,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             if (response.ok) {
                 const data = await response.json();
-                if (data.report) {
+                // Double-check that this is still the current project before setting report data
+                if (data.report && projectId === currentProjectId) {
                     setReportData(data.report);
+                    reportProjectIdRef.current = projectId;
                     if (data.report.keywords && Array.isArray(data.report.keywords)) {
                         // Extract keywords from report if needed
                         const keywords = data.report.keywords.map((k: any) => k.keyword || k).filter(Boolean);
@@ -446,6 +508,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             saveTimeoutRef.current = null;
         }
         
+        // Clear report data when switching projects
+        setReportData(null);
+        setGeneratedKeywords([]);
+        setSelectedKeyword(null);
+        setDisplayedKeywordCount(10);
+        setShowOnlyFullData(false);
+        
         // Set flag to prevent auto-save during loading
         isInitialLoadRef.current = true;
         
@@ -573,8 +642,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         hasReport: !!reportResult.report,
                         reportKeywordsCount: reportResult.report?.keywords?.length || 0
                     });
-                    if (reportResult.success && reportResult.report) {
+                    // Only set report data if it's for the current project
+                    if (reportResult.success && reportResult.report && project.id === currentProjectId) {
                         setReportData(reportResult.report);
+                        reportProjectIdRef.current = project.id;
                         setDisplayedKeywordCount(10); // Reset to 10 when loading report
                         setShowOnlyFullData(false); // Reset filter when loading report
                     }
@@ -1051,9 +1122,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 }
             }
 
-            // Handle report if available
-            if (data.report) {
+            // Handle report if available (only for current project)
+            if (data.report && projectId === currentProjectId) {
                 setReportData(data.report);
+                reportProjectIdRef.current = projectId;
                 if (data.report.newKeywords && Array.isArray(data.report.newKeywords)) {
                     setGeneratedKeywords(data.report.newKeywords);
                 }
@@ -1067,8 +1139,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     currentStage: 'complete',
                 }));
 
-                if (data.report) {
+                // Only set report data if it's for the current project
+                if (data.report && projectId === currentProjectId) {
                     setReportData(data.report);
+                    reportProjectIdRef.current = projectId;
                 }
 
                 toast({
@@ -1381,9 +1455,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     });
                                 }
                             } else if (data.type === "complete") {
-                                // Final completion - report is ready
-                                if (data.report) {
+                                // Final completion - report is ready (only for current project)
+                                if (data.report && currentProjectId) {
                                     setReportData(data.report);
+                                    reportProjectIdRef.current = currentProjectId;
                                     setDisplayedKeywordCount(10);
                                     setShowOnlyFullData(false);
                                 }
@@ -1745,103 +1820,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         return null;
                                     })()}
 
-                                    {/* Common steps after keyword extraction */}
-                                    {(() => {
-                                        const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                        if (['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage)) {
-                                            return (
-                                                <>
-                                                    {/* Step 4: Find data */}
-                                                    <div className="flex items-center gap-2">
-                                                        {(() => {
-                                                            const isActive = currentStage === 'fetching-dataforseo';
-                                                            const isCompleted = ['computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                                            const elapsed = elapsedTimes['fetching-dataforseo'] || 0;
-                                                            const estimate = 30;
-                                                            return (
-                                                                <>
-                                                                    {isCompleted ? (
-                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                    ) : isActive ? (
-                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                    ) : (
-                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                    )}
-                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                        Find data
-                                                                    </span>
-                                                                    {isActive ? (
-                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                    ) : !isCompleted ? (
-                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                    ) : null}
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </div>
-
-                                                    {/* Step 5: Computing Metrics */}
-                                                    <div className="flex items-center gap-2">
-                                                        {(() => {
-                                                            const isActive = currentStage === 'computing-metrics';
-                                                            const isCompleted = ['generating-report', 'complete'].includes(currentStage);
-                                                            const elapsed = elapsedTimes['computing-metrics'] || 0;
-                                                            const estimate = 20;
-                                                            return (
-                                                                <>
-                                                                    {isCompleted ? (
-                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                    ) : isActive ? (
-                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                    ) : (
-                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                    )}
-                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                        Computing metrics
-                                                                    </span>
-                                                                    {isActive ? (
-                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                    ) : !isCompleted ? (
-                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                    ) : null}
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </div>
-
-                                                    {/* Step 6: Generating Report */}
-                                                    <div className="flex items-center gap-2">
-                                                        {(() => {
-                                                            const isActive = currentStage === 'generating-report';
-                                                            const isCompleted = currentStage === 'complete';
-                                                            const elapsed = elapsedTimes['generating-report'] || 0;
-                                                            const estimate = 10;
-                                                            return (
-                                                                <>
-                                                                    {isCompleted ? (
-                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                    ) : isActive ? (
-                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                    ) : (
-                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                    )}
-                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                        Generating report
-                                                                    </span>
-                                                                    {isActive ? (
-                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                    ) : !isCompleted ? (
-                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                    ) : null}
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                </>
-                                            );
-                                        }
-                                        return null;
-                                    })()}
                                 </div>
                             )}
 
@@ -1986,8 +1964,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     </div>
                                 )}
 
-                                {/* Progress Steps - Always display when pipeline is running or has progress */}
-                                {(isFindingKeywordsFromWebsite || (keywordProgress && keywordProgress.stage && keywordProgress.stage !== 'idle')) && (
+                                {/* Progress Steps - Always display when pipeline is running or has progress, but hide if report is completed */}
+                                {(isFindingKeywordsFromWebsite || (keywordProgress && keywordProgress.stage && keywordProgress.stage !== 'idle')) && 
+                                 savedProgress?.reportGenerated !== true && (
                                     <div className="mt-4 space-y-3 bg-white/5 rounded-lg p-4 border border-white/10">
                                         <div className="text-sm font-medium text-white mb-3">
                                             Progress
@@ -2268,135 +2247,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 </div>
                             )}
 
-                            {/* Progress Indicators for Custom Keywords */}
-                            {isGeneratingKeywords && !isFindingKeywordsFromWebsite && (
-                                <div className="mt-4 space-y-2 flex flex-col items-center">
-                                    {/* Custom keyword generation pipeline steps */}
-                                    {(() => {
-                                        const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                        
-                                        return (
-                                            <>
-                                                {/* Step 1: Calling API */}
-                                                <div className="flex items-center gap-2">
-                                                    {(() => {
-                                                        const isActive = currentStage === 'calling-api';
-                                                        const isCompleted = ['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                                        const elapsed = elapsedTimes['calling-api'] || 0;
-                                                        const estimate = 30;
-                                                        return (
-                                                            <>
-                                                                {isCompleted ? (
-                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                ) : isActive ? (
-                                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                ) : (
-                                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                )}
-                                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                    Calling DataForSEO API
-                                                                </span>
-                                                                {isActive ? (
-                                                                    <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                ) : !isCompleted ? (
-                                                                    <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                ) : null}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </div>
-
-                                                {/* Step 2: Find data */}
-                                                <div className="flex items-center gap-2">
-                                                    {(() => {
-                                                        const isActive = currentStage === 'fetching-dataforseo';
-                                                        const isCompleted = ['computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                                        const elapsed = elapsedTimes['fetching-dataforseo'] || 0;
-                                                        const estimate = 30;
-                                                        return (
-                                                            <>
-                                                                {isCompleted ? (
-                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                ) : isActive ? (
-                                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                ) : (
-                                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                )}
-                                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                    Find data
-                                                                </span>
-                                                                {isActive ? (
-                                                                    <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                ) : !isCompleted ? (
-                                                                    <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                ) : null}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </div>
-
-                                                {/* Step 3: Computing Metrics */}
-                                                <div className="flex items-center gap-2">
-                                                    {(() => {
-                                                        const isActive = currentStage === 'computing-metrics';
-                                                        const isCompleted = ['generating-report', 'complete'].includes(currentStage);
-                                                        const elapsed = elapsedTimes['computing-metrics'] || 0;
-                                                        const estimate = 20;
-                                                        return (
-                                                            <>
-                                                                {isCompleted ? (
-                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                ) : isActive ? (
-                                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                ) : (
-                                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                )}
-                                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                    Computing metrics
-                                                                </span>
-                                                                {isActive ? (
-                                                                    <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                ) : !isCompleted ? (
-                                                                    <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                ) : null}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </div>
-
-                                                {/* Step 4: Generating Report */}
-                                                <div className="flex items-center gap-2">
-                                                    {(() => {
-                                                        const isActive = currentStage === 'generating-report';
-                                                        const isCompleted = currentStage === 'complete';
-                                                        const elapsed = elapsedTimes['generating-report'] || 0;
-                                                        const estimate = 10;
-                                                        return (
-                                                            <>
-                                                                {isCompleted ? (
-                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                ) : isActive ? (
-                                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                ) : (
-                                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                )}
-                                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                    Generating report
-                                                                </span>
-                                                                {isActive ? (
-                                                                    <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                ) : !isCompleted ? (
-                                                                    <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                ) : null}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </div>
-                                            </>
-                                        );
-                                    })()}
-                                </div>
-                            )}
 
                             {/* Report Display in Competitors Tab */}
                             {reportData && reportData.keywords && reportData.keywords.length > 0 && (() => {
