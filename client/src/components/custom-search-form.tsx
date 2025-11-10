@@ -119,14 +119,107 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         if (currentProjectId && projectsData?.projects) {
             const currentProject = projectsData.projects.find(p => p.id === currentProjectId);
             if (currentProject?.keywordGenerationProgress) {
-                setSavedProgress(currentProject.keywordGenerationProgress);
-                // If complete, update generated keywords
-                if (currentProject.keywordGenerationProgress.stage === 'complete' && currentProject.keywordGenerationProgress.newKeywords) {
-                    setGeneratedKeywords(currentProject.keywordGenerationProgress.newKeywords);
+                const progress = currentProject.keywordGenerationProgress;
+                setSavedProgress(progress);
+                
+                // If complete, update generated keywords and report
+                if (progress.stage === 'complete' && progress.newKeywords) {
+                    setGeneratedKeywords(progress.newKeywords);
+                }
+                
+                // Always display report if it exists
+                if (progress.reportGenerated) {
+                    // Fetch and display report
+                    loadReportForProject(currentProjectId);
                 }
             }
         }
     }, [projectsData, currentProjectId]);
+
+    // Auto-resume incomplete pipelines on page load
+    useEffect(() => {
+        if (currentProjectId && projectsData?.projects && !isInitialLoadRef.current) {
+            const currentProject = projectsData.projects.find(p => p.id === currentProjectId);
+            if (currentProject?.keywordGenerationProgress) {
+                const progress = currentProject.keywordGenerationProgress;
+                const currentStage = progress.currentStage || progress.stage || '';
+                const isComplete = currentStage === 'complete';
+                const isError = currentStage === 'error';
+                const isRunning = !isComplete && !isError && currentStage !== 'idle' && currentStage !== '';
+
+                // If pipeline is running, auto-resume polling
+                if (isRunning) {
+                    // Restore progress state
+                    setKeywordProgress({
+                        stage: currentStage,
+                        currentStage: currentStage,
+                        seedsGenerated: progress.seedsGenerated || 0,
+                        keywordsGenerated: progress.keywordsGenerated || 0,
+                        duplicatesFound: progress.duplicatesFound || 0,
+                        existingKeywordsFound: progress.existingKeywordsFound || 0,
+                        newKeywordsCollected: progress.newKeywordsCollected || 0,
+                        newKeywords: progress.newKeywords || [],
+                    });
+                    
+                    if (progress.newKeywords) {
+                        setGeneratedKeywords(progress.newKeywords);
+                    }
+                    
+                    // Start polling
+                    setIsFindingKeywordsFromWebsite(true);
+                    setIsGeneratingKeywords(true);
+                    pollPipelineStatus(currentProjectId);
+                    pollingIntervalRef.current = setInterval(() => {
+                        pollPipelineStatus(currentProjectId);
+                    }, 2000);
+                } else if (isComplete && progress.reportGenerated) {
+                    // Pipeline complete - load report
+                    loadReportForProject(currentProjectId);
+                }
+            }
+            
+            isInitialLoadRef.current = true;
+        }
+    }, [currentProjectId, projectsData]);
+
+    // Cleanup polling on unmount
+    useEffect(() => {
+        return () => {
+            stopPolling();
+        };
+    }, []);
+
+    // Load report for a project
+    const loadReportForProject = async (projectId: string) => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers: Record<string, string> = {};
+            if (session?.access_token) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
+            }
+
+            const response = await fetch(`/api/custom-search/pipeline-status/${projectId}`, {
+                method: "GET",
+                headers,
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.report) {
+                    setReportData(data.report);
+                    if (data.report.keywords && Array.isArray(data.report.keywords)) {
+                        // Extract keywords from report if needed
+                        const keywords = data.report.keywords.map((k: any) => k.keyword || k).filter(Boolean);
+                        if (keywords.length > 0) {
+                            setGeneratedKeywords(keywords);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error loading report:", error);
+        }
+    };
 
     // Update elapsed times every second for active steps
     useEffect(() => {
@@ -857,6 +950,142 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     };
 
+    // Polling mechanism for pipeline status
+    const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const stopPolling = () => {
+        if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+        }
+    };
+
+    // Poll pipeline status
+    const pollPipelineStatus = async (projectId: string) => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers: Record<string, string> = {};
+            if (session?.access_token) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
+            }
+
+            const response = await fetch(`/api/custom-search/pipeline-status/${projectId}`, {
+                method: "GET",
+                headers,
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to fetch pipeline status");
+            }
+
+            const data = await response.json();
+
+            if (data.status === 'error') {
+                // Pipeline error
+                setKeywordProgress(prev => ({
+                    ...prev,
+                    stage: 'error',
+                    currentStage: 'error',
+                }));
+                
+                const errorMessage = data.progress?.error || "Unknown error occurred";
+                toast({
+                    title: "Pipeline Error",
+                    description: errorMessage,
+                    variant: "destructive",
+                    duration: 10000,
+                });
+                
+                stopPolling();
+                setIsFindingKeywordsFromWebsite(false);
+                setIsGeneratingKeywords(false);
+                return;
+            }
+
+            if (data.progress) {
+                const progress = data.progress;
+                const stage = progress.currentStage || progress.stage || '';
+
+                // Update progress state
+                setKeywordProgress(prev => ({
+                    ...prev,
+                    stage: stage,
+                    currentStage: stage,
+                    seedsGenerated: progress.seedsGenerated || prev?.seedsGenerated || 0,
+                    keywordsGenerated: progress.keywordsGenerated || prev?.keywordsGenerated || 0,
+                    duplicatesFound: progress.duplicatesFound || prev?.duplicatesFound || 0,
+                    existingKeywordsFound: progress.existingKeywordsFound || prev?.existingKeywordsFound || 0,
+                    newKeywordsCollected: progress.newKeywordsCollected || prev?.newKeywordsCollected || 0,
+                    newKeywords: progress.newKeywords || prev?.newKeywords || [],
+                }));
+
+                // Track step start times
+                if (stage && !stepStartTimes[stage]) {
+                    setStepStartTimes(prev => ({ ...prev, [stage]: Date.now() }));
+                }
+
+                // Update elapsed times
+                if (stage && stepStartTimes[stage]) {
+                    const elapsed = Math.floor((Date.now() - stepStartTimes[stage]) / 1000);
+                    setElapsedTimes(prev => ({ ...prev, [stage]: elapsed }));
+                }
+
+                // Update stats
+                if (progress.keywordsFetchedCount !== undefined) {
+                    setDataForSEOStats({
+                        keywordsWithData: progress.keywordsFetchedCount,
+                        totalKeywords: progress.newKeywords?.length || 0,
+                        keywordsWithoutData: (progress.newKeywords?.length || 0) - progress.keywordsFetchedCount,
+                    });
+                }
+
+                if (progress.metricsProcessedCount !== undefined) {
+                    setMetricsStats({
+                        processedCount: progress.metricsProcessedCount,
+                        totalKeywords: progress.newKeywords?.length || 0,
+                    });
+                }
+
+                // Update generated keywords if available
+                if (progress.newKeywords && Array.isArray(progress.newKeywords)) {
+                    setGeneratedKeywords(progress.newKeywords);
+                }
+            }
+
+            // Handle report if available
+            if (data.report) {
+                setReportData(data.report);
+                if (data.report.newKeywords && Array.isArray(data.report.newKeywords)) {
+                    setGeneratedKeywords(data.report.newKeywords);
+                }
+            }
+
+            // If pipeline is complete, stop polling
+            if (data.status === 'complete') {
+                setKeywordProgress(prev => ({
+                    ...prev,
+                    stage: 'complete',
+                    currentStage: 'complete',
+                }));
+
+                if (data.report) {
+                    setReportData(data.report);
+                }
+
+                toast({
+                    title: "Success!",
+                    description: `Successfully found keywords from website with ${data.report?.totalKeywords || 0} keywords`,
+                });
+
+                stopPolling();
+                setIsFindingKeywordsFromWebsite(false);
+                setIsGeneratingKeywords(false);
+            }
+        } catch (error) {
+            console.error("Error polling pipeline status:", error);
+            // Don't stop polling on transient errors - continue trying
+        }
+    };
+
     const handleFindKeywordsFromWebsite = async (resume: boolean = false) => {
         // When resuming, skip URL validation (API may have already been called)
         if (!resume) {
@@ -882,6 +1111,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setIsFindingKeywordsFromWebsite(true);
         setIsGeneratingKeywords(true);
         setShowQuadrantPopup(false);
+        
+        // Stop any existing polling
+        stopPolling();
         
         // If resuming, restore progress state from savedProgress
         if (resume && savedProgress) {
@@ -946,130 +1178,22 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
-                throw new Error(errorData.message || "Failed to find keywords from website");
+                throw new Error(errorData.message || "Failed to start pipeline");
             }
 
-            // Handle Server-Sent Events
-            const reader = response.body?.getReader();
-            const decoder = new TextDecoder();
+            const result = await response.json();
+            
+            // Start polling immediately
+            pollPipelineStatus(currentProjectId);
+            
+            // Set up polling interval (poll every 2 seconds)
+            pollingIntervalRef.current = setInterval(() => {
+                pollPipelineStatus(currentProjectId);
+            }, 2000);
 
-            if (!reader) {
-                throw new Error("No response body");
-            }
-
-            let buffer = "";
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() || "";
-
-                for (const line of lines) {
-                    if (line.startsWith("data: ")) {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            
-                            if (data.type === "progress") {
-                                const stage = data.stage || data.currentStage || "";
-                                
-                                // Update progress state
-                                setKeywordProgress(prev => ({
-                                    ...prev,
-                                    stage: stage,
-                                    currentStage: stage,
-                                    seedsGenerated: data.seedsGenerated || prev?.seedsGenerated || 0,
-                                    keywordsGenerated: data.keywordsGenerated || prev?.keywordsGenerated || 0,
-                                    duplicatesFound: data.duplicatesFound || prev?.duplicatesFound || 0,
-                                    existingKeywordsFound: data.existingKeywordsFound || prev?.existingKeywordsFound || 0,
-                                    newKeywordsCollected: data.newKeywordsCollected || prev?.newKeywordsCollected || 0,
-                                    newKeywords: data.newKeywords || prev?.newKeywords || [],
-                                }));
-
-                                // Track step start times
-                                if (stage && !stepStartTimes[stage]) {
-                                    setStepStartTimes(prev => ({ ...prev, [stage]: Date.now() }));
-                                }
-
-                                // Update elapsed times
-                                if (stage && stepStartTimes[stage]) {
-                                    const elapsed = Math.floor((Date.now() - stepStartTimes[stage]) / 1000);
-                                    setElapsedTimes(prev => ({ ...prev, [stage]: elapsed }));
-                                }
-
-                                // Update stats
-                                if (data.keywordsWithData !== undefined && data.totalKeywords !== undefined) {
-                                    setDataForSEOStats({
-                                        keywordsWithData: data.keywordsWithData,
-                                        totalKeywords: data.totalKeywords,
-                                        keywordsWithoutData: data.totalKeywords - data.keywordsWithData,
-                                    });
-                                }
-
-                                if (data.processedCount !== undefined && data.totalKeywords !== undefined) {
-                                    setMetricsStats({
-                                        processedCount: data.processedCount,
-                                        totalKeywords: data.totalKeywords,
-                                    });
-                                }
-
-                                // Update generated keywords if available
-                                if (data.newKeywords && Array.isArray(data.newKeywords)) {
-                                    setGeneratedKeywords(data.newKeywords);
-                                }
-
-                                // Show progress message if available
-                                if (data.message) {
-                                    console.log(`[${stage}] ${data.message}`);
-                                }
-                            } else if (data.type === "complete") {
-                                // Report generation complete
-                                setKeywordProgress(prev => ({
-                                    ...prev,
-                                    stage: 'complete',
-                                    currentStage: 'complete',
-                                }));
-
-                                if (data.report) {
-                                    setReportData(data.report);
-                                }
-
-                                if (data.newKeywords && Array.isArray(data.newKeywords)) {
-                                    setGeneratedKeywords(data.newKeywords);
-                                }
-
-                                toast({
-                                    title: "Success!",
-                                    description: `Successfully found keywords from website with ${data.report?.totalKeywords || 0} keywords`,
-                                });
-                            } else if (data.type === "error") {
-                                const errorMessage = data.error || "Unknown error occurred";
-                                console.error("Error from server:", errorMessage);
-                                
-                                // Provide more explicit error feedback
-                                let userFriendlyMessage = errorMessage;
-                                if (errorMessage.includes("No keywords were found")) {
-                                    userFriendlyMessage = "No keywords were found from the website. This could mean:\n• The website URL is incorrect or inaccessible\n• The website doesn't have enough content for keyword analysis\n• DataForSEO couldn't analyze the website\n\nPlease check the URL and try again, or try a different website.";
-                                } else if (errorMessage.includes("Task did not complete")) {
-                                    userFriendlyMessage = "The keyword analysis is taking longer than expected. Please try again in a few minutes.";
-                                } else if (errorMessage.includes("API error")) {
-                                    userFriendlyMessage = "There was an issue connecting to the keyword analysis service. Please try again.";
-                                }
-                                
-                                throw new Error(userFriendlyMessage);
-                            }
-                        } catch (parseError) {
-                            console.error("Error parsing SSE data:", parseError);
-                            // Don't throw here - let the outer catch handle it
-                        }
-                    }
-                }
-            }
         } catch (error) {
-            console.error("Error finding keywords from website:", error);
-            const errorMessage = error instanceof Error ? error.message : "Failed to find keywords from website";
+            console.error("Error starting pipeline:", error);
+            const errorMessage = error instanceof Error ? error.message : "Failed to start pipeline";
             
             // Update progress to show error state
             setKeywordProgress(prev => ({
@@ -1079,12 +1203,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }));
 
             toast({
-                title: "Error Finding Keywords",
+                title: "Error Starting Pipeline",
                 description: errorMessage,
                 variant: "destructive",
-                duration: 10000, // Show for 10 seconds for longer error messages
+                duration: 10000,
             });
-        } finally {
+            
+            stopPolling();
             setIsFindingKeywordsFromWebsite(false);
             setIsGeneratingKeywords(false);
         }
@@ -1860,8 +1985,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     </div>
                                 )}
 
-                                {/* Progress Steps - Display below website input field */}
-                                {isFindingKeywordsFromWebsite && (
+                                {/* Progress Steps - Always display when pipeline is running or has progress */}
+                                {(isFindingKeywordsFromWebsite || (keywordProgress && keywordProgress.stage && keywordProgress.stage !== 'idle')) && (
                                     <div className="mt-4 space-y-3 bg-white/5 rounded-lg p-4 border border-white/10">
                                         <div className="text-sm font-medium text-white mb-3">
                                             Progress
@@ -1902,15 +2027,28 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             ];
 
                                             const hasError = currentStage === 'error';
+                                            const errorMessage = savedProgress?.error || '';
                                             
                                             return (
                                                 <div className="space-y-2">
+                                                    {/* Explicit error display */}
+                                                    {hasError && errorMessage && (
+                                                        <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg">
+                                                            <div className="text-sm font-medium text-red-400 mb-1">
+                                                                Error
+                                                            </div>
+                                                            <div className="text-xs text-red-300 whitespace-pre-wrap">
+                                                                {errorMessage}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
                                                     {stages.map((stage, index) => {
                                                         const isActive = currentStage === stage.key && !hasError;
                                                         const isCompleted = hasError ? false : stages.findIndex(s => s.key === currentStage) > index;
                                                         const isPending = stages.findIndex(s => s.key === currentStage) < index;
-                                                        // Show error on the extracting-keywords stage if error occurred
-                                                        const isError = hasError && stage.key === 'extracting-keywords';
+                                                        // Show error on the current stage if error occurred
+                                                        const isError = hasError && currentStage === stage.key;
                                                         const elapsed = elapsedTimes[stage.key] || 0;
 
                                                         return (
@@ -1945,7 +2083,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                                         isError ? 'text-red-300' :
                                                                         isActive ? 'text-white/80' : 'text-white/50'
                                                                     }`}>
-                                                                        {isError ? 'Failed - see error message above' : (
+                                                                        {isError ? 'Failed' : (
                                                                             isActive ? stage.description : (
                                                                                 isCompleted ? 'Completed' : 'Pending'
                                                                             )
