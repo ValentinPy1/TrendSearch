@@ -980,6 +980,35 @@ async function generateReportData(
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+    // Location API endpoint (public, no auth required)
+    app.get("/api/locations", async (req, res) => {
+        try {
+            const { search, parentCode } = req.query;
+            const { getAllLocations, getLocationChildren, searchLocations, getLocationByCode } = await import("./locations-service");
+
+            if (search && typeof search === 'string') {
+                // Search locations
+                const results = searchLocations(search, 50);
+                res.json({ locations: results });
+            } else if (parentCode) {
+                // Get children of a parent location
+                const parentCodeNum = parseInt(parentCode as string, 10);
+                if (isNaN(parentCodeNum)) {
+                    return res.status(400).json({ error: "Invalid parentCode" });
+                }
+                const children = getLocationChildren(parentCodeNum);
+                res.json({ locations: children });
+            } else {
+                // Get root locations (countries)
+                const rootLocations = getLocationChildren(null);
+                res.json({ locations: rootLocations });
+            }
+        } catch (error) {
+            console.error("Error fetching locations:", error);
+            res.status(500).json({ error: "Failed to fetch locations" });
+        }
+    });
+
     // Auth middleware - verify Supabase JWT token
     const requireAuth = async (req: any, res: any, next: any) => {
         try {
@@ -2510,10 +2539,11 @@ Return ONLY the JSON array, no other text. Example format:
                 sendProgress('calling-api', { message: `Calling DataForSEO API with ${queryKeywordsList.length} query keywords...` });
 
                 const { createKeywordsForKeywordsTask, getKeywordsForKeywordsTask } = await import("./dataforseo-service");
-                const locationCode = 2840; // Default to US
+                const locationCode = req.body.location_code || 2840; // Use provided location or default to US
+                const locationName = req.body.location_name;
 
                 // Create task
-                const taskId = await createKeywordsForKeywordsTask(queryKeywordsList, locationCode);
+                const taskId = await createKeywordsForKeywordsTask(queryKeywordsList, locationCode, locationName);
                 sendProgress('calling-api', { message: 'Task created successfully, polling for results...', taskId });
 
                 // Poll task until complete with progress updates
@@ -3207,7 +3237,7 @@ Return ONLY the JSON array, no other text. Example format:
         let finalKeywords: string[] = [];
 
         try {
-            const { projectId, target, location_code } = req.body;
+            const { projectId, target, location_code, location_name } = req.body;
 
             // Verify project exists and user owns it
             if (!projectId) {
@@ -3282,9 +3312,10 @@ Return ONLY the JSON array, no other text. Example format:
                 sendProgress('creating-task', { message: `Creating task to find keywords for ${target}...` });
 
                 const { createKeywordsForSiteTask } = await import("./dataforseo-service");
-                const locationCode = location_code || 2840; // Default to US
+                const locationCode = location_code || 2840; // Default to US if not provided
+                const locationName = location_name;
                 
-                const taskId = await createKeywordsForSiteTask(target, locationCode);
+                const taskId = await createKeywordsForSiteTask(target, locationCode, locationName);
 
                 sendProgress('creating-task', { message: 'Task created successfully', taskId });
 

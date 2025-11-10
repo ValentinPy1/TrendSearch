@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ListInput } from "@/components/ui/list-input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { LocationSelector } from "@/components/ui/location-selector";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabase";
@@ -92,6 +93,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [websiteUrl, setWebsiteUrl] = useState<string>("");
     const [isFindingKeywordsFromWebsite, setIsFindingKeywordsFromWebsite] = useState(false);
     const [activeSubTab, setActiveSubTab] = useState<string>("competitors");
+    const [selectedLocation, setSelectedLocation] = useState<{ code: number; name: string } | null>(null);
 
     const form = useForm<FormData>({
         defaultValues: {
@@ -852,7 +854,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 body: JSON.stringify({
                     projectId: currentProjectId,
                     target: websiteUrl.trim(),
-                    location_code: 2840, // US
+                    location_code: selectedLocation?.code,
+                    location_name: selectedLocation?.name,
                 }),
             });
 
@@ -1343,6 +1346,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         points, and features.
                     </p>
                 </div>
+
+                {/* Location Selector */}
+                <LocationSelector
+                    value={selectedLocation}
+                    onChange={setSelectedLocation}
+                />
 
                 {/* Sub-Tabs Section */}
                 <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
