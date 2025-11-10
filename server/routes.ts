@@ -2501,6 +2501,12 @@ Return ONLY the JSON array, no other text. Example format:
                     if (!progressData.taskId && currentProgress.taskId) {
                         progressToSave.taskId = currentProgress.taskId;
                     }
+                    if (!progressData.dataForSEOResults && currentProgress.dataForSEOResults) {
+                        progressToSave.dataForSEOResults = currentProgress.dataForSEOResults;
+                    }
+                    if (!progressData.dataForSEOSiteResults && currentProgress.dataForSEOSiteResults) {
+                        progressToSave.dataForSEOSiteResults = currentProgress.dataForSEOSiteResults;
+                    }
 
                     await storage.saveKeywordGenerationProgress(projectId, progressToSave);
                     lastSaveTime = Date.now();
@@ -2556,7 +2562,7 @@ Return ONLY the JSON array, no other text. Example format:
                 });
 
                 // Poll task until complete with progress updates
-                const pollWithProgress = async (): Promise<string[]> => {
+                const pollWithProgress = async (): Promise<typeof import("./dataforseo-service").KeywordsForKeywordsKeywordResult[]> => {
                     let attempts = 0;
                     const maxAttempts = 60;
                     const pollInterval = 5000;
@@ -2565,11 +2571,8 @@ Return ONLY the JSON array, no other text. Example format:
                         const results = await getKeywordsForKeywordsTask(taskId, 1, 0); // Single attempt, no delay
 
                         if (results && results.length > 0) {
-                            // Task completed, extract keywords
-                            const keywords = results
-                                .map(result => result.keyword)
-                                .filter(keyword => keyword && keyword.trim().length > 0);
-                            return keywords;
+                            // Task completed, return full results
+                            return results;
                         }
 
                         // Task still processing
@@ -2581,23 +2584,58 @@ Return ONLY the JSON array, no other text. Example format:
                     throw new Error(`Task did not complete within ${maxAttempts} attempts`);
                 };
 
-                finalKeywords = await pollWithProgress();
+                const dataForSEOResults = await pollWithProgress();
+                
+                // Extract keywords for backward compatibility
+                finalKeywords = dataForSEOResults
+                    .map(result => result.keyword)
+                    .filter(keyword => keyword && keyword.trim().length > 0);
 
-                // Save progress
+                // Save progress with full DataForSEO results
                 await saveProgress({
                     currentStage: 'calling-api',
                     queryKeywords: queryKeywordsList,
                     newKeywords: finalKeywords,
+                    dataForSEOResults: dataForSEOResults,
                     keywordsGenerated: finalKeywords.length,
                     newKeywordsCollected: finalKeywords.length,
                 });
 
                 sendProgress('calling-api', { message: `Found ${finalKeywords.length} keywords from API`, newKeywords: finalKeywords });
             } else {
-                // Use saved keywords
-                finalKeywords = (savedProgress.newKeywords && Array.isArray(savedProgress.newKeywords))
-                    ? savedProgress.newKeywords
-                    : [];
+                // Use saved DataForSEO results or keywords
+                let dataForSEOResults: typeof import("./dataforseo-service").KeywordsForKeywordsKeywordResult[] | undefined;
+                let finalKeywords: string[] = [];
+
+                if (savedProgress.dataForSEOResults && Array.isArray(savedProgress.dataForSEOResults)) {
+                    // Use saved DataForSEO results
+                    dataForSEOResults = savedProgress.dataForSEOResults as any;
+                    finalKeywords = dataForSEOResults
+                        .map(result => result.keyword)
+                        .filter(keyword => keyword && keyword.trim().length > 0);
+                } else if (savedProgress.newKeywords && Array.isArray(savedProgress.newKeywords)) {
+                    // Fallback to saved keywords (backward compatibility)
+                    finalKeywords = savedProgress.newKeywords;
+                    
+                    // Try to re-fetch DataForSEO results if taskId exists
+                    if (savedProgress.taskId) {
+                        try {
+                            const { getKeywordsForKeywordsTask } = await import("./dataforseo-service");
+                            dataForSEOResults = await getKeywordsForKeywordsTask(savedProgress.taskId, 1, 0);
+                            if (dataForSEOResults && dataForSEOResults.length > 0) {
+                                // Update progress with fetched results
+                                await saveProgress({
+                                    currentStage: 'calling-api',
+                                    dataForSEOResults: dataForSEOResults,
+                                });
+                                // Update savedProgress to reflect the new data
+                                savedProgress.dataForSEOResults = dataForSEOResults as any;
+                            }
+                        } catch (error) {
+                            console.warn("Failed to re-fetch DataForSEO results:", error);
+                        }
+                    }
+                }
 
                 if (finalKeywords.length === 0) {
                     res.write(`data: ${JSON.stringify({
@@ -2629,111 +2667,44 @@ Return ONLY the JSON array, no other text. Example format:
                 keywordsCount: finalKeywords.length,
             });
 
-            // STEP 2: Fetch DataForSEO (skip if already done)
+            // STEP 2: Process DataForSEO results (skip if already done)
             if (!savedProgress || !savedProgress.dataForSEOFetched) {
-                sendProgress('fetching-dataforseo', { message: `Finding data for ${finalKeywords.length} keywords...` });
+                sendProgress('fetching-dataforseo', { message: `Processing DataForSEO metrics for ${finalKeywords.length} keywords...` });
 
-                // Mock DataForSEO: Use existing database keywords instead of API call
-                // Simulate API delay (~30s)
-                await new Promise(resolve => setTimeout(resolve, 30000));
-
-                // Get existing keywords from database
-                const existingKeywords = await storage.getGlobalKeywordsByTexts(finalKeywords);
-                const existingKeywordsMap = new Map(existingKeywords.map(kw => [kw.keyword.toLowerCase(), kw]));
-
-                // Simulate DataForSEO API response structure using existing database data
-                // For keywords not in DB, generate random mock data (fast)
-                const keywordResults: any[] = [];
-
-                for (const keywordText of finalKeywords) {
-                    const existingKeyword = existingKeywordsMap.get(keywordText.toLowerCase());
-
-                    if (existingKeyword && (
-                        existingKeyword.volume !== null ||
-                        existingKeyword.competition !== null ||
-                        existingKeyword.cpc !== null ||
-                        existingKeyword.topPageBid !== null
-                    )) {
-                        // Use existing keyword data from database
-                        const monthlyData = existingKeyword.monthlyData && Array.isArray(existingKeyword.monthlyData)
-                            ? existingKeyword.monthlyData.map((md: any) => {
-                                const [monthName, yearStr] = md.month.split(' ');
-                                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                                const month = monthNames.indexOf(monthName) + 1;
-                                const year = parseInt(yearStr);
-                                return {
-                                    year,
-                                    month,
-                                    search_volume: md.volume || 0
-                                };
-                            })
-                            : [];
-
-                        // Convert competition from number to string if needed
-                        let competition = existingKeyword.competition;
-                        if (typeof competition === 'number') {
-                            if (competition === 100) competition = 'HIGH';
-                            else if (competition === 50) competition = 'MEDIUM';
-                            else if (competition === 0) competition = 'LOW';
-                        }
-
-                        keywordResults.push({
-                            keyword: existingKeyword.keyword,
-                            spell: null,
-                            location_code: 2840, // US
-                            language_code: 'en',
-                            search_partners: false,
-                            competition: competition || null,
-                            competition_index: typeof existingKeyword.competition === 'number' ? existingKeyword.competition : null,
-                            search_volume: existingKeyword.volume || null,
-                            cpc: existingKeyword.cpc || null,
-                            low_top_of_page_bid: existingKeyword.topPageBid || null,
-                            high_top_of_page_bid: existingKeyword.topPageBid || null,
-                            monthly_searches: monthlyData
-                        });
-                    } else {
-                        // Generate random mock data for keywords not in DB (fast)
-                        const keywordLength = keywordText.split(' ').length;
-                        const baseVolume = keywordLength === 2 ? 1000 : keywordLength === 3 ? 500 : 200;
-                        const volume = baseVolume + Math.floor(Math.random() * baseVolume * 0.5);
-                        const competition = ['LOW', 'MEDIUM', 'HIGH'][Math.floor(Math.random() * 3)];
-                        const competitionIndex = competition === 'HIGH' ? 75 + Math.floor(Math.random() * 25) :
-                            competition === 'MEDIUM' ? 25 + Math.floor(Math.random() * 50) :
-                                Math.floor(Math.random() * 25);
-                        const cpc = 0.5 + Math.random() * 2.0; // $0.50 - $2.50
-                        const topPageBid = cpc * (0.8 + Math.random() * 0.4); // 80-120% of CPC
-
-                        // Generate mock monthly data for last 12 months
-                        const monthlyData = [];
-                        const now = new Date();
-                        for (let i = 11; i >= 0; i--) {
-                            const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                            const month = date.getMonth() + 1;
-                            const year = date.getFullYear();
-                            const monthlyVolume = Math.max(0, Math.floor(volume * (0.8 + Math.random() * 0.4)));
-                            monthlyData.push({
-                                year,
-                                month,
-                                search_volume: monthlyVolume
+                // Get DataForSEO results from Step 1 (stored in progress)
+                let dataForSEOResults: typeof import("./dataforseo-service").KeywordsForKeywordsKeywordResult[] | undefined;
+                
+                if (savedProgress && savedProgress.dataForSEOResults && Array.isArray(savedProgress.dataForSEOResults)) {
+                    // Use saved DataForSEO results
+                    dataForSEOResults = savedProgress.dataForSEOResults as any;
+                } else {
+                    // Fallback: Re-fetch from task if needed (shouldn't happen, but handle gracefully)
+                    const taskId = savedProgress?.taskId;
+                    if (taskId) {
+                        const { getKeywordsForKeywordsTask } = await import("./dataforseo-service");
+                        dataForSEOResults = await getKeywordsForKeywordsTask(taskId, 1, 0);
+                        if (dataForSEOResults && dataForSEOResults.length > 0) {
+                            // Save fetched results to progress
+                            await saveProgress({
+                                currentStage: 'calling-api',
+                                dataForSEOResults: dataForSEOResults,
                             });
                         }
-
-                        keywordResults.push({
-                            keyword: keywordText,
-                            spell: null,
-                            location_code: 2840, // US
-                            language_code: 'en',
-                            search_partners: false,
-                            competition: competition,
-                            competition_index: competitionIndex,
-                            search_volume: volume,
-                            cpc: cpc.toFixed(2),
-                            low_top_of_page_bid: topPageBid.toFixed(2),
-                            high_top_of_page_bid: (topPageBid * 1.2).toFixed(2),
-                            monthly_searches: monthlyData
-                        });
                     }
                 }
+
+                if (!dataForSEOResults || dataForSEOResults.length === 0) {
+                    res.write(`data: ${JSON.stringify({
+                        type: 'error',
+                        stage: 'fetching-dataforseo',
+                        error: "No DataForSEO results found. Please try again."
+                    })}\n\n`);
+                    res.end();
+                    return;
+                }
+
+                // Process DataForSEO results directly
+                const keywordResults = dataForSEOResults;
                 let keywordsWithData = 0;
                 const keywordsToInsert: any[] = [];
                 const keywordMap = new Map<string, any>();
@@ -3307,6 +3278,9 @@ Return ONLY the JSON array, no other text. Example format:
                     progressToSave.metricsProcessedCount = progressData.metricsProcessedCount !== undefined ? progressData.metricsProcessedCount : (currentProgress.metricsProcessedCount || 0);
                     // Preserve task ID if not provided
                     progressToSave.taskId = progressData.taskId !== undefined ? progressData.taskId : (currentProgress.taskId || undefined);
+                    // Preserve DataForSEO results if not provided
+                    progressToSave.dataForSEOResults = progressData.dataForSEOResults !== undefined ? progressData.dataForSEOResults : (currentProgress.dataForSEOResults || undefined);
+                    progressToSave.dataForSEOSiteResults = progressData.dataForSEOSiteResults !== undefined ? progressData.dataForSEOSiteResults : (currentProgress.dataForSEOSiteResults || undefined);
 
                     await storage.saveKeywordGenerationProgress(projectId, progressToSave);
                     lastSaveTime = Date.now();
@@ -3346,84 +3320,65 @@ Return ONLY the JSON array, no other text. Example format:
                 const maxPollAttempts = 60;
                 const pollIntervalMs = 5000;
 
-                const pollWithProgress = async (): Promise<string[]> => {
-                    const apiUrl = `https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_site/task_get/${taskId}`;
-                    const credB64 = process.env.DATA_FOR_SEO_CRED_B64;
-
-                    if (!credB64) {
-                        throw new Error("DATA_FOR_SEO_CRED_B64 environment variable is not set");
-                    }
-
-                    while (pollAttempt < maxPollAttempts) {
-                        const response = await fetch(apiUrl, {
-                            method: "GET",
-                            headers: {
-                                "Authorization": `Basic ${credB64}`,
-                                "Content-Type": "application/json"
-                            }
-                        });
-
-                        if (!response.ok) {
-                            const errorText = await response.text();
-                            throw new Error(`DataForSEO API error: ${response.status} ${response.statusText} - ${errorText}`);
-                        }
-
-                        const data = await response.json();
-
-                        if (data.status_code !== 20000) {
-                            throw new Error(`DataForSEO API error: ${data.status_message} (code: ${data.status_code})`);
-                        }
-
-                        if (!data.tasks || data.tasks.length === 0) {
-                            throw new Error("No tasks found in response");
-                        }
-
-                        const task = data.tasks[0];
-
-                        if (task.status_code === 20000 && task.result && task.result.length > 0) {
-                            // Task completed successfully
-                            const keywords = task.result
-                                .map((result: any) => result.keyword)
-                                .filter((keyword: string) => keyword && keyword.trim().length > 0);
-                            
-                            return keywords;
-                        } else if (task.status_code === 20100 || task.status_code === 20200) {
-                            // Task still processing
-                            pollAttempt++;
-                            sendProgress('polling-task', { 
-                                message: `Polling... (attempt ${pollAttempt}/${maxPollAttempts})`,
-                                attempt: pollAttempt,
-                                maxAttempts: maxPollAttempts
-                            });
-                            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-                            continue;
-                        } else {
-                            throw new Error(`Task failed: ${task.status_message} (code: ${task.status_code})`);
-                        }
-                    }
-
-                    throw new Error(`Task did not complete within ${maxPollAttempts} attempts`);
+                const pollWithProgress = async (): Promise<typeof import("./dataforseo-service").KeywordsForSiteKeywordResult[]> => {
+                    const { getKeywordsForSiteTask } = await import("./dataforseo-service");
+                    return await getKeywordsForSiteTask(taskId, maxPollAttempts, pollIntervalMs);
                 };
 
-                finalKeywords = await pollWithProgress();
+                const siteResults = await pollWithProgress();
+                
+                // Extract keywords for backward compatibility
+                finalKeywords = siteResults
+                    .map(result => result.keyword)
+                    .filter(keyword => keyword && keyword.trim().length > 0);
 
                 // STEP 3: Extract and save keywords
                 sendProgress('extracting-keywords', { message: `Extracted ${finalKeywords.length} keywords from website` });
 
-                // Save keywords to project progress
+                // Save keywords and full DataForSEO results to project progress
                 await saveProgress({
                     currentStage: 'extracting-keywords',
                     newKeywords: finalKeywords,
+                    dataForSEOSiteResults: siteResults,
                     keywordsGenerated: finalKeywords.length,
                     newKeywordsCollected: finalKeywords.length
                 });
 
                 sendProgress('extracting-keywords', { message: `Saved ${finalKeywords.length} keywords`, newKeywords: finalKeywords });
             } else {
-                // Use saved keywords
-                finalKeywords = (savedProgress.newKeywords && Array.isArray(savedProgress.newKeywords))
-                    ? savedProgress.newKeywords
-                    : [];
+                // Use saved DataForSEO results or keywords
+                let siteResults: typeof import("./dataforseo-service").KeywordsForSiteKeywordResult[] | undefined;
+                let finalKeywords: string[] = [];
+
+                if (savedProgress.dataForSEOSiteResults && Array.isArray(savedProgress.dataForSEOSiteResults)) {
+                    // Use saved DataForSEO results
+                    siteResults = savedProgress.dataForSEOSiteResults as any;
+                    finalKeywords = siteResults
+                        .map(result => result.keyword)
+                        .filter(keyword => keyword && keyword.trim().length > 0);
+                } else if (savedProgress.newKeywords && Array.isArray(savedProgress.newKeywords)) {
+                    // Fallback to saved keywords (backward compatibility)
+                    finalKeywords = savedProgress.newKeywords;
+                    
+                    // Try to re-fetch DataForSEO results if taskId exists
+                    if (savedProgress.taskId) {
+                        try {
+                            const { getKeywordsForSiteTask } = await import("./dataforseo-service");
+                            siteResults = await getKeywordsForSiteTask(savedProgress.taskId, 60, 5000);
+                            if (siteResults && siteResults.length > 0) {
+                                // Update progress with fetched results
+                                await saveProgress({
+                                    currentStage: 'extracting-keywords',
+                                    dataForSEOSiteResults: siteResults,
+                                });
+                                // Update savedProgress to reflect the new data
+                                savedProgress.dataForSEOSiteResults = siteResults as any;
+                            }
+                        } catch (error) {
+                            console.warn("Failed to re-fetch DataForSEO site results:", error);
+                        }
+                    }
+                }
 
                 if (finalKeywords.length === 0) {
                     res.write(`data: ${JSON.stringify({
@@ -3447,37 +3402,44 @@ Return ONLY the JSON array, no other text. Example format:
                 return;
             }
 
-            // STEP 4: Fetch DataForSEO (reuse existing logic from generate-full-report)
+            // STEP 4: Process DataForSEO results (skip if already done)
             if (!savedProgress || !savedProgress.dataForSEOFetched) {
-                sendProgress('fetching-dataforseo', { message: `Finding data for ${finalKeywords.length} keywords...` });
+                sendProgress('fetching-dataforseo', { message: `Processing DataForSEO metrics for ${finalKeywords.length} keywords...` });
 
-                // Calculate date range: last 4 years from today
-                const today = new Date();
-                const fourYearsAgo = new Date();
-                fourYearsAgo.setFullYear(today.getFullYear() - 4);
-
-                const dateTo = today.toISOString().split('T')[0];
-                const dateFrom = fourYearsAgo.toISOString().split('T')[0];
-
-                // Import and call DataForSEO service
-                const { fetchKeywordMetrics } = await import("./dataforseo-service");
+                // Get DataForSEO results from Step 1-2 (stored in progress)
+                let siteResults: typeof import("./dataforseo-service").KeywordsForSiteKeywordResult[] | undefined;
                 
-                // Process keywords in batches of 1000 (API limit)
-                const BATCH_SIZE = 1000;
-                let allKeywordResults: any[] = [];
-
-                for (let i = 0; i < finalKeywords.length; i += BATCH_SIZE) {
-                    const batch = finalKeywords.slice(i, i + BATCH_SIZE);
-                    const apiResponse = await fetchKeywordMetrics(batch, dateFrom, dateTo);
-                    
-                    const task = apiResponse.tasks[0];
-                    if (task && task.result) {
-                        allKeywordResults.push(...task.result);
+                if (savedProgress && savedProgress.dataForSEOSiteResults && Array.isArray(savedProgress.dataForSEOSiteResults)) {
+                    // Use saved DataForSEO results
+                    siteResults = savedProgress.dataForSEOSiteResults as any;
+                } else {
+                    // Fallback: Re-fetch from task if needed (shouldn't happen, but handle gracefully)
+                    const taskId = savedProgress?.taskId;
+                    if (taskId) {
+                        const { getKeywordsForSiteTask } = await import("./dataforseo-service");
+                        siteResults = await getKeywordsForSiteTask(taskId, 60, 5000);
+                        if (siteResults && siteResults.length > 0) {
+                            // Save fetched results to progress
+                            await saveProgress({
+                                currentStage: 'extracting-keywords',
+                                dataForSEOSiteResults: siteResults,
+                            });
+                        }
                     }
                 }
 
-                // Process API response and save to database (reuse logic from generate-full-report)
-                const keywordResults = allKeywordResults;
+                if (!siteResults || siteResults.length === 0) {
+                    res.write(`data: ${JSON.stringify({
+                        type: 'error',
+                        stage: 'fetching-dataforseo',
+                        error: "No DataForSEO results found. Please try again."
+                    })}\n\n`);
+                    res.end();
+                    return;
+                }
+
+                // Process DataForSEO results directly
+                const keywordResults = siteResults;
                 let keywordsWithData = 0;
                 const keywordsToInsert: any[] = [];
                 const keywordMap = new Map<string, any>();
@@ -3503,21 +3465,28 @@ Return ONLY the JSON array, no other text. Example format:
                         };
                     }).sort((a: any, b: any) => a.sortKey.localeCompare(b.sortKey)).map(({ sortKey, ...rest }: any) => rest) || [];
 
+                    // Normalize competition (prioritize DataForSEO data)
                     let competitionIndex = null;
                     if (result.competition) {
                         if (result.competition === "HIGH") competitionIndex = 100;
                         else if (result.competition === "MEDIUM") competitionIndex = 50;
                         else if (result.competition === "LOW") competitionIndex = 0;
                     }
+                    // Use competition_index if competition string is not available
+                    if (competitionIndex === null && result.competition_index !== null && result.competition_index !== undefined) {
+                        competitionIndex = result.competition_index;
+                    }
 
+                    // Calculate average top page bid
                     const avgTopPageBid = result.low_top_of_page_bid && result.high_top_of_page_bid
                         ? (result.low_top_of_page_bid + result.high_top_of_page_bid) / 2
                         : null;
 
+                    // Create keyword data object (prioritize DataForSEO data)
                     const keywordData = {
                         keyword: result.keyword,
                         volume: result.search_volume || null,
-                        competition: competitionIndex || result.competition_index || null,
+                        competition: competitionIndex || null,
                         cpc: result.cpc || null,
                         topPageBid: avgTopPageBid,
                         monthlyData: monthlyData,
@@ -4911,3 +4880,4 @@ Return ONLY the JSON array, no other text. Example format:
     const httpServer = createServer(app);
     return httpServer;
 }
+

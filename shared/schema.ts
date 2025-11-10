@@ -102,6 +102,34 @@ export interface KeywordGenerationProgress {
   keywordsFetchedCount?: number; // Number of keywords fetched from DataForSEO
   metricsProcessedCount?: number; // Number of keywords with metrics computed
   taskId?: string; // DataForSEO task ID for resuming interrupted tasks
+  dataForSEOResults?: Array<{
+    keyword: string;
+    spell: string | null;
+    location_code: number;
+    language_code: string;
+    search_partners: boolean;
+    competition: string | null;
+    competition_index: number | null;
+    search_volume: number | null;
+    low_top_of_page_bid: number | null;
+    high_top_of_page_bid: number | null;
+    cpc: number | null;
+    monthly_searches: Array<{ year: number; month: number; search_volume: number }>;
+  }>; // Full DataForSEO API response from keywords_for_keywords
+  dataForSEOSiteResults?: Array<{
+    keyword: string;
+    spell: string | null;
+    location_code: number;
+    language_code: string;
+    search_partners: boolean;
+    competition: string | null;
+    competition_index: number | null;
+    search_volume: number | null;
+    low_top_of_page_bid: number | null;
+    high_top_of_page_bid: number | null;
+    cpc: number | null;
+    monthly_searches: Array<{ year: number; month: number; search_volume: number }>;
+  }>; // Full DataForSEO API response from keywords_for_site
   // Fields for accurate resume (legacy)
   processedSeeds?: string[]; // Track which seeds were processed (legacy)
   seedSimilarities?: Record<string, number>; // Persist similarity scores (legacy)

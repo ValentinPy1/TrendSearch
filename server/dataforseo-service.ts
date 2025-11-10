@@ -276,13 +276,13 @@ export async function createKeywordsForSiteTask(
  * @param taskId - Task ID from createKeywordsForSiteTask
  * @param maxPollAttempts - Maximum number of polling attempts (default: 60)
  * @param pollIntervalMs - Polling interval in milliseconds (default: 5000 = 5 seconds)
- * @returns Promise with array of keyword strings
+ * @returns Promise with array of full keyword results with metrics
  */
 export async function getKeywordsForSiteTask(
     taskId: string,
     maxPollAttempts: number = 60,
     pollIntervalMs: number = 5000
-): Promise<string[]> {
+): Promise<KeywordsForSiteKeywordResult[]> {
     const apiUrl = `https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_site/task_get/${taskId}`;
     const credB64 = process.env.DATA_FOR_SEO_CRED_B64;
 
@@ -324,12 +324,8 @@ export async function getKeywordsForSiteTask(
         // 20100 = Task Created (still processing)
         // 20200 = Task in progress
         if (task.status_code === 20000 && task.result && task.result.length > 0) {
-            // Task completed successfully, extract keywords
-            const keywords = task.result
-                .map(result => result.keyword)
-                .filter(keyword => keyword && keyword.trim().length > 0);
-            
-            return keywords;
+            // Task completed successfully, return full results with metrics
+            return task.result;
         } else if (task.status_code === 20100 || task.status_code === 20200) {
             // Task still processing, wait and poll again
             attempts++;
