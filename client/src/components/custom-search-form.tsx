@@ -1397,47 +1397,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 )}
                             </Button>
 
-                            {/* Find Keywords from Website */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-white">
-                                    Find Keywords from Website
-                                </label>
-                                <div className="flex gap-2">
-                                    <Input
-                                        type="text"
-                                        placeholder="Enter website URL (e.g., dataforseo.com)"
-                                        value={websiteUrl}
-                                        onChange={(e) => setWebsiteUrl(e.target.value)}
-                                        disabled={isFindingKeywordsFromWebsite || isGeneratingKeywords}
-                                        className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/40"
-                                    />
-                                    <Button
-                                        type="button"
-                                        onClick={handleFindKeywordsFromWebsite}
-                                        disabled={
-                                            !websiteUrl ||
-                                            websiteUrl.trim().length === 0 ||
-                                            isFindingKeywordsFromWebsite ||
-                                            isGeneratingKeywords ||
-                                            !currentProjectId
-                                        }
-                                        className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-                                    >
-                                        {isFindingKeywordsFromWebsite ? (
-                                            <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Finding...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Search className="mr-2 h-4 w-4" />
-                                                Find from Website
-                                            </>
-                                        )}
-                                    </Button>
-                                </div>
-                            </div>
-
                             {/* Progress Indicators for Website Discovery */}
                             {isFindingKeywordsFromWebsite && isGeneratingKeywords && (
                                 <div className="mt-4 space-y-2 flex flex-col items-center">
@@ -1664,15 +1623,37 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                                     {competitor.name}
                                                                 </h4>
                                                                 {competitor.url && (
-                                                                    <a
-                                                                        href={competitor.url}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        className="text-primary hover:text-primary/80 transition-colors"
-                                                                        onClick={(e) => e.stopPropagation()}
-                                                                    >
-                                                                        <ExternalLink className="h-3.5 w-3.5" />
-                                                                    </a>
+                                                                    <>
+                                                                        <a
+                                                                            href={competitor.url}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="text-primary hover:text-primary/80 transition-colors"
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                        >
+                                                                            <ExternalLink className="h-3.5 w-3.5" />
+                                                                        </a>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (competitor.url) {
+                                                                                    // Extract domain from URL
+                                                                                    try {
+                                                                                        const url = new URL(competitor.url.startsWith('http') ? competitor.url : `https://${competitor.url}`);
+                                                                                        setWebsiteUrl(url.hostname.replace('www.', ''));
+                                                                                    } catch {
+                                                                                        // If URL parsing fails, use the URL as-is
+                                                                                        setWebsiteUrl(competitor.url.replace(/^https?:\/\//, '').replace(/^www\./, ''));
+                                                                                    }
+                                                                                }
+                                                                            }}
+                                                                            className="text-cyan-500 hover:text-cyan-400 transition-colors p-1 hover:bg-white/10 rounded"
+                                                                            title="Use this URL for keyword search"
+                                                                        >
+                                                                            <Search className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                    </>
                                                                 )}
                                                             </div>
                                                             <p className="text-xs text-white/60 line-clamp-2">
@@ -1686,6 +1667,47 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Find Keywords from Website */}
+                            <div className="space-y-2 pt-4 border-t border-white/10">
+                                <label className="text-sm font-medium text-white">
+                                    Find Keywords from Website
+                                </label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        type="text"
+                                        placeholder="Enter website URL (e.g., dataforseo.com)"
+                                        value={websiteUrl}
+                                        onChange={(e) => setWebsiteUrl(e.target.value)}
+                                        disabled={isFindingKeywordsFromWebsite || isGeneratingKeywords}
+                                        className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/40"
+                                    />
+                                    <Button
+                                        type="button"
+                                        onClick={handleFindKeywordsFromWebsite}
+                                        disabled={
+                                            !websiteUrl ||
+                                            websiteUrl.trim().length === 0 ||
+                                            isFindingKeywordsFromWebsite ||
+                                            isGeneratingKeywords ||
+                                            !currentProjectId
+                                        }
+                                        className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+                                    >
+                                        {isFindingKeywordsFromWebsite ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Finding...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Search className="mr-2 h-4 w-4" />
+                                                Find from Website
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                     </TabsContent>
 
