@@ -2400,7 +2400,7 @@ Return ONLY the JSON array, no other text. Example format:
         const SAVE_INTERVAL = 10000; // Save every 10 seconds
 
         try {
-            const { projectId, pitch, topics, personas, painPoints, features, resumeFromProgress } = req.body;
+            const { projectId, pitch, topics, personas, painPoints, features, queryKeywords, resumeFromProgress } = req.body;
 
             // Verify project exists and user owns it
             if (!projectId) {
@@ -2442,19 +2442,19 @@ Return ONLY the JSON array, no other text. Example format:
                     // Get current saved progress to preserve existing state
                     const currentProgress = project.keywordGenerationProgress || {};
 
-                    const { progressToSaveFormat } = await import("./keyword-collector");
-                    const progressToSave = progressToSaveFormat(
-                        { stage: progressData.currentStage || progressData.stage, ...progressData },
-                        progressData.newKeywords || []
-                    );
-
-                    // Add full pipeline tracking fields - preserve existing values if not provided
-                    progressToSave.currentStage = progressData.currentStage || progressData.stage || currentProgress.currentStage;
-                    progressToSave.dataForSEOFetched = progressData.dataForSEOFetched !== undefined ? progressData.dataForSEOFetched : (currentProgress.dataForSEOFetched || false);
-                    progressToSave.metricsComputed = progressData.metricsComputed !== undefined ? progressData.metricsComputed : (currentProgress.metricsComputed || false);
-                    progressToSave.reportGenerated = progressData.reportGenerated !== undefined ? progressData.reportGenerated : (currentProgress.reportGenerated || false);
-                    progressToSave.keywordsFetchedCount = progressData.keywordsFetchedCount !== undefined ? progressData.keywordsFetchedCount : (currentProgress.keywordsFetchedCount || 0);
-                    progressToSave.metricsProcessedCount = progressData.metricsProcessedCount !== undefined ? progressData.metricsProcessedCount : (currentProgress.metricsProcessedCount || 0);
+                    // Create progress object directly
+                    const progressToSave: any = {
+                        currentStage: progressData.currentStage || progressData.stage || currentProgress.currentStage || 'initializing',
+                        stage: progressData.currentStage || progressData.stage || currentProgress.currentStage || 'initializing',
+                        ...progressData,
+                        newKeywords: progressData.newKeywords || [],
+                        // Add full pipeline tracking fields - preserve existing values if not provided
+                        dataForSEOFetched: progressData.dataForSEOFetched !== undefined ? progressData.dataForSEOFetched : (currentProgress.dataForSEOFetched || false),
+                        metricsComputed: progressData.metricsComputed !== undefined ? progressData.metricsComputed : (currentProgress.metricsComputed || false),
+                        reportGenerated: progressData.reportGenerated !== undefined ? progressData.reportGenerated : (currentProgress.reportGenerated || false),
+                        keywordsFetchedCount: progressData.keywordsFetchedCount !== undefined ? progressData.keywordsFetchedCount : (currentProgress.keywordsFetchedCount || 0),
+                        metricsProcessedCount: progressData.metricsProcessedCount !== undefined ? progressData.metricsProcessedCount : (currentProgress.metricsProcessedCount || 0),
+                    };
 
                     // Preserve other fields from current progress if not provided
                     if (!progressData.seeds && currentProgress.seeds) {
@@ -2465,6 +2465,9 @@ Return ONLY the JSON array, no other text. Example format:
                     }
                     if (!progressData.seedSimilarities && currentProgress.seedSimilarities) {
                         progressToSave.seedSimilarities = currentProgress.seedSimilarities;
+                    }
+                    if (!progressData.queryKeywords && currentProgress.queryKeywords) {
+                        progressToSave.queryKeywords = currentProgress.queryKeywords;
                     }
 
                     await storage.saveKeywordGenerationProgress(projectId, progressToSave);
@@ -2487,198 +2490,97 @@ Return ONLY the JSON array, no other text. Example format:
                 competitors: project.competitors || [],
             };
 
-            let finalKeywords: string[] = [];
+            // Get query keywords from request or project
+            const queryKeywordsList = queryKeywords || project.queryKeywords || [];
 
-            // STEP 1: Generate seeds (skip if already done)
-            if (!savedProgress || !savedProgress.seeds || savedProgress.seeds.length === 0) {
-                sendProgress('generating-seeds', { message: 'Generating 50 seed prompts...' });
-                const { generateSeeds } = await import("./keyword-seed-generator");
-                const seedsWithSimilarity = await generateSeeds(input);
-                const seeds = seedsWithSimilarity.map(s => s.seed);
-
-                await saveProgress({
-                    currentStage: 'generating-seeds',
-                    seedsGenerated: seeds.length,
-                    seeds,
-                    keywordsGenerated: 0,
-                    duplicatesFound: 0,
-                    existingKeywordsFound: 0,
-                    newKeywordsCollected: 0,
-                });
-                sendProgress('generating-seeds', { message: `Generated ${seeds.length} seeds`, seeds });
-            } else {
-                sendProgress('generating-seeds', { message: 'Seeds already generated, skipping...', seeds: savedProgress.seeds });
+            // Validate query keywords (1-20 required)
+            if (!queryKeywordsList || !Array.isArray(queryKeywordsList) || queryKeywordsList.length === 0 || queryKeywordsList.length > 20) {
+                res.write(`data: ${JSON.stringify({
+                    type: 'error',
+                    error: "Please provide 1-20 query keywords for keyword discovery."
+                })}\n\n`);
+                res.end();
+                return;
             }
 
-            // STEP 2: Generate keywords (with concurrent processing)
-            // Check if we need to generate keywords: no progress, no keywords, or less than target
-            // IMPORTANT: Empty array [] is truthy, so we need to check length explicitly
-            const hasValidKeywords = savedProgress &&
-                savedProgress.newKeywords &&
-                Array.isArray(savedProgress.newKeywords) &&
-                savedProgress.newKeywords.length >= 1000;
+            let finalKeywords: string[] = [];
 
-            const needsKeywordGeneration = !hasValidKeywords;
+            // STEP 1: Call keywords_for_keywords API (skip if already done)
+            if (!savedProgress || !savedProgress.newKeywords || savedProgress.newKeywords.length === 0) {
+                sendProgress('calling-api', { message: `Calling DataForSEO API with ${queryKeywordsList.length} query keywords...` });
 
-            logger.info("Checking if keyword generation is needed", {
-                hasSavedProgress: !!savedProgress,
-                hasNewKeywords: !!savedProgress?.newKeywords,
-                isArray: Array.isArray(savedProgress?.newKeywords),
-                keywordsLength: savedProgress?.newKeywords?.length || 0,
-                hasValidKeywords,
-                needsGeneration: needsKeywordGeneration,
-            });
+                const { createKeywordsForKeywordsTask, getKeywordsForKeywordsTask } = await import("./dataforseo-service");
+                const locationCode = 2840; // Default to US
 
-            if (needsKeywordGeneration) {
-                logger.info("Starting keyword generation", {
-                    timestamp: new Date().toISOString(),
-                    resumeFromProgress: !!savedProgress,
-                    existingKeywords: savedProgress?.newKeywords?.length || 0,
-                });
-                console.log(`[KeywordGeneration] Starting keyword generation at ${new Date().toISOString()}`);
-                console.log(`[KeywordGeneration] Resume from progress: ${!!savedProgress}, existing keywords: ${savedProgress?.newKeywords?.length || 0}`);
+                // Create task
+                const taskId = await createKeywordsForKeywordsTask(queryKeywordsList, locationCode);
+                sendProgress('calling-api', { message: 'Task created successfully, polling for results...', taskId });
 
-                sendProgress('generating-keywords', { message: 'Generating 1000 keywords with 20 concurrent calls...' });
+                // Poll task until complete with progress updates
+                const pollWithProgress = async (): Promise<string[]> => {
+                    let attempts = 0;
+                    const maxAttempts = 60;
+                    const pollInterval = 5000;
 
-                const { collectKeywords, progressToSaveFormat } = await import("./keyword-collector");
+                    while (attempts < maxAttempts) {
+                        const results = await getKeywordsForKeywordsTask(taskId, 1, 0); // Single attempt, no delay
 
-                // Track progress for saving
-                let accumulatedNewKeywords: string[] = [];
-                let lastProgressLog = Date.now();
-
-                const progressCallback = async (progress: any) => {
-                    const now = Date.now();
-                    const timeSinceLastLog = now - lastProgressLog;
-
-                    try {
-                        console.log(`[KeywordGeneration] Progress callback: stage=${progress.stage}, newKeywords=${progress.newKeywordsCollected}, keywordsGenerated=${progress.keywordsGenerated}, currentSeed=${progress.currentSeed || 'none'}, timeSinceLastLog=${timeSinceLastLog}ms`);
-
-                        sendProgress('generating-keywords', progress);
-                        accumulatedNewKeywords = progress.newKeywords || accumulatedNewKeywords;
-
-                        // Save progress periodically
-                        if (now - lastSaveTime > SAVE_INTERVAL || (progress.newKeywordsCollected > 0 && progress.newKeywordsCollected % 50 === 0)) {
-                            try {
-                                console.log(`[KeywordGeneration] Saving progress: ${progress.newKeywordsCollected} keywords collected`);
-                                await saveProgress({
-                                    currentStage: 'generating-keywords',
-                                    ...progress,
-                                    newKeywords: accumulatedNewKeywords
-                                });
-                            } catch (saveError) {
-                                console.error("[KeywordGeneration] Error saving progress in callback:", saveError);
-                                // Continue even if saving fails
-                            }
+                        if (results && results.length > 0) {
+                            // Task completed, extract keywords
+                            const keywords = results
+                                .map(result => result.keyword)
+                                .filter(keyword => keyword && keyword.trim().length > 0);
+                            return keywords;
                         }
 
-                        lastProgressLog = now;
-                    } catch (callbackError) {
-                        console.error("[KeywordGeneration] Error in progress callback:", callbackError);
-                        // Continue processing even if callback fails
+                        // Task still processing
+                        attempts++;
+                        sendProgress('calling-api', { message: `Polling task... (attempt ${attempts}/${maxAttempts})` });
+                        await new Promise(resolve => setTimeout(resolve, pollInterval));
                     }
+
+                    throw new Error(`Task did not complete within ${maxAttempts} attempts`);
                 };
 
-                logger.info("Calling collectKeywords", {
-                    timestamp: new Date().toISOString(),
-                    hasResumeState: !!(savedProgress && savedProgress.newKeywords && savedProgress.newKeywords.length > 0),
-                    resumeKeywordsCount: savedProgress?.newKeywords?.length || 0,
-                });
-                console.log(`[KeywordGeneration] Calling collectKeywords at ${new Date().toISOString()}`);
-                const startTime = Date.now();
+                finalKeywords = await pollWithProgress();
 
-                // Only pass resume state if we have valid keywords to resume from
-                // If savedProgress has empty or invalid keywords, don't pass it (start fresh)
-                const resumeState = (savedProgress &&
-                    savedProgress.newKeywords &&
-                    Array.isArray(savedProgress.newKeywords) &&
-                    savedProgress.newKeywords.length > 0)
-                    ? savedProgress
-                    : undefined;
-
-                logger.info("Resume state decision", {
-                    willResume: !!resumeState,
-                    resumeKeywordsCount: resumeState?.newKeywords?.length || 0,
-                });
-
-                let result;
-                try {
-                    result = await collectKeywords(
-                        input,
-                        progressCallback,
-                        1000,
-                        resumeState
-                    );
-                } catch (error) {
-                    logger.error("Error in collectKeywords", error, {
-                        hasResumeState: !!resumeState,
-                        resumeKeywordsCount: resumeState?.newKeywords?.length || 0,
-                    });
-                    throw error; // Re-throw to be caught by outer try-catch
-                }
-
-                const duration = Date.now() - startTime;
-                logger.info("collectKeywords completed", {
-                    duration,
-                    keywordsReturned: result.keywords.length,
-                    timestamp: new Date().toISOString(),
-                });
-                console.log(`[KeywordGeneration] collectKeywords completed in ${duration}ms, returned ${result.keywords.length} keywords at ${new Date().toISOString()}`);
-
-                if (!result || !result.keywords || result.keywords.length === 0) {
-                    logger.error("collectKeywords returned 0 keywords", {
-                        result: result ? "exists" : "null",
-                        keywordsLength: result?.keywords?.length || 0,
-                        hasResumeState: !!resumeState,
-                    });
-                    throw new Error("Keyword generation returned 0 keywords. Please check your inputs and try again.");
-                }
-
-                finalKeywords = result.keywords;
-                accumulatedNewKeywords = finalKeywords;
-
-                // Save final keyword generation progress
+                // Save progress
                 await saveProgress({
-                    currentStage: 'generating-keywords',
-                    ...result.progress,
-                    newKeywords: finalKeywords
+                    currentStage: 'calling-api',
+                    queryKeywords: queryKeywordsList,
+                    newKeywords: finalKeywords,
+                    keywordsGenerated: finalKeywords.length,
+                    newKeywordsCollected: finalKeywords.length,
                 });
 
-                sendProgress('generating-keywords', { message: `Generated ${finalKeywords.length} keywords`, newKeywords: finalKeywords });
+                sendProgress('calling-api', { message: `Found ${finalKeywords.length} keywords from API`, newKeywords: finalKeywords });
             } else {
-                // Use saved keywords - but validate they exist and are valid
+                // Use saved keywords
                 finalKeywords = (savedProgress.newKeywords && Array.isArray(savedProgress.newKeywords))
                     ? savedProgress.newKeywords
                     : [];
 
-                logger.info("Skipping keyword generation, using saved keywords", {
-                    keywordsCount: finalKeywords.length,
-                    wasArray: Array.isArray(savedProgress.newKeywords),
-                    savedProgressHasNewKeywords: !!savedProgress.newKeywords,
-                });
-
                 if (finalKeywords.length === 0) {
-                    logger.warn("Saved progress has no valid keywords, forcing regeneration", {
-                        savedProgressNewKeywords: savedProgress.newKeywords,
-                        isArray: Array.isArray(savedProgress.newKeywords),
-                    });
-                    // Force regeneration if saved keywords are invalid
-                    finalKeywords = [];
-                    // Don't send progress here - will be handled by validation below
-                } else {
-                    sendProgress('generating-keywords', { message: `Keywords already generated (${finalKeywords.length}), skipping...`, newKeywords: finalKeywords });
+                    res.write(`data: ${JSON.stringify({
+                        type: 'error',
+                        error: "No keywords found. Please try again."
+                    })}\n\n`);
+                    res.end();
+                    return;
                 }
+
+                sendProgress('calling-api', { message: `Using saved keywords (${finalKeywords.length})`, newKeywords: finalKeywords });
             }
 
             // Validate that we have keywords before proceeding
             if (!finalKeywords || finalKeywords.length === 0) {
-                logger.error("No keywords generated or found", {
+                logger.error("No keywords found from API", {
                     finalKeywordsLength: finalKeywords?.length || 0,
-                    hasSavedProgress: !!savedProgress,
-                    savedProgressKeywordsLength: savedProgress?.newKeywords?.length || 0,
+                    queryKeywordsCount: queryKeywordsList.length,
                 });
                 res.write(`data: ${JSON.stringify({
                     type: 'error',
-                    error: "No keywords were generated. Please check your inputs and try again."
+                    error: "No keywords were found from the API. Please check your query keywords and try again."
                 })}\n\n`);
                 res.end();
                 return;
@@ -2688,7 +2590,7 @@ Return ONLY the JSON array, no other text. Example format:
                 keywordsCount: finalKeywords.length,
             });
 
-            // STEP 3: Fetch DataForSEO (skip if already done)
+            // STEP 2: Fetch DataForSEO (skip if already done)
             if (!savedProgress || !savedProgress.dataForSEOFetched) {
                 sendProgress('fetching-dataforseo', { message: `Finding data for ${finalKeywords.length} keywords...` });
 
@@ -2923,7 +2825,7 @@ Return ONLY the JSON array, no other text. Example format:
                 sendProgress('fetching-dataforseo', { message: 'DataForSEO metrics already fetched, skipping...' });
             }
 
-            // STEP 4: Generate report FIRST (before computing metrics)
+            // STEP 3: Generate report FIRST (before computing metrics)
             // This allows users to see the report immediately while metrics are computed in the background
             if (!savedProgress || !savedProgress.reportGenerated) {
                 logger.info("=== GENERATE REPORT PIPELINE START ===", {
@@ -3050,7 +2952,7 @@ Return ONLY the JSON array, no other text. Example format:
             // Close the response so user can see the report immediately
             res.end();
 
-            // STEP 5: Compute metrics in the background (asynchronously, after sending report)
+            // STEP 4: Compute metrics in the background (asynchronously, after sending report)
             // This runs after the response is sent, so it doesn't block the user
             if (!savedProgress || !savedProgress.metricsComputed) {
                 // Start metrics computation asynchronously (fire and forget, but with error handling)

@@ -43,11 +43,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [personas, setPersonas] = useState<string[]>([]);
     const [painPoints, setPainPoints] = useState<string[]>([]);
     const [features, setFeatures] = useState<string[]>([]);
+    const [queryKeywords, setQueryKeywords] = useState<string[]>([]);
     const [isGeneratingTopics, setIsGeneratingTopics] = useState(false);
     const [isGeneratingPersonas, setIsGeneratingPersonas] = useState(false);
     const [isGeneratingPainPoints, setIsGeneratingPainPoints] =
         useState(false);
     const [isGeneratingFeatures, setIsGeneratingFeatures] = useState(false);
+    const [isGeneratingQueryKeywords, setIsGeneratingQueryKeywords] = useState(false);
     const [isFindingCompetitors, setIsFindingCompetitors] = useState(false);
     const [competitors, setCompetitors] = useState<Competitor[]>([]);
     const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
@@ -135,8 +137,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             Object.entries(stepStartTimes).forEach(([stepKey, startTime]) => {
                 const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
                                 const stepMap: Record<string, string[]> = {
-                                    'generating-seeds': ['generating-seeds'],
-                                    'generating-keywords': ['generating-keywords', 'selecting-top-keywords'],
+                                    'calling-api': ['calling-api'],
                                     'creating-task': ['creating-task'],
                                     'polling-task': ['polling-task'],
                                     'extracting-keywords': ['extracting-keywords'],
@@ -711,6 +712,69 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     };
 
+    const handleGenerateQueryKeywords = async () => {
+        if (!pitch || pitch.trim().length === 0) {
+            toast({
+                title: "Error",
+                description: "Please enter an idea pitch first",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setIsGeneratingQueryKeywords(true);
+        try {
+            const result = await generateItemsMutation.mutateAsync({
+                pitch,
+                type: "topics", // Use topics type for query keywords generation
+            });
+            if (result.items && Array.isArray(result.items)) {
+                // Add new items that don't already exist, limit to 20
+                const newItems = result.items
+                    .filter((item: string) => !queryKeywords.includes(item))
+                    .slice(0, 20 - queryKeywords.length);
+                if (newItems.length > 0) {
+                    setQueryKeywords([...queryKeywords, ...newItems]);
+                }
+            }
+        } finally {
+            setIsGeneratingQueryKeywords(false);
+        }
+    };
+
+    const handleAddToQueryKeywords = (item: string) => {
+        if (queryKeywords.length >= 20) {
+            toast({
+                title: "Limit reached",
+                description: "You can only add up to 20 query keywords",
+                variant: "destructive",
+            });
+            return;
+        }
+        if (!queryKeywords.includes(item)) {
+            setQueryKeywords([...queryKeywords, item]);
+        }
+    };
+
+    // Get badge color for query keywords based on which list they came from
+    const getQueryKeywordBadgeColor = (keyword: string): string | undefined => {
+        // Check which list the keyword belongs to and return its original color
+        if (topics.includes(keyword)) {
+            return "bg-blue-600/80 text-blue-100 border-blue-500/50";
+        }
+        if (personas.includes(keyword)) {
+            return "bg-emerald-600/80 text-emerald-100 border-emerald-500/50";
+        }
+        if (painPoints.includes(keyword)) {
+            return "bg-amber-600/80 text-amber-100 border-amber-500/50";
+        }
+        if (features.includes(keyword)) {
+            return "bg-purple-600/80 text-purple-100 border-purple-500/50";
+        }
+        // Default color for keywords added directly or generated
+        return "bg-pink-600/80 text-pink-100 border-pink-500/50";
+    };
+
     const handleFindCompetitors = async () => {
         if (!pitch || pitch.trim().length === 0) {
             toast({
@@ -945,7 +1009,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         } else {
             // Initialize with optimistic progress - start showing first stage immediately
             setKeywordProgress({
-                stage: 'generating-seeds',
+                stage: 'calling-api',
                 seedsGenerated: 0,
                 keywordsGenerated: 0,
                 duplicatesFound: 0,
@@ -959,6 +1023,17 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             // Reset step start times for fresh generation
             setStepStartTimes({});
             setElapsedTimes({});
+        }
+
+        // Validate query keywords
+        if (!queryKeywords || queryKeywords.length === 0 || queryKeywords.length > 20) {
+            toast({
+                title: "Error",
+                description: "Please provide 1-20 query keywords for keyword discovery",
+                variant: "destructive",
+            });
+            setIsGeneratingKeywords(false);
+            return;
         }
 
         try {
@@ -980,6 +1055,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     personas: personas.length > 0 ? personas : undefined,
                     painPoints: painPoints.length > 0 ? painPoints : undefined,
                     features: features.length > 0 ? features : undefined,
+                    queryKeywords: queryKeywords.length > 0 ? queryKeywords : undefined,
                     resumeFromProgress: resume && savedProgress ? savedProgress : undefined,
                 }),
             });
@@ -1014,9 +1090,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 
                                 // Track step start times for elapsed time calculation
                                 const stageMap: Record<string, string> = {
-                                    'generating-seeds': 'generating-seeds',
-                                    'generating-keywords': 'generating-keywords',
-                                    'selecting-top-keywords': 'generating-keywords',
+                                    'calling-api': 'calling-api',
                                     'fetching-dataforseo': 'fetching-dataforseo',
                                     'computing-metrics': 'computing-metrics',
                                     'generating-report': 'generating-report'
@@ -1623,6 +1697,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     isGenerating={isGeneratingTopics}
                                     generateLabel="Generate from Pitch"
                                     badgeColor="bg-blue-600/80 text-blue-100 border-blue-500/50"
+                                    onBadgeClick={handleAddToQueryKeywords}
                                 />
                             </div>
 
@@ -1639,6 +1714,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     isGenerating={isGeneratingPersonas}
                                     generateLabel="Generate from Pitch"
                                     badgeColor="bg-emerald-600/80 text-emerald-100 border-emerald-500/50"
+                                    onBadgeClick={handleAddToQueryKeywords}
                                 />
                             </div>
 
@@ -1655,6 +1731,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     isGenerating={isGeneratingPainPoints}
                                     generateLabel="Generate from Pitch"
                                     badgeColor="bg-amber-600/80 text-amber-100 border-amber-500/50"
+                                    onBadgeClick={handleAddToQueryKeywords}
                                 />
                             </div>
 
@@ -1671,8 +1748,26 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     isGenerating={isGeneratingFeatures}
                                     generateLabel="Generate from Pitch"
                                     badgeColor="bg-purple-600/80 text-purple-100 border-purple-500/50"
+                                    onBadgeClick={handleAddToQueryKeywords}
                                 />
                             </div>
+                        </div>
+
+                        {/* Query Keywords (5th field) */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-white">
+                                Query Keywords <span className="text-white/60 text-xs">(1-20 keywords)</span>
+                            </label>
+                            <ListInput
+                                value={queryKeywords}
+                                onChange={setQueryKeywords}
+                                placeholder="Add 1-20 query keywords for keyword discovery"
+                                onGenerate={handleGenerateQueryKeywords}
+                                isGenerating={isGeneratingQueryKeywords}
+                                generateLabel="Generate from Pitch"
+                                getBadgeColor={getQueryKeywordBadgeColor}
+                                maxItems={20}
+                            />
                         </div>
 
                         {/* Find Custom Keywords Button */}
@@ -1683,6 +1778,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 disabled={
                                     !pitch ||
                                     pitch.trim().length === 0 ||
+                                    !queryKeywords ||
+                                    queryKeywords.length === 0 ||
+                                    queryKeywords.length > 20 ||
                                     isGeneratingKeywords ||
                                     !currentProjectId
                                 }
@@ -1751,42 +1849,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         
                                         return (
                                             <>
-                                                {/* Step 1: Generating Seeds */}
+                                                {/* Step 1: Calling API */}
                                                 <div className="flex items-center gap-2">
                                                     {(() => {
-                                                        const isActive = currentStage === 'generating-seeds';
-                                                        const isCompleted = ['generating-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                                        const elapsed = elapsedTimes['generating-seeds'] || 0;
-                                                        const estimate = 5;
-                                                        return (
-                                                            <>
-                                                                {isCompleted ? (
-                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                ) : isActive ? (
-                                                                    <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                ) : (
-                                                                    <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                )}
-                                                                <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                    Generating seeds
-                                                                </span>
-                                                                {isActive ? (
-                                                                    <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                ) : !isCompleted ? (
-                                                                    <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                ) : null}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </div>
-
-                                                {/* Step 2: Generating Keywords */}
-                                                <div className="flex items-center gap-2">
-                                                    {(() => {
-                                                        const isActive = currentStage === 'generating-keywords' || currentStage === 'selecting-top-keywords';
+                                                        const isActive = currentStage === 'calling-api';
                                                         const isCompleted = ['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                                        const elapsed = elapsedTimes['generating-keywords'] || 0;
-                                                        const estimate = 45;
+                                                        const elapsed = elapsedTimes['calling-api'] || 0;
+                                                        const estimate = 30;
                                                         return (
                                                             <>
                                                                 {isCompleted ? (
@@ -1797,7 +1866,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                                     <div className="h-4 w-4 rounded-full border-2 border-white/40" />
                                                                 )}
                                                                 <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                    Generating keywords
+                                                                    Calling DataForSEO API
                                                                 </span>
                                                                 {isActive ? (
                                                                     <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
@@ -1809,7 +1878,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                     })()}
                                                 </div>
 
-                                                {/* Step 3: Find data */}
+                                                {/* Step 2: Find data */}
                                                 <div className="flex items-center gap-2">
                                                     {(() => {
                                                         const isActive = currentStage === 'fetching-dataforseo';
@@ -1838,7 +1907,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                     })()}
                                                 </div>
 
-                                                {/* Step 4: Computing Metrics */}
+                                                {/* Step 3: Computing Metrics */}
                                                 <div className="flex items-center gap-2">
                                                     {(() => {
                                                         const isActive = currentStage === 'computing-metrics';
@@ -1867,7 +1936,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                     })()}
                                                 </div>
 
-                                                {/* Step 5: Generating Report */}
+                                                {/* Step 4: Generating Report */}
                                                 <div className="flex items-center gap-2">
                                                     {(() => {
                                                         const isActive = currentStage === 'generating-report';

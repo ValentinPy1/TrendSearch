@@ -81,17 +81,18 @@ export const keywords = pgTable("keywords", {
 });
 
 export interface KeywordGenerationProgress {
-  currentStage: string; // 'generating-seeds' | 'generating-keywords' | 'fetching-dataforseo' | 'computing-metrics' | 'generating-report' | 'complete'
+  currentStage: string; // 'calling-api' | 'fetching-dataforseo' | 'computing-metrics' | 'generating-report' | 'complete' | 'generating-seeds' | 'generating-keywords' (legacy)
   stage: string; // Legacy field for backward compatibility
-  seedsGenerated: number;
-  keywordsGenerated: number;
-  duplicatesFound: number;
-  existingKeywordsFound: number;
+  seedsGenerated: number; // Legacy field
+  keywordsGenerated: number; // Legacy field
+  duplicatesFound: number; // Legacy field
+  existingKeywordsFound: number; // Legacy field
   newKeywordsCollected: number;
-  seeds?: string[];
-  allKeywords?: string[];
-  duplicates?: string[];
-  existingKeywords?: string[];
+  queryKeywords?: string[]; // Query keywords used for keywords_for_keywords API (1-20 keywords)
+  seeds?: string[]; // Legacy field
+  allKeywords?: string[]; // Legacy field
+  duplicates?: string[]; // Legacy field
+  existingKeywords?: string[]; // Legacy field
   newKeywords?: string[]; // Final list of new keywords
   completedAt?: string; // ISO timestamp
   // New fields for full pipeline tracking
@@ -100,9 +101,9 @@ export interface KeywordGenerationProgress {
   reportGenerated?: boolean; // Flag to track if report generation completed
   keywordsFetchedCount?: number; // Number of keywords fetched from DataForSEO
   metricsProcessedCount?: number; // Number of keywords with metrics computed
-  // Fields for accurate resume
-  processedSeeds?: string[]; // Track which seeds were processed
-  seedSimilarities?: Record<string, number>; // Persist similarity scores
+  // Fields for accurate resume (legacy)
+  processedSeeds?: string[]; // Track which seeds were processed (legacy)
+  seedSimilarities?: Record<string, number>; // Persist similarity scores (legacy)
 }
 
 export const customSearchProjects = pgTable("custom_search_projects", {

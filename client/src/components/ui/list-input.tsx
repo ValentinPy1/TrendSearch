@@ -13,7 +13,10 @@ interface ListInputProps {
     onGenerate?: () => void;
     isGenerating?: boolean;
     generateLabel?: string;
-    badgeColor?: string; // Custom badge color classes
+    badgeColor?: string; // Custom badge color classes (applied to all badges)
+    getBadgeColor?: (item: string) => string | undefined; // Function to get badge color for each item
+    onBadgeClick?: (item: string) => void; // Optional click handler for badges
+    maxItems?: number; // Optional max items limit
 }
 
 export function ListInput({
@@ -25,12 +28,18 @@ export function ListInput({
     isGenerating = false,
     generateLabel = "Generate",
     badgeColor,
+    getBadgeColor,
+    onBadgeClick,
+    maxItems,
 }: ListInputProps) {
     const [inputValue, setInputValue] = React.useState("");
 
     const handleAddItem = (item: string) => {
         const trimmed = item.trim();
         if (trimmed && !value.includes(trimmed)) {
+            if (maxItems && value.length >= maxItems) {
+                return; // Don't add if max items reached
+            }
             onChange([...value, trimmed]);
         }
     };
@@ -96,31 +105,40 @@ export function ListInput({
             </div>
             {value.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                    {value.map((item) => (
-                        <Badge
-                            key={item}
-                            variant={badgeColor ? undefined : "secondary"}
-                            className={cn(
-                                "flex items-center gap-1 pr-1",
-                                badgeColor || "bg-secondary text-secondary-foreground"
-                            )}
-                        >
-                            <span>{item}</span>
-                            <button
-                                type="button"
-                                onClick={() => handleRemoveItem(item)}
+                    {value.map((item) => {
+                        // Get badge color: use getBadgeColor function if provided, otherwise use badgeColor prop
+                        const itemBadgeColor = getBadgeColor ? getBadgeColor(item) : badgeColor;
+                        return (
+                            <Badge
+                                key={item}
+                                variant={itemBadgeColor ? undefined : "secondary"}
                                 className={cn(
-                                    "ml-1 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1",
-                                    badgeColor
-                                        ? "hover:opacity-80"
-                                        : "hover:bg-secondary/80"
+                                    "flex items-center gap-1 pr-1",
+                                    itemBadgeColor || "bg-secondary text-secondary-foreground",
+                                    onBadgeClick && "cursor-pointer hover:opacity-80"
                                 )}
-                                aria-label={`Remove ${item}`}
+                                onClick={onBadgeClick ? () => onBadgeClick(item) : undefined}
                             >
-                                <X className="h-3 w-3" />
-                            </button>
-                        </Badge>
-                    ))}
+                                <span>{item}</span>
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRemoveItem(item);
+                                    }}
+                                    className={cn(
+                                        "ml-1 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1",
+                                        itemBadgeColor
+                                            ? "hover:opacity-80"
+                                            : "hover:bg-secondary/80"
+                                    )}
+                                    aria-label={`Remove ${item}`}
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            </Badge>
+                        );
+                    })}
                 </div>
             )}
         </div>
