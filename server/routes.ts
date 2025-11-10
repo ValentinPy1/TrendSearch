@@ -36,6 +36,26 @@ interface KeywordFilter {
 const SIMILARITY_CANDIDATE_POOL_SIZE = 2000; // Number of similar keywords to fetch before filtering
 
 /**
+ * Parse month string in "Jan 2024" format to a sortable number
+ * @param monthStr - Month string in format "Jan 2024"
+ * @returns Sortable number (year * 100 + month), e.g., 202401 for "Jan 2024"
+ */
+function parseMonthString(monthStr: string): number {
+    const monthNames: { [key: string]: number } = {
+        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+    };
+    const parts = monthStr.split(' ');
+    if (parts.length === 2) {
+        const monthName = parts[0];
+        const year = parseInt(parts[1], 10);
+        const month = monthNames[monthName] || 0;
+        return year * 100 + month; // e.g., 2024 * 100 + 1 = 202401
+    }
+    return 0;
+}
+
+/**
  * Categorize filters into raw (can filter on raw data) vs processed (need computed metrics)
  */
 function categorizeFilters(filters: KeywordFilter[]): {
@@ -691,9 +711,7 @@ async function generateReportData(
             sortKey: month
         }))
         .sort((a, b) => {
-            const dateA = new Date(a.month);
-            const dateB = new Date(b.month);
-            return dateA.getTime() - dateB.getTime();
+            return parseMonthString(a.month) - parseMonthString(b.month);
         })
         .map(({ sortKey, ...rest }) => rest);
 
@@ -2918,9 +2936,7 @@ Return ONLY the JSON array, no other text. Example format:
 
                                     const monthlyData = keyword.monthlyData;
                                     const sortedMonthlyData = [...monthlyData].sort((a, b) => {
-                                        const dateA = new Date(a.month);
-                                        const dateB = new Date(b.month);
-                                        return dateA.getTime() - dateB.getTime();
+                                        return parseMonthString(a.month) - parseMonthString(b.month);
                                     });
 
                                     if (sortedMonthlyData.length < 2) {
@@ -4816,10 +4832,10 @@ Return ONLY the JSON array, no other text. Example format:
                 }
 
                 const monthlyData = keyword.monthlyData;
+                
+                // Parse and sort monthly data correctly (format: "Jan 2024")
                 const sortedMonthlyData = [...monthlyData].sort((a, b) => {
-                    const dateA = new Date(a.month);
-                    const dateB = new Date(b.month);
-                    return dateA.getTime() - dateB.getTime();
+                    return parseMonthString(a.month) - parseMonthString(b.month);
                 });
 
                 if (sortedMonthlyData.length < 2) {
