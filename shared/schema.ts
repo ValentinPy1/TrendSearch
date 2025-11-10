@@ -101,6 +101,7 @@ export interface KeywordGenerationProgress {
   reportGenerated?: boolean; // Flag to track if report generation completed
   keywordsFetchedCount?: number; // Number of keywords fetched from DataForSEO
   metricsProcessedCount?: number; // Number of keywords with metrics computed
+  taskId?: string; // DataForSEO task ID for resuming interrupted tasks
   // Fields for accurate resume (legacy)
   processedSeeds?: string[]; // Track which seeds were processed (legacy)
   seedSimilarities?: Record<string, number>; // Persist similarity scores (legacy)

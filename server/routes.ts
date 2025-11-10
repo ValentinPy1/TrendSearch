@@ -2498,6 +2498,9 @@ Return ONLY the JSON array, no other text. Example format:
                     if (!progressData.queryKeywords && currentProgress.queryKeywords) {
                         progressToSave.queryKeywords = currentProgress.queryKeywords;
                     }
+                    if (!progressData.taskId && currentProgress.taskId) {
+                        progressToSave.taskId = currentProgress.taskId;
+                    }
 
                     await storage.saveKeywordGenerationProgress(projectId, progressToSave);
                     lastSaveTime = Date.now();
@@ -2545,6 +2548,12 @@ Return ONLY the JSON array, no other text. Example format:
                 // Create task
                 const taskId = await createKeywordsForKeywordsTask(queryKeywordsList, locationCode, locationName);
                 sendProgress('calling-api', { message: 'Task created successfully, polling for results...', taskId });
+                
+                // Save task ID to progress
+                await saveProgress({
+                    currentStage: 'calling-api',
+                    taskId: taskId
+                });
 
                 // Poll task until complete with progress updates
                 const pollWithProgress = async (): Promise<string[]> => {
@@ -3296,6 +3305,8 @@ Return ONLY the JSON array, no other text. Example format:
                     progressToSave.reportGenerated = progressData.reportGenerated !== undefined ? progressData.reportGenerated : (currentProgress.reportGenerated || false);
                     progressToSave.keywordsFetchedCount = progressData.keywordsFetchedCount !== undefined ? progressData.keywordsFetchedCount : (currentProgress.keywordsFetchedCount || 0);
                     progressToSave.metricsProcessedCount = progressData.metricsProcessedCount !== undefined ? progressData.metricsProcessedCount : (currentProgress.metricsProcessedCount || 0);
+                    // Preserve task ID if not provided
+                    progressToSave.taskId = progressData.taskId !== undefined ? progressData.taskId : (currentProgress.taskId || undefined);
 
                     await storage.saveKeywordGenerationProgress(projectId, progressToSave);
                     lastSaveTime = Date.now();
@@ -3318,6 +3329,12 @@ Return ONLY the JSON array, no other text. Example format:
                 const taskId = await createKeywordsForSiteTask(target, locationCode, locationName);
 
                 sendProgress('creating-task', { message: 'Task created successfully', taskId });
+                
+                // Save task ID to progress
+                await saveProgress({
+                    currentStage: 'creating-task',
+                    taskId: taskId
+                });
 
                 // STEP 2: Poll task until complete
                 sendProgress('polling-task', { message: 'Polling task for results...' });
