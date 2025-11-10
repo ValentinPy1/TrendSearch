@@ -4,6 +4,11 @@
  * Handles API calls to DataForSEO for fetching keyword search volume metrics
  */
 
+import {
+    DATAFORSEO_MAX_POLL_ATTEMPTS,
+    DATAFORSEO_POLL_INTERVAL_MS,
+} from "./config/keyword-generation";
+
 export interface DataForSEORequest {
     date_from: string;
     date_to: string;
@@ -73,6 +78,9 @@ export interface KeywordsForSiteRequest {
     tag?: string;
     pingback_url?: string;
     postback_url?: string;
+    sort_by?: string;
+    date_from?: string;
+    date_to?: string;
 }
 
 export interface KeywordsForSiteKeywordResult {
@@ -280,8 +288,8 @@ export async function createKeywordsForSiteTask(
  */
 export async function getKeywordsForSiteTask(
     taskId: string,
-    maxPollAttempts: number = 60,
-    pollIntervalMs: number = 5000
+    maxPollAttempts: number = DATAFORSEO_MAX_POLL_ATTEMPTS,
+    pollIntervalMs: number = DATAFORSEO_POLL_INTERVAL_MS
 ): Promise<KeywordsForSiteKeywordResult[]> {
     const apiUrl = `https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_site/task_get/${taskId}`;
     const credB64 = process.env.DATA_FOR_SEO_CRED_B64;
@@ -323,9 +331,14 @@ export async function getKeywordsForSiteTask(
         // 20000 = Ok (task completed)
         // 20100 = Task Created (still processing)
         // 20200 = Task in progress
-        if (task.status_code === 20000 && task.result && task.result.length > 0) {
-            // Task completed successfully, return full results with metrics
-            return task.result;
+        if (task.status_code === 20000) {
+            // Task completed successfully, return results (even if empty)
+            if (task.result && task.result.length > 0) {
+                return task.result;
+            } else {
+                // Task completed but no results - return empty array
+                return [];
+            }
         } else if (task.status_code === 20100 || task.status_code === 20200) {
             // Task still processing, wait and poll again
             attempts++;
@@ -338,6 +351,92 @@ export async function getKeywordsForSiteTask(
     }
 
     throw new Error(`Task did not complete within ${maxPollAttempts} attempts (${(maxPollAttempts * pollIntervalMs) / 1000} seconds)`);
+}
+
+/**
+ * Get keywords for a website using DataForSEO Live API (synchronous)
+ * This is faster but has rate limits - use as fallback when task API fails
+ * 
+ * @param target - Website URL/domain (e.g., "dataforseo.com")
+ * @param locationCode - Location code (default: 2840 for US)
+ * @param locationName - Location name (optional, e.g., "United States")
+ * @param dateFrom - Start date in YYYY-MM-DD format (optional, defaults to 4 years ago)
+ * @param dateTo - End date in YYYY-MM-DD format (optional, defaults to today)
+ * @returns Promise with array of keyword results with metrics
+ */
+export async function getKeywordsForSiteLive(
+    target: string,
+    locationCode: number = 2840,
+    locationName?: string,
+    dateFrom?: string,
+    dateTo?: string
+): Promise<KeywordsForSiteKeywordResult[]> {
+    const apiUrl = "https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_site/live";
+    const credB64 = process.env.DATA_FOR_SEO_CRED_B64;
+
+    if (!credB64) {
+        throw new Error("DATA_FOR_SEO_CRED_B64 environment variable is not set");
+    }
+
+    // Calculate date range if not provided: last 4 years from today
+    const today = new Date();
+    const fourYearsAgo = new Date();
+    fourYearsAgo.setFullYear(today.getFullYear() - 4);
+
+    const dateToValue = dateTo || today.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dateFromValue = dateFrom || fourYearsAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    const requestBody: KeywordsForSiteRequest[] = [{
+        target: target,
+        location_code: locationCode,
+        ...(locationName && { location_name: locationName }),
+        sort_by: "relevance",
+        date_from: dateFromValue,
+        date_to: dateToValue
+    }];
+
+    const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+            "Authorization": `Basic ${credB64}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`DataForSEO API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data: KeywordsForSiteTaskGetResponse = await response.json();
+
+    // Check for API-level errors
+    if (data.status_code !== 20000) {
+        throw new Error(`DataForSEO API error: ${data.status_message} (code: ${data.status_code})`);
+    }
+
+    // Check for task-level errors
+    if (data.tasks_error > 0 || !data.tasks || data.tasks.length === 0) {
+        const errorMessages = data.tasks
+            ?.filter(task => task.status_code !== 20000)
+            .map(task => `${task.status_message} (code: ${task.status_code})`)
+            .join(", ") || "No tasks returned";
+        throw new Error(`DataForSEO task errors: ${errorMessages}`);
+    }
+
+    const task = data.tasks[0];
+
+    // Check task status
+    if (task.status_code !== 20000) {
+        throw new Error(`DataForSEO task error: ${task.status_message} (code: ${task.status_code})`);
+    }
+
+    if (!task.result || task.result.length === 0) {
+        return [];
+    }
+
+    return task.result;
 }
 
 // Keywords for Keywords API interfaces
@@ -492,8 +591,8 @@ export async function createKeywordsForKeywordsTask(
  */
 export async function getKeywordsForKeywordsTask(
     taskId: string,
-    maxPollAttempts: number = 60,
-    pollIntervalMs: number = 5000
+    maxPollAttempts: number = DATAFORSEO_MAX_POLL_ATTEMPTS,
+    pollIntervalMs: number = DATAFORSEO_POLL_INTERVAL_MS
 ): Promise<KeywordsForKeywordsKeywordResult[]> {
     const apiUrl = `https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/task_get/${taskId}`;
     const credB64 = process.env.DATA_FOR_SEO_CRED_B64;

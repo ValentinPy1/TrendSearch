@@ -372,10 +372,35 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setCompetitors(project.competitors || []);
         
         // Load saved keyword generation progress
-        if (project.keywordGenerationProgress) {
-            setSavedProgress(project.keywordGenerationProgress);
+        // If keywordGenerationProgress is missing, fetch the project individually to get full data
+        let projectWithProgress = project;
+        if (!project.keywordGenerationProgress) {
+            try {
+                const projectRes = await apiRequest("GET", `/api/custom-search/projects/${project.id}`);
+                const projectData = await projectRes.json();
+                if (projectData.project && projectData.project.keywordGenerationProgress) {
+                    projectWithProgress = projectData.project;
+                    console.log("Fetched project individually to get progress:", {
+                        projectId: project.id,
+                        hasProgress: !!projectData.project.keywordGenerationProgress
+                    });
+                }
+            } catch (error) {
+                console.error("Error fetching project individually:", error);
+            }
+        }
+
+        console.log("Loading project:", {
+            projectId: projectWithProgress.id,
+            hasKeywordGenerationProgress: !!projectWithProgress.keywordGenerationProgress,
+            keywordGenerationProgress: projectWithProgress.keywordGenerationProgress,
+            projectKeys: Object.keys(projectWithProgress)
+        });
+
+        if (projectWithProgress.keywordGenerationProgress) {
+            setSavedProgress(projectWithProgress.keywordGenerationProgress);
             // If progress exists and is complete, show the keywords and report
-            const progress = project.keywordGenerationProgress;
+            const progress = projectWithProgress.keywordGenerationProgress;
             if ((progress.currentStage === 'complete' || progress.stage === 'complete') && progress.newKeywords) {
                 setGeneratedKeywords(progress.newKeywords);
             }
@@ -422,24 +447,48 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     processedCount: status.keywordsWithMetrics,
                     totalKeywords: status.keywordsWithData,
                 });
+            }
 
-                // If metrics are computed and report is already generated, try to load the report
-                if (savedProgress?.reportGenerated || savedProgress?.currentStage === 'complete') {
-                    try {
-                        const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
-                            projectId: project.id,
-                        });
-                        const reportResult = await reportRes.json();
-                        if (reportResult.success && reportResult.report) {
-                            setReportData(reportResult.report);
-                            setDisplayedKeywordCount(10); // Reset to 10 when loading report
-                            setShowOnlyFullData(false); // Reset filter when loading report
-                        }
-                    } catch (reportError) {
-                        console.error("Error loading report:", reportError);
-                        // Don't show error, just continue
+            // If report is already generated, try to load it (even if metrics aren't computed yet)
+            // Also try to load if we have keywords with data, as the report might have been generated
+            const shouldLoadReport = savedProgress?.reportGenerated || 
+                                   savedProgress?.currentStage === 'complete' ||
+                                   (status.hasDataForSEO && status.keywordsWithData > 0);
+            
+            if (shouldLoadReport) {
+                console.log("Loading report for project:", {
+                    projectId: project.id,
+                    reportGenerated: savedProgress?.reportGenerated,
+                    currentStage: savedProgress?.currentStage,
+                    hasKeywords: status.keywordList?.length > 0,
+                    keywordsCount: status.keywordList?.length
+                });
+                try {
+                    const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
+                        projectId: project.id,
+                    });
+                    const reportResult = await reportRes.json();
+                    console.log("Report load result:", {
+                        success: reportResult.success,
+                        hasReport: !!reportResult.report,
+                        reportKeywordsCount: reportResult.report?.keywords?.length || 0
+                    });
+                    if (reportResult.success && reportResult.report) {
+                        setReportData(reportResult.report);
+                        setDisplayedKeywordCount(10); // Reset to 10 when loading report
+                        setShowOnlyFullData(false); // Reset filter when loading report
                     }
+                } catch (reportError) {
+                    console.error("Error loading report:", reportError);
+                    // Don't show error, just continue
                 }
+            } else {
+                console.log("Not loading report - conditions not met:", {
+                    projectId: project.id,
+                    reportGenerated: savedProgress?.reportGenerated,
+                    currentStage: savedProgress?.currentStage,
+                    hasSavedProgress: !!savedProgress
+                });
             }
         } catch (error) {
             console.error("Error loading keywords status:", error);
@@ -801,14 +850,17 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     };
 
-    const handleFindKeywordsFromWebsite = async () => {
-        if (!websiteUrl || websiteUrl.trim().length === 0) {
-            toast({
-                title: "Error",
-                description: "Please enter a website URL",
-                variant: "destructive",
-            });
-            return;
+    const handleFindKeywordsFromWebsite = async (resume: boolean = false) => {
+        // When resuming, skip URL validation (API may have already been called)
+        if (!resume) {
+            if (!websiteUrl || websiteUrl.trim().length === 0) {
+                toast({
+                    title: "Error",
+                    description: "Please enter a website URL",
+                    variant: "destructive",
+                });
+                return;
+            }
         }
 
         if (!currentProjectId) {
@@ -824,20 +876,36 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setIsGeneratingKeywords(true);
         setShowQuadrantPopup(false);
         
-        // Initialize progress state
-        setKeywordProgress({
-            stage: 'creating-task',
-            seedsGenerated: 0,
-            keywordsGenerated: 0,
-            duplicatesFound: 0,
-            existingKeywordsFound: 0,
-            newKeywordsCollected: 0,
-        });
-        setGeneratedKeywords([]);
-        setDataForSEOStats(null);
-        setMetricsStats(null);
-        setStepStartTimes({});
-        setElapsedTimes({});
+        // If resuming, restore progress state from savedProgress
+        if (resume && savedProgress) {
+            setKeywordProgress({
+                stage: savedProgress.currentStage || savedProgress.stage || 'creating-task',
+                seedsGenerated: savedProgress.seedsGenerated || 0,
+                keywordsGenerated: savedProgress.keywordsGenerated || 0,
+                duplicatesFound: savedProgress.duplicatesFound || 0,
+                existingKeywordsFound: savedProgress.existingKeywordsFound || 0,
+                newKeywordsCollected: savedProgress.newKeywordsCollected || 0,
+                newKeywords: savedProgress.newKeywords || [],
+            });
+            if (savedProgress.newKeywords) {
+                setGeneratedKeywords(savedProgress.newKeywords);
+            }
+        } else {
+            // Initialize progress state for fresh start
+            setKeywordProgress({
+                stage: 'creating-task',
+                seedsGenerated: 0,
+                keywordsGenerated: 0,
+                duplicatesFound: 0,
+                existingKeywordsFound: 0,
+                newKeywordsCollected: 0,
+            });
+            setGeneratedKeywords([]);
+            setDataForSEOStats(null);
+            setMetricsStats(null);
+            setStepStartTimes({});
+            setElapsedTimes({});
+        }
 
         try {
             // Get Supabase session token
@@ -848,14 +916,21 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 headers["Authorization"] = `Bearer ${session.access_token}`;
             }
 
+            // When resuming, target is optional (API may have already been called)
+            // Use savedProgress target if available, otherwise use websiteUrl
+            const targetToSend = resume && savedProgress?.dataForSEOSiteResults 
+                ? (savedProgress.target || websiteUrl?.trim() || '') 
+                : websiteUrl?.trim() || '';
+
             const response = await fetch("/api/custom-search/find-keywords-from-website", {
                 method: "POST",
                 headers,
                 body: JSON.stringify({
                     projectId: currentProjectId,
-                    target: websiteUrl.trim(),
+                    target: targetToSend,
                     location_code: selectedLocation?.code,
                     location_name: selectedLocation?.name,
+                    resume: resume, // Signal to server that we're resuming
                 }),
             });
 
@@ -908,6 +983,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     setStepStartTimes(prev => ({ ...prev, [stage]: Date.now() }));
                                 }
 
+                                // Update elapsed times
+                                if (stage && stepStartTimes[stage]) {
+                                    const elapsed = Math.floor((Date.now() - stepStartTimes[stage]) / 1000);
+                                    setElapsedTimes(prev => ({ ...prev, [stage]: elapsed }));
+                                }
+
                                 // Update stats
                                 if (data.keywordsWithData !== undefined && data.totalKeywords !== undefined) {
                                     setDataForSEOStats({
@@ -927,6 +1008,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 // Update generated keywords if available
                                 if (data.newKeywords && Array.isArray(data.newKeywords)) {
                                     setGeneratedKeywords(data.newKeywords);
+                                }
+
+                                // Show progress message if available
+                                if (data.message) {
+                                    console.log(`[${stage}] ${data.message}`);
                                 }
                             } else if (data.type === "complete") {
                                 // Report generation complete
@@ -949,20 +1035,44 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     description: `Successfully found keywords from website with ${data.report?.totalKeywords || 0} keywords`,
                                 });
                             } else if (data.type === "error") {
-                                throw new Error(data.error || "Unknown error occurred");
+                                const errorMessage = data.error || "Unknown error occurred";
+                                console.error("Error from server:", errorMessage);
+                                
+                                // Provide more explicit error feedback
+                                let userFriendlyMessage = errorMessage;
+                                if (errorMessage.includes("No keywords were found")) {
+                                    userFriendlyMessage = "No keywords were found from the website. This could mean:\n• The website URL is incorrect or inaccessible\n• The website doesn't have enough content for keyword analysis\n• DataForSEO couldn't analyze the website\n\nPlease check the URL and try again, or try a different website.";
+                                } else if (errorMessage.includes("Task did not complete")) {
+                                    userFriendlyMessage = "The keyword analysis is taking longer than expected. Please try again in a few minutes.";
+                                } else if (errorMessage.includes("API error")) {
+                                    userFriendlyMessage = "There was an issue connecting to the keyword analysis service. Please try again.";
+                                }
+                                
+                                throw new Error(userFriendlyMessage);
                             }
                         } catch (parseError) {
                             console.error("Error parsing SSE data:", parseError);
+                            // Don't throw here - let the outer catch handle it
                         }
                     }
                 }
             }
         } catch (error) {
             console.error("Error finding keywords from website:", error);
+            const errorMessage = error instanceof Error ? error.message : "Failed to find keywords from website";
+            
+            // Update progress to show error state
+            setKeywordProgress(prev => ({
+                ...prev,
+                stage: 'error',
+                currentStage: 'error',
+            }));
+
             toast({
-                title: "Error",
-                description: error instanceof Error ? error.message : "Failed to find keywords from website",
+                title: "Error Finding Keywords",
+                description: errorMessage,
                 variant: "destructive",
+                duration: 10000, // Show for 10 seconds for longer error messages
             });
         } finally {
             setIsFindingKeywordsFromWebsite(false);
@@ -1028,8 +1138,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             setElapsedTimes({});
         }
 
-        // Validate query keywords
-        if (!queryKeywords || queryKeywords.length === 0 || queryKeywords.length > 20) {
+        // Validate query keywords - skip validation when resuming (API may have already been called)
+        if (!resume && (!queryKeywords || queryKeywords.length === 0 || queryKeywords.length > 20)) {
             toast({
                 title: "Error",
                 description: "Please provide 1-20 query keywords for keyword discovery",
@@ -1707,6 +1817,144 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         )}
                                     </Button>
                                 </div>
+
+                                {/* Show resume option if progress exists and is incomplete (website search) */}
+                                {savedProgress && 
+                                 savedProgress.currentStage !== 'complete' && 
+                                 savedProgress.currentStage !== undefined &&
+                                 ['creating-task', 'polling-task', 'extracting-keywords', 'fetching-dataforseo', 'generating-report'].includes(savedProgress.currentStage) && (
+                                    <div className="mt-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
+                                        <div className="text-sm text-yellow-200 mb-2">
+                                            Website search in progress: {savedProgress.newKeywordsCollected || 0} keywords found
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                type="button"
+                                                onClick={() => handleFindKeywordsFromWebsite(true)}
+                                                disabled={isFindingKeywordsFromWebsite || isGeneratingKeywords}
+                                                className="flex-1 bg-yellow-600 hover:bg-yellow-700"
+                                            >
+                                                {isFindingKeywordsFromWebsite ? (
+                                                    <>
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        Resuming...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Search className="mr-2 h-4 w-4" />
+                                                        Resume Website Search
+                                                    </>
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Progress Steps - Display below website input field */}
+                                {isFindingKeywordsFromWebsite && (
+                                    <div className="mt-4 space-y-3 bg-white/5 rounded-lg p-4 border border-white/10">
+                                        <div className="text-sm font-medium text-white mb-3">
+                                            Progress
+                                        </div>
+                                        {(() => {
+                                            const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
+                                            const stages = [
+                                                {
+                                                    key: 'creating-task',
+                                                    label: 'Creating DataForSEO task',
+                                                    description: 'Submitting request to find keywords for the website...',
+                                                    estimate: 3,
+                                                },
+                                                {
+                                                    key: 'polling-task',
+                                                    label: 'Waiting for results',
+                                                    description: 'DataForSEO is analyzing the website. This may take 10-30 seconds (or 1-5 minutes if using task API)...',
+                                                    estimate: 30,
+                                                },
+                                                {
+                                                    key: 'extracting-keywords',
+                                                    label: 'Extracting keywords',
+                                                    description: 'Processing keywords from the website analysis...',
+                                                    estimate: 2,
+                                                },
+                                                {
+                                                    key: 'fetching-dataforseo',
+                                                    label: 'Fetching keyword metrics',
+                                                    description: 'Retrieving search volume, competition, and CPC data...',
+                                                    estimate: 5,
+                                                },
+                                                {
+                                                    key: 'generating-report',
+                                                    label: 'Generating report',
+                                                    description: 'Creating final keyword report with insights...',
+                                                    estimate: 3,
+                                                },
+                                            ];
+
+                                            const hasError = currentStage === 'error';
+                                            
+                                            return (
+                                                <div className="space-y-2">
+                                                    {stages.map((stage, index) => {
+                                                        const isActive = currentStage === stage.key && !hasError;
+                                                        const isCompleted = hasError ? false : stages.findIndex(s => s.key === currentStage) > index;
+                                                        const isPending = stages.findIndex(s => s.key === currentStage) < index;
+                                                        // Show error on the extracting-keywords stage if error occurred
+                                                        const isError = hasError && stage.key === 'extracting-keywords';
+                                                        const elapsed = elapsedTimes[stage.key] || 0;
+
+                                                        return (
+                                                            <div key={stage.key} className="flex items-start gap-3">
+                                                                <div className="mt-0.5">
+                                                                    {isError ? (
+                                                                        <div className="h-5 w-5 rounded-full border-2 border-red-500 flex items-center justify-center">
+                                                                            <span className="text-red-500 text-xs">✕</span>
+                                                                        </div>
+                                                                    ) : isCompleted ? (
+                                                                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                                                    ) : isActive ? (
+                                                                        <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
+                                                                    ) : (
+                                                                        <div className="h-5 w-5 rounded-full border-2 border-white/30 flex items-center justify-center">
+                                                                            {isPending && (
+                                                                                <div className="h-2 w-2 rounded-full bg-white/30" />
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className={`text-sm font-medium ${
+                                                                        isError ? 'text-red-400' :
+                                                                        isCompleted ? 'text-green-400' : 
+                                                                        isActive ? 'text-blue-400' : 
+                                                                        'text-white/60'
+                                                                    }`}>
+                                                                        {stage.label}
+                                                                    </div>
+                                                                    <div className={`text-xs mt-0.5 ${
+                                                                        isError ? 'text-red-300' :
+                                                                        isActive ? 'text-white/80' : 'text-white/50'
+                                                                    }`}>
+                                                                        {isError ? 'Failed - see error message above' : (
+                                                                            isActive ? stage.description : (
+                                                                                isCompleted ? 'Completed' : 'Pending'
+                                                                            )
+                                                                        )}
+                                                                    </div>
+                                                                    {isActive && elapsed > 0 && !isError && (
+                                                                        <div className="text-xs text-white/60 mt-1">
+                                                                            {elapsed}s elapsed
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </TabsContent>
@@ -2000,6 +2248,149 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     })()}
                                 </div>
                             )}
+
+                            {/* Report Display in Competitors Tab */}
+                            {reportData && reportData.keywords && reportData.keywords.length > 0 && (() => {
+                                // Count total keywords with data (volume, competition, cpc, or topPageBid)
+                                const totalKeywordsWithData = reportData.keywords.filter((k: any) => {
+                                    const hasVolume = k.volume !== null && k.volume !== undefined && k.volume !== '';
+                                    const hasCompetition = k.competition !== null && k.competition !== undefined && k.competition !== '';
+                                    const hasCpc = k.cpc !== null && k.cpc !== undefined && k.cpc !== '';
+                                    const hasTopPageBid = k.topPageBid !== null && k.topPageBid !== undefined && k.topPageBid !== '';
+                                    return hasVolume || hasCompetition || hasCpc || hasTopPageBid;
+                                }).length;
+
+                                // Filter keywords with full data if checkbox is checked
+                                const filteredKeywords = showOnlyFullData 
+                                    ? reportData.keywords.filter((k: any) => {
+                                        let volume: number | null = null;
+                                        if (k.volume !== null && k.volume !== undefined) {
+                                            if (typeof k.volume === 'number') {
+                                                volume = k.volume;
+                                            } else if (typeof k.volume === 'string' && k.volume.trim() !== '') {
+                                                const parsed = parseInt(k.volume, 10);
+                                                volume = !isNaN(parsed) ? parsed : null;
+                                            }
+                                        }
+                                        const hasVolume = volume !== null && volume > 0;
+                                        
+                                        let competition: number | null = null;
+                                        if (k.competition !== null && k.competition !== undefined) {
+                                            if (typeof k.competition === 'number') {
+                                                competition = k.competition;
+                                            } else if (typeof k.competition === 'string' && k.competition.trim() !== '') {
+                                                const parsed = parseInt(k.competition, 10);
+                                                competition = !isNaN(parsed) ? parsed : null;
+                                            }
+                                        }
+                                        const hasCompetition = competition !== null;
+                                        
+                                        let cpc: number | null = null;
+                                        if (k.cpc !== null && k.cpc !== undefined && k.cpc !== '') {
+                                            const parsed = parseFloat(k.cpc);
+                                            cpc = !isNaN(parsed) && parsed > 0 ? parsed : null;
+                                        }
+                                        const hasCpc = cpc !== null && cpc > 0;
+                                        
+                                        let topPageBid: number | null = null;
+                                        if (k.topPageBid !== null && k.topPageBid !== undefined && k.topPageBid !== '') {
+                                            const parsed = parseFloat(k.topPageBid);
+                                            topPageBid = !isNaN(parsed) && parsed > 0 ? parsed : null;
+                                        }
+                                        const hasTopPageBid = topPageBid !== null && topPageBid > 0;
+                                        
+                                        return hasVolume && hasCompetition && hasCpc && hasTopPageBid;
+                                    })
+                                    : reportData.keywords;
+                                
+                                const displayedKeywords = filteredKeywords.slice(0, displayedKeywordCount);
+                                const hasMoreToShow = displayedKeywordCount < filteredKeywords.length;
+
+                                return (
+                                    <div className="pt-8 border-t border-white/10 space-y-4">
+                                        <div className="text-center pb-4">
+                                            <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight max-w-3xl mx-auto">
+                                                {name || "Custom Search Report"}
+                                            </h2>
+                                            {pitch && (
+                                                <p className="text-lg text-white/70 mt-4 max-w-2xl mx-auto">
+                                                    {pitch}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-8 space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <h3 className="text-xl font-semibold text-white/90 mb-2">
+                                                        {totalKeywordsWithData} generated keywords
+                                                    </h3>
+                                                    <p className="text-sm text-white/60">
+                                                        Click a keyword to view its trend analysis
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Checkbox
+                                                        id="showOnlyFullData"
+                                                        checked={showOnlyFullData}
+                                                        onCheckedChange={(checked) => {
+                                                            setShowOnlyFullData(checked === true);
+                                                            setDisplayedKeywordCount(10);
+                                                        }}
+                                                    />
+                                                    <label
+                                                        htmlFor="showOnlyFullData"
+                                                        className="text-sm text-white/80 cursor-pointer"
+                                                    >
+                                                        Only keywords with full data
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <KeywordsTable
+                                                keywords={displayedKeywords as Keyword[]}
+                                                selectedKeyword={selectedKeyword}
+                                                onKeywordSelect={setSelectedKeyword}
+                                                onLoadMore={hasMoreToShow ? handleLoadMore : undefined}
+                                                reportId={currentProjectId || ""}
+                                            />
+                                        </div>
+
+                                        {selectedKeyword &&
+                                            displayedKeywords.find(
+                                                (k: any) => k.keyword === selectedKeyword,
+                                            ) && (
+                                                <div className="grid grid-cols-1 lg:grid-cols-[1fr_175px] gap-4 pt-8">
+                                                    <TrendChart
+                                                        key={`chart-${selectedKeyword}`}
+                                                        keywords={displayedKeywords as Keyword[]}
+                                                        reportId={currentProjectId || ""}
+                                                        selectedKeyword={selectedKeyword}
+                                                    />
+                                                    <KeywordMetricsCards
+                                                        key={`metrics-${selectedKeyword}`}
+                                                        keyword={
+                                                            displayedKeywords.find(
+                                                                (k: any) => k.keyword === selectedKeyword,
+                                                            ) as Keyword
+                                                        }
+                                                        allKeywords={displayedKeywords as Keyword[]}
+                                                    />
+                                                </div>
+                                            )}
+
+                                        <div className="pt-8 space-y-4">
+                                            <h3 className="text-xl font-semibold text-white/90">
+                                                Aggregated KPIs
+                                            </h3>
+                                            <MetricsCards keywords={displayedKeywords as Keyword[]} />
+                                        </div>
+
+                                        <div className="pt-8">
+                                            <AverageTrendChart keywords={displayedKeywords as Keyword[]} />
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </TabsContent>
                 </Tabs>
@@ -2073,7 +2464,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 </DialogContent>
             </Dialog>
 
-            {/* Report Display */}
+            {/* Report Display - Moved to Competitors Tab */}
             {reportData && reportData.keywords && reportData.keywords.length > 0 && (() => {
                 // Count total keywords with data (volume, competition, cpc, or topPageBid)
                 const totalKeywordsWithData = reportData.keywords.filter((k: any) => {

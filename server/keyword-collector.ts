@@ -140,7 +140,7 @@ export async function collectKeywords(
 ): Promise<KeywordCollectionResult> {
     // Track overall pipeline start time
     const pipelineStartTime = Date.now();
-    
+
     logger.info("=== KEYWORD COLLECTION PIPELINE START ===", {
         targetCount,
         hasResumeState: !!resumeFromProgress,
@@ -151,10 +151,10 @@ export async function collectKeywords(
         featuresCount: input.features?.length || 0,
         competitorsCount: input.competitors?.length || 0,
     });
-    
+
     // Clear performance metrics for this run
     performanceMetrics.length = 0;
-    
+
     // If resuming, restore state from saved progress
     let progress: ProgressUpdate;
     let seedsWithSimilarity: Array<{ seed: string; similarityScore: number }> | undefined = undefined;
@@ -173,7 +173,7 @@ export async function collectKeywords(
             newKeywordsCollected: resumeFromProgress.newKeywordsCollected,
             processedSeedsCount: resumeFromProgress.processedSeeds?.length || 0,
         });
-        
+
         // Validate resume state - be lenient for backward compatibility
         // If required fields are missing, log a warning and start fresh instead of throwing
         let shouldResume = true;
@@ -211,50 +211,50 @@ export async function collectKeywords(
                 _listsTruncated: true, // Indicate lists are truncated for display
             };
 
-        // Restore full lists from database (for processing)
-        allGeneratedKeywords = resumeFromProgress.newKeywords ? [...resumeFromProgress.newKeywords] : [];
-        seenKeywords = new Set(allGeneratedKeywords.map(kw => kw.toLowerCase()));
-        allKeywordsList = resumeFromProgress.allKeywords ? [...resumeFromProgress.allKeywords] : [];
-        duplicatesList = resumeFromProgress.duplicates ? [...resumeFromProgress.duplicates] : [];
-        existingKeywordsList = resumeFromProgress.existingKeywords ? [...resumeFromProgress.existingKeywords] : [];
+            // Restore full lists from database (for processing)
+            allGeneratedKeywords = resumeFromProgress.newKeywords ? [...resumeFromProgress.newKeywords] : [];
+            seenKeywords = new Set(allGeneratedKeywords.map(kw => kw.toLowerCase()));
+            allKeywordsList = resumeFromProgress.allKeywords ? [...resumeFromProgress.allKeywords] : [];
+            duplicatesList = resumeFromProgress.duplicates ? [...resumeFromProgress.duplicates] : [];
+            existingKeywordsList = resumeFromProgress.existingKeywords ? [...resumeFromProgress.existingKeywords] : [];
 
-        // Restore processed seeds
-        const processedSeedsSet = new Set(resumeFromProgress.processedSeeds || []);
+            // Restore processed seeds
+            const processedSeedsSet = new Set(resumeFromProgress.processedSeeds || []);
 
-        // Restore similarity scores from saved progress
-        if (resumeFromProgress.seedSimilarities && resumeFromProgress.seeds) {
-            seedsWithSimilarity = resumeFromProgress.seeds.map(seed => ({
-                seed,
-                similarityScore: resumeFromProgress.seedSimilarities![seed] || 0.8,
-            }));
-        } else {
-            // Fallback: create seeds with default scores
-            logger.warn("Resume state missing seedSimilarities, using default scores", {});
-            seedsWithSimilarity = (resumeFromProgress.seeds || []).map(seed => ({
-                seed,
-                similarityScore: 0.8, // Default score when resuming
-            }));
-        }
+            // Restore similarity scores from saved progress
+            if (resumeFromProgress.seedSimilarities && resumeFromProgress.seeds) {
+                seedsWithSimilarity = resumeFromProgress.seeds.map(seed => ({
+                    seed,
+                    similarityScore: resumeFromProgress.seedSimilarities![seed] || 0.8,
+                }));
+            } else {
+                // Fallback: create seeds with default scores
+                logger.warn("Resume state missing seedSimilarities, using default scores", {});
+                seedsWithSimilarity = (resumeFromProgress.seeds || []).map(seed => ({
+                    seed,
+                    similarityScore: 0.8, // Default score when resuming
+                }));
+            }
 
-        // Find first unprocessed seed
-        startSeedIndex = seedsWithSimilarity.findIndex(s => !processedSeedsSet.has(s.seed));
-        if (startSeedIndex === -1) {
-            logger.info("All seeds already processed, starting from beginning", {});
-            startSeedIndex = 0;
-        } else {
-            logger.info("Found unprocessed seed index", { startSeedIndex, totalSeeds: seedsWithSimilarity.length });
-        }
+            // Find first unprocessed seed
+            startSeedIndex = seedsWithSimilarity.findIndex(s => !processedSeedsSet.has(s.seed));
+            if (startSeedIndex === -1) {
+                logger.info("All seeds already processed, starting from beginning", {});
+                startSeedIndex = 0;
+            } else {
+                logger.info("Found unprocessed seed index", { startSeedIndex, totalSeeds: seedsWithSimilarity.length });
+            }
 
-        progress.stage = 'generating-keywords'; // Resume in keyword generation stage
-        progressCallback?.(progress);
+            progress.stage = 'generating-keywords'; // Resume in keyword generation stage
+            progressCallback?.(progress);
         } // Close inner if (shouldResume && resumeFromProgress) block
     }
-    
+
     // If we didn't resume (either no resume state or invalid resume state), start fresh
     if (!seedsWithSimilarity) {
         // Fresh start
         logger.info("Starting fresh keyword collection", {});
-        
+
         progress = {
             stage: 'initializing',
             seedsGenerated: 0,
@@ -279,16 +279,16 @@ export async function collectKeywords(
         const seedGenStartTime = Date.now();
         seedsWithSimilarity = await timeStage('generate-seeds', () => generateSeeds(input));
         const seedGenDuration = Date.now() - seedGenStartTime;
-        
+
         progress.seedsGenerated = seedsWithSimilarity.length;
         progress.seeds = seedsWithSimilarity.map(s => s.seed);
-        
+
         logger.info("Seeds generated successfully", {
             count: seedsWithSimilarity.length,
             duration: seedGenDuration,
             topSeeds: seedsWithSimilarity.slice(0, 5).map(s => ({ seed: s.seed, similarity: s.similarityScore.toFixed(3) })),
         });
-        
+
         progressCallback?.(progress);
     }
 
@@ -297,7 +297,7 @@ export async function collectKeywords(
     if (!seedsWithSimilarity || seedsWithSimilarity.length === 0) {
         throw new Error("seedsWithSimilarity is not initialized or empty");
     }
-    
+
     logger.info("STEP 2: Collecting keywords from seeds", {
         seedsCount: seedsWithSimilarity.length,
         targetCount,
@@ -308,7 +308,7 @@ export async function collectKeywords(
         concurrentBatchSize: CONCURRENT_BATCH_SIZE,
         seedTimeout: SEED_TIMEOUT_MS,
     });
-    
+
     progress.stage = 'generating-keywords';
 
     let lastCallbackTime = 0; // Track last callback time for throttling
@@ -325,10 +325,10 @@ export async function collectKeywords(
         const seedPromise = (async () => {
             const seedStartTime = Date.now();
             const seedIndex = seedsWithSimilarity.findIndex(s => s.seed === seed);
-            logger.info(`[Seed ${seedIndex + 1}/${seedsWithSimilarity.length}] Processing seed`, { 
-                seed, 
+            logger.info(`[Seed ${seedIndex + 1}/${seedsWithSimilarity.length}] Processing seed`, {
+                seed,
                 similarityScore: similarityScore.toFixed(3),
-                timestamp: new Date().toISOString() 
+                timestamp: new Date().toISOString()
             });
 
             try {
@@ -341,8 +341,8 @@ export async function collectKeywords(
                         { seedIndex }
                     )
                 );
-                logger.info(`[Seed ${seedIndex + 1}] Keywords generated`, { 
-                    seed, 
+                logger.info(`[Seed ${seedIndex + 1}] Keywords generated`, {
+                    seed,
                     count: generatedKeywords.length,
                     sample: generatedKeywords.slice(0, 3),
                 });
@@ -358,8 +358,8 @@ export async function collectKeywords(
                     return !deduplicated.some(d => d.toLowerCase() === normalized);
                 });
                 const dedupDuration = Date.now() - dedupStartTime;
-                logger.debug(`[Seed ${seedIndex + 1}] Deduplication complete`, { 
-                    seed, 
+                logger.debug(`[Seed ${seedIndex + 1}] Deduplication complete`, {
+                    seed,
                     original: generatedKeywords.length,
                     deduplicated: deduplicated.length,
                     duplicatesInBatch: duplicatesInBatch.length,
@@ -375,16 +375,16 @@ export async function collectKeywords(
                         { keywordCount: deduplicated.length }
                     )
                 );
-                logger.info(`[Seed ${seedIndex + 1}] Keywords checked`, { 
-                    seed, 
-                    new: checkResult.newKeywords.length, 
+                logger.info(`[Seed ${seedIndex + 1}] Keywords checked`, {
+                    seed,
+                    new: checkResult.newKeywords.length,
                     existing: checkResult.existingKeywords.length,
                     newSample: checkResult.newKeywords.slice(0, 3),
                 });
 
                 const seedDuration = Date.now() - seedStartTime;
-                logger.info(`[Seed ${seedIndex + 1}] Seed processing complete`, { 
-                    seed, 
+                logger.info(`[Seed ${seedIndex + 1}] Seed processing complete`, {
+                    seed,
                     duration: seedDuration,
                     generated: generatedKeywords.length,
                     new: checkResult.newKeywords.length,
@@ -402,8 +402,8 @@ export async function collectKeywords(
             } catch (error) {
                 const seedDuration = Date.now() - seedStartTime;
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                logger.error(`[Seed ${seedIndex + 1}] Failed to generate keywords from seed`, error, { 
-                    seed, 
+                logger.error(`[Seed ${seedIndex + 1}] Failed to generate keywords from seed`, error, {
+                    seed,
                     duration: seedDuration,
                     errorType: error instanceof Error ? error.constructor.name : typeof error,
                 });
@@ -425,17 +425,17 @@ export async function collectKeywords(
     // Process seeds in batches concurrently
     let batchNumber = 0;
     const totalBatches = Math.ceil((seedsWithSimilarity.length - startSeedIndex) / CONCURRENT_BATCH_SIZE);
-    
+
     for (let batchStart = startSeedIndex; batchStart < seedsWithSimilarity.length; batchStart += CONCURRENT_BATCH_SIZE) {
         batchNumber++;
         const batchStartTime = Date.now();
         const batchEnd = Math.min(batchStart + CONCURRENT_BATCH_SIZE, seedsWithSimilarity.length);
-        
-        logger.info(`[Batch ${batchNumber}/${totalBatches}] Starting batch`, { 
-            batchNumber, 
+
+        logger.info(`[Batch ${batchNumber}/${totalBatches}] Starting batch`, {
+            batchNumber,
             totalBatches,
-            batchStart, 
-            batchEnd, 
+            batchStart,
+            batchEnd,
             batchSize: batchEnd - batchStart,
             remaining: seedsWithSimilarity.length - batchStart,
             currentProgress: {
@@ -447,8 +447,8 @@ export async function collectKeywords(
         });
 
         if (progress.newKeywordsCollected >= targetCount) {
-            logger.info("Target count reached, stopping batch processing", { 
-                newKeywordsCollected: progress.newKeywordsCollected, 
+            logger.info("Target count reached, stopping batch processing", {
+                newKeywordsCollected: progress.newKeywordsCollected,
                 targetCount,
                 batchesProcessed: batchNumber - 1,
             });
@@ -456,8 +456,8 @@ export async function collectKeywords(
         }
 
         const batch = seedsWithSimilarity.slice(batchStart, batchEnd);
-        logger.debug(`[Batch ${batchNumber}] Processing batch`, { 
-            batchNumber, 
+        logger.debug(`[Batch ${batchNumber}] Processing batch`, {
+            batchNumber,
             seeds: batch.map((b, idx) => `${batchStart + idx + 1}. ${b.seed} (sim: ${b.similarityScore.toFixed(3)})`),
         });
 
@@ -509,10 +509,10 @@ export async function collectKeywords(
             const totalGenerated = batchResults.reduce((sum, r) => sum + r.generatedKeywords.length, 0);
             const totalNew = batchResults.reduce((sum, r) => sum + r.checkResult.newKeywords.length, 0);
             const totalExisting = batchResults.reduce((sum, r) => sum + r.checkResult.existingKeywords.length, 0);
-            
-            logger.info(`[Batch ${batchNumber}] Batch results`, { 
-                batchNumber, 
-                successful, 
+
+            logger.info(`[Batch ${batchNumber}] Batch results`, {
+                batchNumber,
+                successful,
                 failed,
                 totalGenerated,
                 totalNew,
@@ -539,8 +539,8 @@ export async function collectKeywords(
             const result = batchResults[i];
 
             if (progress.newKeywordsCollected >= targetCount) {
-                logger.info("Target count reached during result processing", { 
-                    newKeywordsCollected: progress.newKeywordsCollected, 
+                logger.info("Target count reached during result processing", {
+                    newKeywordsCollected: progress.newKeywordsCollected,
                     targetCount,
                     batchNumber,
                     processedInBatch: i,
@@ -581,8 +581,8 @@ export async function collectKeywords(
 
             // Early stopping check after each seed
             if (progress.newKeywordsCollected >= targetCount) {
-                logger.info("Target count reached after processing seed", { 
-                    newKeywordsCollected: progress.newKeywordsCollected, 
+                logger.info("Target count reached after processing seed", {
+                    newKeywordsCollected: progress.newKeywordsCollected,
                     targetCount,
                     batchNumber,
                     seedIndex: i + 1,
@@ -654,7 +654,7 @@ export async function collectKeywords(
         const avgTimePerSeed = batchSize > 0 ? batchDuration / batchSize : 0;
         const successfulInBatch = batchResults.filter(r => r.success).length;
         const newInBatch = batchResults.reduce((sum, r) => sum + r.checkResult.newKeywords.length, 0);
-        
+
         logger.info(`[Batch ${batchNumber}] Batch completed`, {
             batchNumber,
             totalBatches,
@@ -671,14 +671,14 @@ export async function collectKeywords(
             },
             remaining: targetCount - progress.newKeywordsCollected,
         });
-        
+
         // Log batch performance
         await timeStage(
             `batch-${batchNumber}`,
             async () => Promise.resolve(),
-            { 
-                batchSize, 
-                duration: batchDuration, 
+            {
+                batchSize,
+                duration: batchDuration,
                 avgTimePerSeed: Math.round(avgTimePerSeed),
                 newKeywords: progress.newKeywordsCollected,
                 keywordsGenerated: progress.keywordsGenerated
@@ -706,8 +706,8 @@ export async function collectKeywords(
 
     // Log failed seeds summary
     if (failedSeeds.length > 0) {
-        logger.warn("Some seeds failed during processing", { 
-            failedCount: failedSeeds.length, 
+        logger.warn("Some seeds failed during processing", {
+            failedCount: failedSeeds.length,
             totalSeeds: seedsWithSimilarity.length,
             failureRate: `${((failedSeeds.length / seedsWithSimilarity.length) * 100).toFixed(1)}%`,
             failedSeeds: failedSeeds.map(f => ({ seed: f.seed, error: f.error.substring(0, 100) })),
@@ -733,7 +733,7 @@ export async function collectKeywords(
             targetCount,
             excess: allGeneratedKeywords.length - targetCount,
         });
-        
+
         progress.stage = 'selecting-top-keywords';
         progressCallback?.(progress);
 
@@ -747,7 +747,7 @@ export async function collectKeywords(
                 batchSize: SIMILARITY_BATCH_SIZE,
                 totalBatches: Math.ceil(allGeneratedKeywords.length / SIMILARITY_BATCH_SIZE),
             });
-            
+
             // Process in batches to avoid overwhelming the system
             const keywordsWithSimilarity: Array<{ keyword: string; similarity: number }> = [];
             const similarityStartTime = Date.now();
@@ -761,14 +761,15 @@ export async function collectKeywords(
                         batchNum++;
                         const batch = allGeneratedKeywords.slice(i, i + SIMILARITY_BATCH_SIZE);
                         const batchStartTime = Date.now();
-                        
+
                         logger.debug(`[Similarity Batch ${batchNum}] Calculating similarities`, {
                             batchNum,
                             batchStart: i + 1,
                             batchEnd: Math.min(i + SIMILARITY_BATCH_SIZE, allGeneratedKeywords.length),
                             batchSize: batch.length,
                         });
-                        
+
+                        // Process batch in parallel - all similarity calculations run concurrently
                         const batchResults = await Promise.all(
                             batch.map(async (keyword) => {
                                 try {
@@ -780,8 +781,22 @@ export async function collectKeywords(
                                 }
                             })
                         );
+
+                        // Send progress update during similarity calculation
+                        if (progressCallback) {
+                            const progressUpdate: ProgressUpdate = {
+                                stage: 'selecting-top-keywords',
+                                seedsGenerated: progress.seedsGenerated || 0,
+                                keywordsGenerated: progress.keywordsGenerated || 0,
+                                duplicatesFound: progress.duplicatesFound || 0,
+                                existingKeywordsFound: progress.existingKeywordsFound || 0,
+                                newKeywordsCollected: progress.newKeywordsCollected || 0,
+                                currentSeed: `Calculating similarity for batch ${batchNum}/${Math.ceil(allGeneratedKeywords.length / SIMILARITY_BATCH_SIZE)}`,
+                            };
+                            progressCallback(progressUpdate);
+                        }
                         keywordsWithSimilarity.push(...batchResults);
-                        
+
                         const batchDuration = Date.now() - batchStartTime;
                         logger.debug(`[Similarity Batch ${batchNum}] Completed`, {
                             batchNum,
@@ -795,23 +810,23 @@ export async function collectKeywords(
                         totalKeywords: keywordsWithSimilarity.length,
                         targetCount,
                     });
-                    
+
                     keywordsWithSimilarity.sort((a, b) => b.similarity - a.similarity);
-                    
+
                     const topKeywords = keywordsWithSimilarity.slice(0, targetCount);
                     const similarityDuration = Date.now() - similarityStartTime;
-                    
+
                     logger.info("Similarity calculation complete", {
                         duration: similarityDuration,
                         topSimilarity: topKeywords[0]?.similarity.toFixed(3),
                         bottomSimilarity: topKeywords[topKeywords.length - 1]?.similarity.toFixed(3),
                         avgSimilarity: (topKeywords.reduce((sum, k) => sum + k.similarity, 0) / topKeywords.length).toFixed(3),
                     });
-                    
+
                     return topKeywords.map(item => item.keyword);
                 },
-                { 
-                    totalKeywords: allGeneratedKeywords.length, 
+                {
+                    totalKeywords: allGeneratedKeywords.length,
                     targetCount,
                     batches: Math.ceil(allGeneratedKeywords.length / SIMILARITY_BATCH_SIZE)
                 }
@@ -830,28 +845,28 @@ export async function collectKeywords(
 
     progress.stage = 'complete';
     progress.newKeywordsCollected = finalKeywords.length;
-    
+
     logger.info("STEP 3 COMPLETE: Final keyword selection finished", {
         finalCount: finalKeywords.length,
         targetCount,
         originalCount: allGeneratedKeywords.length,
         selectionMethod: allGeneratedKeywords.length > targetCount ? "similarity-based" : "all keywords",
     });
-    
+
     // Update progress with full lists for final save (but truncated for display)
     progress.allKeywords = allKeywordsList.slice(-MAX_KEYWORDS_IN_MEMORY);
     progress.duplicates = duplicatesList.slice(-MAX_KEYWORDS_IN_MEMORY);
     progress.existingKeywords = existingKeywordsList.slice(-MAX_KEYWORDS_IN_MEMORY);
     progress.newKeywords = finalKeywords.slice(-MAX_KEYWORDS_IN_MEMORY);
     progress._listsTruncated = allKeywordsList.length > MAX_KEYWORDS_IN_MEMORY;
-    
+
     progressCallback?.(progress);
 
     // Generate performance summary
     const totalPipelineTime = Date.now() - pipelineStartTime;
     const processedSeedsCount = progress.processedSeeds?.length || 0;
     const avgTimePerSeed = processedSeedsCount > 0 ? totalPipelineTime / processedSeedsCount : 0;
-    
+
     // Group metrics by stage type
     const metricsByStage: Record<string, PerformanceMetric[]> = {};
     performanceMetrics.forEach(metric => {
@@ -861,13 +876,13 @@ export async function collectKeywords(
         }
         metricsByStage[stageType].push(metric);
     });
-    
+
     // Calculate totals per stage
     const stageTotals: Record<string, number> = {};
     Object.keys(metricsByStage).forEach(stage => {
         stageTotals[stage] = metricsByStage[stage].reduce((sum, m) => sum + m.duration, 0);
     });
-    
+
     // Log comprehensive performance summary (always log, not just in DEBUG mode)
     logger.info("=== KEYWORD COLLECTION PIPELINE COMPLETE ===", {
         totalPipelineTime: `${totalPipelineTime}ms (${(totalPipelineTime / 1000).toFixed(2)}s)`,
@@ -900,7 +915,7 @@ export async function collectKeywords(
         stageBreakdown[stage] = { total, count, avg, percentage, ...(note && { note }) };
     });
     logger.info("Time breakdown by stage", { stageBreakdown });
-    
+
     // Find slowest operations
     const slowestOps = [...performanceMetrics].sort((a, b) => b.duration - a.duration).slice(0, 10);
     if (slowestOps.length > 0) {

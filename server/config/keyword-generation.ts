@@ -11,6 +11,8 @@ export const KEYWORDS_PER_SEED = parseInt(process.env.KEYWORDS_PER_SEED || '50',
 // Progress saving configuration
 export const SAVE_INTERVAL_MS = parseInt(process.env.SAVE_INTERVAL_MS || '10000', 10);
 export const SAVE_KEYWORD_INTERVAL = parseInt(process.env.SAVE_KEYWORD_INTERVAL || '50', 10);
+export const PROGRESS_CHECKPOINT_INTERVAL_MS = parseInt(process.env.PROGRESS_CHECKPOINT_INTERVAL_MS || '30000', 10);
+export const PROGRESS_CHECKPOINT_KEYWORD_INTERVAL = parseInt(process.env.PROGRESS_CHECKPOINT_KEYWORD_INTERVAL || '100', 10);
 
 // Memory management configuration
 export const MAX_KEYWORDS_IN_MEMORY = parseInt(process.env.MAX_KEYWORDS_IN_MEMORY || '1200', 10);
@@ -29,4 +31,8 @@ export const SIMILARITY_THRESHOLD_MULTIPLIER = parseFloat(process.env.SIMILARITY
 export const MAX_RETRY_ATTEMPTS = parseInt(process.env.MAX_RETRY_ATTEMPTS || '3', 10);
 export const RETRY_INITIAL_DELAY_MS = parseInt(process.env.RETRY_INITIAL_DELAY_MS || '1000', 10);
 export const RETRY_MAX_DELAY_MS = parseInt(process.env.RETRY_MAX_DELAY_MS || '10000', 10);
+
+// DataForSEO polling configuration
+export const DATAFORSEO_MAX_POLL_ATTEMPTS = parseInt(process.env.DATAFORSEO_MAX_POLL_ATTEMPTS || '60', 10);
+export const DATAFORSEO_POLL_INTERVAL_MS = parseInt(process.env.DATAFORSEO_POLL_INTERVAL_MS || '5000', 10);
 
