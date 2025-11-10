@@ -634,11 +634,17 @@ export async function getKeywordsForKeywordsTask(
         // 20000 = Ok (task completed)
         // 20100 = Task Created (still processing)
         // 20200 = Task in progress
-        if (task.status_code === 20000 && task.result && task.result.length > 0) {
-            // Task completed successfully, return keyword results
-            return task.result;
-        } else if (task.status_code === 20100 || task.status_code === 20200) {
-            // Task still processing, wait and poll again
+        // 40602 = Task In Queue (still waiting to be processed)
+        if (task.status_code === 20000) {
+            // Task completed successfully, return results (even if empty)
+            if (task.result && task.result.length > 0) {
+                return task.result;
+            } else {
+                // Task completed but no results - return empty array
+                return [];
+            }
+        } else if (task.status_code === 20100 || task.status_code === 20200 || task.status_code === 40602) {
+            // Task still processing or in queue, wait and poll again
             attempts++;
             await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
             continue;

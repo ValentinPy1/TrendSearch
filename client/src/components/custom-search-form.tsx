@@ -397,6 +397,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             projectKeys: Object.keys(projectWithProgress)
         });
 
+        // Load query keywords from project or saved progress
+        if (projectWithProgress.queryKeywords && Array.isArray(projectWithProgress.queryKeywords)) {
+            setQueryKeywords(projectWithProgress.queryKeywords);
+        } else if (projectWithProgress.keywordGenerationProgress?.queryKeywords && Array.isArray(projectWithProgress.keywordGenerationProgress.queryKeywords)) {
+            setQueryKeywords(projectWithProgress.keywordGenerationProgress.queryKeywords);
+        }
+
         if (projectWithProgress.keywordGenerationProgress) {
             setSavedProgress(projectWithProgress.keywordGenerationProgress);
             // If progress exists and is complete, show the keywords and report

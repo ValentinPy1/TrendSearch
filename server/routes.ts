@@ -2548,11 +2548,12 @@ Return ONLY the JSON array, no other text. Example format:
                 competitors: project.competitors || [],
             };
 
-            // Get query keywords from request or project
-            const queryKeywordsList = queryKeywords || project.queryKeywords || [];
+            // Get query keywords from request, saved progress, or project
+            const queryKeywordsList = queryKeywords || savedProgress?.queryKeywords || project.queryKeywords || [];
 
-            // Validate query keywords (1-20 required)
-            if (!queryKeywordsList || !Array.isArray(queryKeywordsList) || queryKeywordsList.length === 0 || queryKeywordsList.length > 20) {
+            // Validate query keywords (1-20 required) - but allow resuming if we have saved progress with keywords
+            if ((!queryKeywordsList || !Array.isArray(queryKeywordsList) || queryKeywordsList.length === 0 || queryKeywordsList.length > 20) 
+                && (!savedProgress || !savedProgress.newKeywords || savedProgress.newKeywords.length === 0)) {
                 res.write(`data: ${JSON.stringify({
                     type: 'error',
                     error: "Please provide 1-20 query keywords for keyword discovery."
@@ -2565,21 +2566,28 @@ Return ONLY the JSON array, no other text. Example format:
 
             // STEP 1: Call keywords_for_keywords API (skip if already done)
             if (!savedProgress || !savedProgress.newKeywords || savedProgress.newKeywords.length === 0) {
-                sendProgress('calling-api', { message: `Calling DataForSEO API with ${queryKeywordsList.length} query keywords...` });
-
                 const { createKeywordsForKeywordsTask, getKeywordsForKeywordsTask } = await import("./dataforseo-service");
                 const locationCode = req.body.location_code || 2840; // Use provided location or default to US
                 const locationName = req.body.location_name;
 
-                // Create task
-                const taskId = await createKeywordsForKeywordsTask(queryKeywordsList, locationCode, locationName);
-                sendProgress('calling-api', { message: 'Task created successfully, polling for results...', taskId });
+                let taskId: string;
                 
-                // Save task ID to progress
-                await saveProgress({
-                    currentStage: 'calling-api',
-                    taskId: taskId
-                });
+                // Check if there's an existing task ID to resume
+                if (savedProgress?.taskId) {
+                    taskId = savedProgress.taskId;
+                    sendProgress('calling-api', { message: `Resuming polling for existing task...`, taskId });
+                } else {
+                    // Create new task
+                    sendProgress('calling-api', { message: `Calling DataForSEO API with ${queryKeywordsList.length} query keywords...` });
+                    taskId = await createKeywordsForKeywordsTask(queryKeywordsList, locationCode, locationName);
+                    sendProgress('calling-api', { message: 'Task created successfully, polling for results...', taskId });
+                    
+                    // Save task ID to progress
+                    await saveProgress({
+                        currentStage: 'calling-api',
+                        taskId: taskId
+                    });
+                }
 
                 // Poll task until complete with progress updates
                 const pollWithProgress = async (): Promise<typeof import("./dataforseo-service").KeywordsForKeywordsKeywordResult[]> => {
@@ -2588,17 +2596,35 @@ Return ONLY the JSON array, no other text. Example format:
                     const pollInterval = 5000;
 
                     while (attempts < maxAttempts) {
-                        const results = await getKeywordsForKeywordsTask(taskId, 1, 0); // Single attempt, no delay
+                        try {
+                            const results = await getKeywordsForKeywordsTask(taskId, 1, 0); // Single attempt, no delay
 
-                        if (results && results.length > 0) {
-                            // Task completed, return full results
-                            return results;
+                            if (results && results.length > 0) {
+                                // Task completed, return full results
+                                return results;
+                            }
+
+                            // Task still processing (no results yet but no error)
+                            attempts++;
+                            sendProgress('calling-api', { message: `Polling task... (attempt ${attempts}/${maxAttempts})` });
+                            await new Promise(resolve => setTimeout(resolve, pollInterval));
+                        } catch (error: any) {
+                            // Check if error indicates task is still processing (Task In Queue, Task Created, etc.)
+                            const errorMessage = error?.message || '';
+                            if (errorMessage.includes('Task In Queue') || 
+                                errorMessage.includes('code: 40602') ||
+                                errorMessage.includes('code: 20100') ||
+                                errorMessage.includes('code: 20200') ||
+                                errorMessage.includes('did not complete within 1 attempts')) {
+                                // Task still processing or timeout from single attempt, wait and retry
+                                attempts++;
+                                sendProgress('calling-api', { message: `Task in queue, polling... (attempt ${attempts}/${maxAttempts})` });
+                                await new Promise(resolve => setTimeout(resolve, pollInterval));
+                                continue;
+                            }
+                            // Other errors should be thrown
+                            throw error;
                         }
-
-                        // Task still processing
-                        attempts++;
-                        sendProgress('calling-api', { message: `Polling task... (attempt ${attempts}/${maxAttempts})` });
-                        await new Promise(resolve => setTimeout(resolve, pollInterval));
                     }
 
                     throw new Error(`Task did not complete within ${maxAttempts} attempts`);
@@ -2610,6 +2636,17 @@ Return ONLY the JSON array, no other text. Example format:
                 finalKeywords = dataForSEOResults
                     .map(result => result.keyword)
                     .filter(keyword => keyword && keyword.trim().length > 0);
+
+                // Handle case where task completed but returned no results
+                if (finalKeywords.length === 0) {
+                    res.write(`data: ${JSON.stringify({
+                        type: 'error',
+                        stage: 'calling-api',
+                        error: "No keywords found from DataForSEO API. The query keywords may not have returned any results. Please try different query keywords."
+                    })}\n\n`);
+                    res.end();
+                    return;
+                }
 
                 // Save progress with full DataForSEO results
                 await saveProgress({
@@ -2714,13 +2751,20 @@ Return ONLY the JSON array, no other text. Example format:
                 }
 
                 if (!dataForSEOResults || dataForSEOResults.length === 0) {
-                    res.write(`data: ${JSON.stringify({
-                        type: 'error',
-                        stage: 'fetching-dataforseo',
-                        error: "No DataForSEO results found. Please try again."
-                    })}\n\n`);
-                    res.end();
-                    return;
+                    // Check if we have keywords from saved progress
+                    if (savedProgress?.newKeywords && savedProgress.newKeywords.length > 0) {
+                        // Use saved keywords instead
+                        finalKeywords = savedProgress.newKeywords;
+                        sendProgress('fetching-dataforseo', { message: 'Using saved keywords from previous run' });
+                    } else {
+                        res.write(`data: ${JSON.stringify({
+                            type: 'error',
+                            stage: 'fetching-dataforseo',
+                            error: "No DataForSEO results found. Please try again with different query keywords."
+                        })}\n\n`);
+                        res.end();
+                        return;
+                    }
                 }
 
                 // Process DataForSEO results using shared function
