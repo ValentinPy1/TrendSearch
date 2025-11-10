@@ -81,6 +81,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [savedProgress, setSavedProgress] = useState<any>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const isInitialLoadRef = useRef(false); // Track if we're in the initial load phase
+    const isCreatingProjectRef = useRef(false); // Track if a project is being created to prevent duplicates
     const [isFetchingDataForSEO, setIsFetchingDataForSEO] = useState(false);
     const [isComputingMetrics, setIsComputingMetrics] = useState(false);
     const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -159,24 +160,30 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 // If no progress object exists, still try to load report if project might have keywords
                 // This handles cases where projects were completed before progress tracking was added
                 if (currentProject.id === currentProjectId && reportProjectIdRef.current !== currentProjectId) {
-                    // Try to load report via generate-report endpoint (which will generate if keywords exist)
-                    // This is a fallback for projects without progress tracking
+                    // Check keywords status first before attempting to generate report
                     (async () => {
                         try {
-                            const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
-                                projectId: currentProjectId,
-                            });
-                            const reportResult = await reportRes.json();
-                            // Double-check that this is still the current project before setting report data
-                            if (reportResult.success && reportResult.report) {
-                                setReportData(reportResult.report);
-                                reportProjectIdRef.current = currentProjectId;
-                                setDisplayedKeywordCount(10);
-                                setShowOnlyFullData(false);
+                            // First check if project has keywords with data
+                            const statusRes = await apiRequest("GET", `/api/custom-search/projects/${currentProjectId}/keywords-status`);
+                            const status = await statusRes.json();
+                            
+                            // Only try to generate report if keywords with data exist
+                            if (status.hasDataForSEO && status.keywordsWithData > 0) {
+                                const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
+                                    projectId: currentProjectId,
+                                });
+                                const reportResult = await reportRes.json();
+                                // Double-check that this is still the current project before setting report data
+                                if (reportResult.success && reportResult.report) {
+                                    setReportData(reportResult.report);
+                                    reportProjectIdRef.current = currentProjectId;
+                                    setDisplayedKeywordCount(10);
+                                    setShowOnlyFullData(false);
+                                }
                             }
                         } catch (error) {
                             // Silently fail if no report exists - this is expected for projects without keywords
-                            console.log("No report available for project without progress tracking:", currentProjectId);
+                            // Don't log errors for projects without keywords as this is normal
                         }
                     })();
                 } else if (reportProjectIdRef.current === currentProjectId) {
@@ -343,9 +350,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         },
         onSuccess: (result) => {
             setCurrentProjectId(result.project.id);
+            isCreatingProjectRef.current = false; // Clear guard after setting currentProjectId
             queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
         },
         onError: (error) => {
+            isCreatingProjectRef.current = false; // Clear guard on error
             toast({
                 title: "Error",
                 description: error instanceof Error ? error.message : "Failed to create project",
@@ -385,7 +394,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     // Auto-save function with debouncing
     const autoSave = () => {
         // Skip auto-save if we're loading a project, creating initial project, or in initial load phase
-        if (isLoadingProject || createProjectMutation.isPending || isInitialLoadRef.current) {
+        if (isLoadingProject || createProjectMutation.isPending || isInitialLoadRef.current || isCreatingProjectRef.current) {
             // Clear any pending save operations
             if (saveTimeoutRef.current) {
                 clearTimeout(saveTimeoutRef.current);
@@ -400,10 +409,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
         saveTimeoutRef.current = setTimeout(() => {
             // Double-check we're still not loading (race condition protection)
-            if (isLoadingProject || createProjectMutation.isPending || isInitialLoadRef.current) return;
+            if (isLoadingProject || createProjectMutation.isPending || isInitialLoadRef.current || isCreatingProjectRef.current) return;
             
             if (!currentProjectId) {
                 // Create new project if none exists
+                // Set guard to prevent concurrent creation
+                if (isCreatingProjectRef.current) return;
+                isCreatingProjectRef.current = true;
+                
                 createProjectMutation.mutate({
                     name: name || undefined,
                     pitch: pitch || "",
@@ -412,6 +425,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     painPoints,
                     features,
                     competitors,
+                }, {
+                    onSuccess: () => {
+                        isCreatingProjectRef.current = false;
+                    },
+                    onError: () => {
+                        isCreatingProjectRef.current = false;
+                    },
                 });
             } else {
                 // Update existing project
@@ -461,7 +481,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const hasAutoLoadedRef = useRef(false); // Track if we've already auto-loaded a project
     useEffect(() => {
         // Don't run if projects are still loading or we've already auto-loaded
-        if (!projectsData || hasAutoLoadedRef.current) return;
+        if (!projectsData || hasAutoLoadedRef.current || isCreatingProjectRef.current) return;
 
         // Only auto-create/load if we don't have a current project and we're not manually creating one
         if (projectsData.projects.length === 0 && !currentProjectId && !createProjectMutation.isPending && !isLoadingProject) {
@@ -474,6 +494,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             hasAutoLoadedRef.current = true; // Mark as auto-loaded
             setIsLoadingProject(true);
             isInitialLoadRef.current = true; // Prevent auto-save during creation
+            isCreatingProjectRef.current = true; // Set guard to prevent concurrent creation
             
             createProjectMutation.mutate({
                 name: "",
@@ -485,10 +506,16 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 competitors: [],
             }, {
                 onSuccess: () => {
+                    isCreatingProjectRef.current = false; // Clear guard
                     setTimeout(() => {
                         setIsLoadingProject(false);
                         isInitialLoadRef.current = false;
                     }, 200);
+                },
+                onError: () => {
+                    isCreatingProjectRef.current = false; // Clear guard on error
+                    setIsLoadingProject(false);
+                    isInitialLoadRef.current = false;
                 },
             });
         } else if (projectsData.projects.length > 0 && !currentProjectId && !isLoadingProject) {
@@ -498,7 +525,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             loadProject(mostRecent);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectsData, currentProjectId]);
+    }, [projectsData, currentProjectId, createProjectMutation.isPending, isLoadingProject]);
 
     // Load project data into form
     const loadProject = async (project: CustomSearchProject) => {
