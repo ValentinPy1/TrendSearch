@@ -67,16 +67,16 @@ export function processDataForSEOResults(
             };
         }).sort((a, b) => a.sortKey.localeCompare(b.sortKey)).map(({ sortKey, ...rest }) => rest) || [];
 
-        // Normalize competition (prioritize DataForSEO data)
+        // Normalize competition (prioritize competition_index from DataForSEO)
         let competitionIndex = null;
-        if (result.competition) {
+        // Use competition_index first if available (more granular than string values)
+        if (result.competition_index !== null && result.competition_index !== undefined) {
+            competitionIndex = result.competition_index;
+        } else if (result.competition) {
+            // Fall back to converting competition string if competition_index is not available
             if (result.competition === "HIGH") competitionIndex = 100;
             else if (result.competition === "MEDIUM") competitionIndex = 50;
             else if (result.competition === "LOW") competitionIndex = 0;
-        }
-        // Use competition_index if competition string is not available
-        if (competitionIndex === null && result.competition_index !== null && result.competition_index !== undefined) {
-            competitionIndex = result.competition_index;
         }
 
         // Calculate average top page bid

@@ -1956,6 +1956,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 {/* Show resume option if progress exists and is incomplete (website search) */}
                                 {savedProgress && 
                                  savedProgress.currentStage !== 'complete' && 
+                                 savedProgress.reportGenerated !== true &&
                                  savedProgress.currentStage !== undefined &&
                                  ['creating-task', 'polling-task', 'extracting-keywords', 'fetching-dataforseo', 'generating-report'].includes(savedProgress.currentStage) && (
                                     <div className="mt-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
@@ -2227,7 +2228,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             </Button>
 
                             {/* Show resume option if progress exists and is incomplete */}
-                            {savedProgress && savedProgress.currentStage !== 'complete' && savedProgress.currentStage !== undefined && (
+                            {savedProgress && savedProgress.currentStage !== 'complete' && savedProgress.reportGenerated !== true && savedProgress.currentStage !== undefined && (
                                 <div className="mt-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
                                     <div className="text-sm text-yellow-200 mb-2">
                                         Generation in progress: {savedProgress.newKeywordsCollected || 0} / 1000 keywords

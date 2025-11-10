@@ -785,7 +785,8 @@ async function generateReportData(
 
     for (const link of projectLinks) {
         let similarity = link.similarityScore ? parseFloat(link.similarityScore) : null;
-        if (similarity === null || similarity === 0.8) {
+        // Recalculate if similarity is null, 0.8 (old default), or 0.5 (current default when pitch was empty)
+        if (similarity === null || similarity === 0.8 || similarity === 0.5) {
             const keywordText = keywordIdToTextMap.get(link.globalKeywordId);
             if (keywordText && pitch.trim()) {
                 try {
@@ -3903,11 +3904,19 @@ Return ONLY the JSON array, no other text. Example format:
                                                     return parseMonthString(a.month) - parseMonthString(b.month);
                                                 });
 
+                                                const lastMonth = sortedMonthlyData[sortedMonthlyData.length - 1];
                                                 let yoyGrowth: number | null = null;
                                                 if (sortedMonthlyData.length >= 12) {
-                                                    const lastMonth = sortedMonthlyData[sortedMonthlyData.length - 1];
                                                     const sameMonthLastYear = sortedMonthlyData[sortedMonthlyData.length - 12];
                                                     yoyGrowth = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
+                                                }
+
+                                                let threeMonthGrowth: number | null = null;
+                                                if (sortedMonthlyData.length >= 3) {
+                                                    const threeMonthsAgo = sortedMonthlyData[sortedMonthlyData.length - 3];
+                                                    if (threeMonthsAgo.volume > 0) {
+                                                        threeMonthGrowth = ((lastMonth.volume - threeMonthsAgo.volume) / threeMonthsAgo.volume) * 100;
+                                                    }
                                                 }
 
                                                 const volatility = calculateVolatility(sortedMonthlyData);
@@ -3918,6 +3927,8 @@ Return ONLY the JSON array, no other text. Example format:
                                                 return {
                                                     keywordId: keyword.id,
                                                     metrics: {
+                                                        growthYoy: yoyGrowth !== null ? yoyGrowth.toString() : null,
+                                                        growth3m: threeMonthGrowth !== null ? threeMonthGrowth.toString() : null,
                                                         volatility: volatility.toFixed(2),
                                                         trendStrength: trendStrength.toFixed(2),
                                                         opportunityScore: opportunityScore.toFixed(2)
@@ -4770,9 +4781,13 @@ Return ONLY the JSON array, no other text. Example format:
                         return a.sortKey.localeCompare(b.sortKey);
                     }).map(({ sortKey, ...rest }) => rest) || []; // Remove sortKey after sorting
 
-                    // Map competition from string to number (HIGH=100, MEDIUM=50, LOW=0)
+                    // Normalize competition (prioritize competition_index from DataForSEO)
                     let competitionIndex = null;
-                    if (result.competition) {
+                    // Use competition_index first if available (more granular than string values)
+                    if (result.competition_index !== null && result.competition_index !== undefined) {
+                        competitionIndex = result.competition_index;
+                    } else if (result.competition) {
+                        // Fall back to converting competition string if competition_index is not available
                         if (result.competition === "HIGH") {
                             competitionIndex = 100;
                         } else if (result.competition === "MEDIUM") {
@@ -4790,7 +4805,7 @@ Return ONLY the JSON array, no other text. Example format:
                     const keywordData = {
                         keyword: result.keyword,
                         volume: result.search_volume || null,
-                        competition: competitionIndex || result.competition_index || null,
+                        competition: competitionIndex || null,
                         cpc: result.cpc || null,
                         topPageBid: avgTopPageBid,
                         monthlyData: monthlyData,
@@ -5163,12 +5178,12 @@ Return ONLY the JSON array, no other text. Example format:
                     keywordIdToTextMap.set(kw.id, kw.keyword);
                 });
 
-                // Recalculate similarity scores if they're missing or equal to 0.8 (old default)
+                // Recalculate similarity scores if they're missing, equal to 0.8 (old default), or 0.5 (current default when pitch was empty)
                 for (const link of projectLinks) {
                     let similarity = link.similarityScore ? parseFloat(link.similarityScore) : null;
 
-                    // If similarity is missing or is the old default (0.8), recalculate it
-                    if (similarity === null || similarity === 0.8) {
+                    // If similarity is missing, is the old default (0.8), or is the current default (0.5), recalculate it
+                    if (similarity === null || similarity === 0.8 || similarity === 0.5) {
                         const keywordText = keywordIdToTextMap.get(link.globalKeywordId);
                         if (keywordText && pitch.trim()) {
                             try {
