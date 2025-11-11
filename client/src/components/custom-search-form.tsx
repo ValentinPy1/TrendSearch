@@ -998,12 +998,39 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         },
         onSuccess: (result) => {
             if (result.competitors && Array.isArray(result.competitors)) {
-                setCompetitors(result.competitors);
-                // Auto-save will be triggered by useEffect
-                toast({
-                    title: "Competitors Found!",
-                    description: `Found ${result.competitors.length} competitors.`,
-                });
+                const competitorsList = result.competitors;
+                const competitorsCount = competitorsList.length;
+                setCompetitors(competitorsList);
+                
+                // Explicitly save competitors immediately after finding them
+                if (currentProjectId) {
+                    updateProjectMutation.mutate(
+                        {
+                            id: currentProjectId,
+                            competitors: competitorsList,
+                        },
+                        {
+                            onSuccess: () => {
+                                toast({
+                                    title: "Competitors Found!",
+                                    description: `Found and saved ${competitorsCount} competitors.`,
+                                });
+                            },
+                            onError: () => {
+                                // Still show success toast even if save fails (auto-save will retry)
+                                toast({
+                                    title: "Competitors Found!",
+                                    description: `Found ${competitorsCount} competitors.`,
+                                });
+                            },
+                        }
+                    );
+                } else {
+                    toast({
+                        title: "Competitors Found!",
+                        description: `Found ${competitorsCount} competitors.`,
+                    });
+                }
             } else {
                 toast({
                     title: "Competitors Found!",
