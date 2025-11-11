@@ -631,40 +631,58 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 });
             }
 
-            // If report is already generated, try to load it (even if metrics aren't computed yet)
-            // Also try to load if we have keywords with data, as the report might have been generated
-            const shouldLoadReport = savedProgress?.reportGenerated ||
-                savedProgress?.currentStage === 'complete' ||
-                (status.hasDataForSEO && status.keywordsWithData > 0);
+            // If report is already generated, try to load it from pipeline-status endpoint
+            // Only try to generate a new report if report is marked as generated but doesn't exist yet
+            const shouldTryLoadReport = savedProgress?.reportGenerated ||
+                savedProgress?.currentStage === 'complete';
 
-            if (shouldLoadReport) {
-                console.log("Loading report for project:", {
+            if (shouldTryLoadReport) {
+                console.log("Attempting to load report for project:", {
                     projectId: project.id,
                     reportGenerated: savedProgress?.reportGenerated,
                     currentStage: savedProgress?.currentStage,
                     hasKeywords: status.keywordList?.length > 0,
-                    keywordsCount: status.keywordList?.length
+                    keywordsCount: status.keywordList?.length,
+                    hasDataForSEO: status.hasDataForSEO,
+                    keywordsWithData: status.keywordsWithData
                 });
+                
+                // First try to load from pipeline-status (which returns existing reports)
                 try {
-                    const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
-                        projectId: project.id,
-                    });
-                    const reportResult = await reportRes.json();
-                    console.log("Report load result:", {
-                        success: reportResult.success,
-                        hasReport: !!reportResult.report,
-                        reportKeywordsCount: reportResult.report?.keywords?.length || 0
-                    });
-                    // Only set report data if it's for the current project
-                    if (reportResult.success && reportResult.report && project.id === currentProjectId) {
-                        setReportData(reportResult.report);
-                        reportProjectIdRef.current = project.id;
-                        setDisplayedKeywordCount(10); // Reset to 10 when loading report
-                        setShowOnlyFullData(false); // Reset filter when loading report
+                    await loadReportForProject(project.id);
+                } catch (loadError) {
+                    console.log("Report not found in pipeline-status, will be loaded when pipeline completes");
+                }
+                
+                // Only try to generate a new report if:
+                // 1. Report is marked as generated
+                // 2. We have keywords with data (metrics are computed)
+                // 3. Report doesn't already exist (loadReportForProject didn't find it)
+                if (savedProgress?.reportGenerated && 
+                    status.hasDataForSEO && 
+                    status.keywordsWithData > 0 &&
+                    reportProjectIdRef.current !== project.id) {
+                    try {
+                        const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
+                            projectId: project.id,
+                        });
+                        const reportResult = await reportRes.json();
+                        console.log("Report generation result:", {
+                            success: reportResult.success,
+                            hasReport: !!reportResult.report,
+                            reportKeywordsCount: reportResult.report?.keywords?.length || 0
+                        });
+                        // Only set report data if it's for the current project
+                        if (reportResult.success && reportResult.report && project.id === currentProjectId) {
+                            setReportData(reportResult.report);
+                            reportProjectIdRef.current = project.id;
+                            setDisplayedKeywordCount(10); // Reset to 10 when loading report
+                            setShowOnlyFullData(false); // Reset filter when loading report
+                        }
+                    } catch (reportError) {
+                        console.error("Error generating report:", reportError);
+                        // Don't show error, just continue - report will be generated when pipeline completes
                     }
-                } catch (reportError) {
-                    console.error("Error loading report:", reportError);
-                    // Don't show error, just continue
                 }
             } else {
                 console.log("Not loading report - conditions not met:", {
