@@ -10,7 +10,7 @@ import { LocationSelector } from "@/components/ui/location-selector";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabase";
-import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil, Sparkle, CheckCircle2 } from "lucide-react";
+import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil, Sparkle, CheckCircle2, Save } from "lucide-react";
 import { CustomSearchProjectBrowser } from "./custom-search-project-browser";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { CustomSearchProject, Keyword } from "@shared/schema";
@@ -117,7 +117,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
     // Track which project the report is for
     const reportProjectIdRef = useRef<string | null>(null);
-    
+
     // Clear report data when project changes
     const previousProjectIdRef = useRef<string | null>(null);
     useEffect(() => {
@@ -137,15 +137,32 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     useEffect(() => {
         if (currentProjectId && projectsData?.projects) {
             const currentProject = projectsData.projects.find(p => p.id === currentProjectId);
+
+            // If current project was deleted, clear the form
+            if (!currentProject && currentProjectId) {
+                setCurrentProjectId(null);
+                form.reset({ name: "", pitch: "" });
+                setTopics([]);
+                setPersonas([]);
+                setPainPoints([]);
+                setFeatures([]);
+                setCompetitors([]);
+                setQueryKeywords([]);
+                setReportData(null);
+                setGeneratedKeywords([]);
+                setSavedProgress(null);
+                return;
+            }
+
             if (currentProject?.keywordGenerationProgress) {
                 const progress = currentProject.keywordGenerationProgress;
                 setSavedProgress(progress);
-                
+
                 // If complete, update generated keywords and report
                 if (progress.stage === 'complete' && progress.newKeywords) {
                     setGeneratedKeywords(progress.newKeywords);
                 }
-                
+
                 // Always display report if it exists (only for current project)
                 // Check both reportGenerated flag and stage === 'complete' (in case reportGenerated is not set)
                 if (currentProject.id === currentProjectId) {
@@ -166,7 +183,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             // First check if project has keywords with data
                             const statusRes = await apiRequest("GET", `/api/custom-search/projects/${currentProjectId}/keywords-status`);
                             const status = await statusRes.json();
-                            
+
                             // Only try to generate report if keywords with data exist
                             if (status.hasDataForSEO && status.keywordsWithData > 0) {
                                 const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
@@ -222,11 +239,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         newKeywordsCollected: progress.newKeywordsCollected || 0,
                         newKeywords: progress.newKeywords || [],
                     });
-                    
+
                     if (progress.newKeywords) {
                         setGeneratedKeywords(progress.newKeywords);
                     }
-                    
+
                     // Start polling
                     setIsFindingKeywordsFromWebsite(true);
                     setIsGeneratingKeywords(true);
@@ -239,7 +256,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     loadReportForProject(currentProjectId);
                 }
             }
-            
+
             isInitialLoadRef.current = true;
         }
     }, [currentProjectId, projectsData]);
@@ -290,6 +307,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     };
 
+    // Use ref to track step start times to avoid closure issues in timer
+    const stepStartTimesRef = useRef<Record<string, number>>({});
+    useEffect(() => {
+        stepStartTimesRef.current = stepStartTimes;
+    }, [stepStartTimes]);
+
     // Update elapsed times every second for active steps
     useEffect(() => {
         if (!isGeneratingKeywords || Object.keys(stepStartTimes).length === 0) {
@@ -297,42 +320,44 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
 
         const interval = setInterval(() => {
-            const currentTimes: Record<string, number> = {};
-            Object.entries(stepStartTimes).forEach(([stepKey, startTime]) => {
+            setElapsedTimes(prev => {
+                const currentTimes: Record<string, number> = {};
+                const currentStepStartTimes = stepStartTimesRef.current;
                 const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                const stepMap: Record<string, string[]> = {
-                                    'calling-api': ['calling-api'],
-                                    'creating-task': ['creating-task'],
-                                    'polling-task': ['polling-task'],
-                                    'extracting-keywords': ['extracting-keywords'],
-                                    'fetching-dataforseo': ['fetching-dataforseo'],
-                                    'computing-metrics': ['computing-metrics'],
-                                    'generating-report': ['generating-report']
-                                };
-                
-                const isActive = stepMap[stepKey]?.includes(currentStage) || false;
-                if (isActive) {
-                    // Calculate elapsed time from start time, preserving it even if progress updates reset state
-                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                    currentTimes[stepKey] = elapsed;
-                } else {
-                    // If step is completed, preserve the last elapsed time instead of resetting
-                    // This prevents the time from resetting when progress updates come in
-                    const lastElapsed = elapsedTimes[stepKey];
-                    if (lastElapsed !== undefined && lastElapsed > 0) {
-                        currentTimes[stepKey] = lastElapsed;
+
+                Object.entries(currentStepStartTimes).forEach(([stepKey, startTime]) => {
+                    const stepMap: Record<string, string[]> = {
+                        'calling-api': ['calling-api'],
+                        'creating-task': ['creating-task'],
+                        'polling-task': ['polling-task'],
+                        'extracting-keywords': ['extracting-keywords'],
+                        'fetching-dataforseo': ['fetching-dataforseo'],
+                        'computing-metrics': ['computing-metrics'],
+                        'generating-report': ['generating-report']
+                    };
+
+                    const isActive = stepMap[stepKey]?.includes(currentStage) || false;
+                    if (isActive) {
+                        // Calculate elapsed time from start time, preserving it even if progress updates reset state
+                        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                        currentTimes[stepKey] = elapsed;
+                    } else {
+                        // If step is completed, preserve the last elapsed time instead of resetting
+                        // This prevents the time from resetting when progress updates come in
+                        const lastElapsed = prev[stepKey];
+                        if (lastElapsed !== undefined && lastElapsed > 0) {
+                            currentTimes[stepKey] = lastElapsed;
+                        }
                     }
-                }
+                });
+
+                // Merge with previous times to preserve all step times
+                return { ...prev, ...currentTimes };
             });
-            
-            // Always update elapsed times to preserve them across progress updates
-            if (Object.keys(currentTimes).length > 0) {
-                setElapsedTimes(prev => ({ ...prev, ...currentTimes }));
-            }
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [isGeneratingKeywords, stepStartTimes, keywordProgress, elapsedTimes]);
+    }, [isGeneratingKeywords, keywordProgress]);
 
     // Create project mutation
     const createProjectMutation = useMutation({
@@ -391,7 +416,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         },
     });
 
-    // Auto-save function with debouncing
+    // Auto-save function with debouncing (only for existing projects)
     const autoSave = () => {
         // Skip auto-save if we're loading a project, creating initial project, or in initial load phase
         if (isLoadingProject || createProjectMutation.isPending || isInitialLoadRef.current || isCreatingProjectRef.current) {
@@ -403,6 +428,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             return;
         }
 
+        // Only auto-save if project already exists
+        if (!currentProjectId) {
+            return;
+        }
+
         if (saveTimeoutRef.current) {
             clearTimeout(saveTimeoutRef.current);
         }
@@ -410,31 +440,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         saveTimeoutRef.current = setTimeout(() => {
             // Double-check we're still not loading (race condition protection)
             if (isLoadingProject || createProjectMutation.isPending || isInitialLoadRef.current || isCreatingProjectRef.current) return;
-            
-            if (!currentProjectId) {
-                // Create new project if none exists
-                // Set guard to prevent concurrent creation
-                if (isCreatingProjectRef.current) return;
-                isCreatingProjectRef.current = true;
-                
-                createProjectMutation.mutate({
-                    name: name || undefined,
-                    pitch: pitch || "",
-                    topics,
-                    personas,
-                    painPoints,
-                    features,
-                    competitors,
-                }, {
-                    onSuccess: () => {
-                        isCreatingProjectRef.current = false;
-                    },
-                    onError: () => {
-                        isCreatingProjectRef.current = false;
-                    },
-                });
-            } else {
-                // Update existing project
+
+            // Only update existing projects
+            if (currentProjectId) {
                 setIsSaving(true);
                 updateProjectMutation.mutate(
                     {
@@ -457,7 +465,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }, 2000); // 2 second debounce
     };
 
-    // Auto-save on form changes
+    // Auto-save on form changes (only for existing projects)
     useEffect(() => {
         // Clear any pending auto-save when loading a project
         if (isLoadingProject) {
@@ -467,8 +475,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
             return;
         }
-        
-        autoSave();
+
+        // Only auto-save if project exists
+        if (currentProjectId) {
+            autoSave();
+        }
+
         return () => {
             if (saveTimeoutRef.current) {
                 clearTimeout(saveTimeoutRef.current);
@@ -477,55 +489,21 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [name, pitch, topics, personas, painPoints, features, competitors, isLoadingProject, currentProjectId]);
 
-    // Auto-create project on first mount if no projects exist
+    // Auto-load most recent project on mount if projects exist
     const hasAutoLoadedRef = useRef(false); // Track if we've already auto-loaded a project
     useEffect(() => {
         // Don't run if projects are still loading or we've already auto-loaded
         if (!projectsData || hasAutoLoadedRef.current || isCreatingProjectRef.current) return;
 
-        // Only auto-create/load if we don't have a current project and we're not manually creating one
-        if (projectsData.projects.length === 0 && !currentProjectId && !createProjectMutation.isPending && !isLoadingProject) {
-            // Clear any pending auto-save
-            if (saveTimeoutRef.current) {
-                clearTimeout(saveTimeoutRef.current);
-                saveTimeoutRef.current = null;
-            }
-            
-            hasAutoLoadedRef.current = true; // Mark as auto-loaded
-            setIsLoadingProject(true);
-            isInitialLoadRef.current = true; // Prevent auto-save during creation
-            isCreatingProjectRef.current = true; // Set guard to prevent concurrent creation
-            
-            createProjectMutation.mutate({
-                name: "",
-                pitch: "",
-                topics: [],
-                personas: [],
-                painPoints: [],
-                features: [],
-                competitors: [],
-            }, {
-                onSuccess: () => {
-                    isCreatingProjectRef.current = false; // Clear guard
-                    setTimeout(() => {
-                        setIsLoadingProject(false);
-                        isInitialLoadRef.current = false;
-                    }, 200);
-                },
-                onError: () => {
-                    isCreatingProjectRef.current = false; // Clear guard on error
-                    setIsLoadingProject(false);
-                    isInitialLoadRef.current = false;
-                },
-            });
-        } else if (projectsData.projects.length > 0 && !currentProjectId && !isLoadingProject) {
+        // Only auto-load if we don't have a current project and projects exist
+        if (projectsData.projects.length > 0 && !currentProjectId && !isLoadingProject) {
             // Load most recent project
             hasAutoLoadedRef.current = true; // Mark as auto-loaded
             const mostRecent = projectsData.projects[0];
             loadProject(mostRecent);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectsData, currentProjectId, createProjectMutation.isPending, isLoadingProject]);
+    }, [projectsData, currentProjectId, isLoadingProject]);
 
     // Load project data into form
     const loadProject = async (project: CustomSearchProject) => {
@@ -534,24 +512,24 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             clearTimeout(saveTimeoutRef.current);
             saveTimeoutRef.current = null;
         }
-        
+
         // Clear report data when switching projects
         setReportData(null);
         setGeneratedKeywords([]);
         setSelectedKeyword(null);
         setDisplayedKeywordCount(10);
         setShowOnlyFullData(false);
-        
+
         // Set flag to prevent auto-save during loading
         isInitialLoadRef.current = true;
-        
+
         // Set currentProjectId FIRST before updating form values
         setIsLoadingProject(true);
         setCurrentProjectId(project.id);
-        
+
         // Wait a tick to ensure currentProjectId state is set before updating form values
         await new Promise(resolve => setTimeout(resolve, 0));
-        
+
         form.setValue("name", project.name || "");
         form.setValue("pitch", project.pitch || "");
         setTopics(project.topics || []);
@@ -559,7 +537,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setPainPoints(project.painPoints || []);
         setFeatures(project.features || []);
         setCompetitors(project.competitors || []);
-        
+
         // Load saved keyword generation progress
         // If keywordGenerationProgress is missing, fetch the project individually to get full data
         let projectWithProgress = project;
@@ -622,7 +600,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         try {
             const res = await apiRequest("GET", `/api/custom-search/projects/${project.id}/keywords-status`);
             const status = await res.json();
-            
+
             // Restore keywords list if available
             if (status.keywordList && status.keywordList.length > 0) {
                 setGeneratedKeywords(status.keywordList);
@@ -647,10 +625,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             // If report is already generated, try to load it (even if metrics aren't computed yet)
             // Also try to load if we have keywords with data, as the report might have been generated
-            const shouldLoadReport = savedProgress?.reportGenerated || 
-                                   savedProgress?.currentStage === 'complete' ||
-                                   (status.hasDataForSEO && status.keywordsWithData > 0);
-            
+            const shouldLoadReport = savedProgress?.reportGenerated ||
+                savedProgress?.currentStage === 'complete' ||
+                (status.hasDataForSEO && status.keywordsWithData > 0);
+
             if (shouldLoadReport) {
                 console.log("Loading report for project:", {
                     projectId: project.id,
@@ -692,7 +670,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             console.error("Error loading keywords status:", error);
             // Don't show error to user, just continue without restoring status
         }
-        
+
         // Allow auto-save after a short delay to ensure form is fully updated
         setTimeout(() => {
             setIsLoadingProject(false);
@@ -728,36 +706,146 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setPainPoints([]);
         setFeatures([]);
         setCompetitors([]);
+        setQueryKeywords([]);
         setCurrentProjectId(null);
 
-        // Create new project with blank data after a small delay to ensure state is cleared
-        setTimeout(() => {
-            createProjectMutation.mutate({
-                name: "",
-                pitch: "",
-                topics: [],
-                personas: [],
-                painPoints: [],
-                features: [],
-                competitors: [],
-            }, {
-                onSuccess: () => {
-                    // Allow auto-save after project is created
-                    setTimeout(() => {
-                        setIsLoadingProject(false);
-                        isInitialLoadRef.current = false; // Re-enable auto-save
-                    }, 200);
-                },
-                onError: () => {
-                    setIsLoadingProject(false);
-                },
-            });
-        }, 50);
+        // Clear any pending auto-save
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+        }
     };
 
     // Handle project selection from browser
     const handleSelectProject = (project: CustomSearchProject) => {
         loadProject(project);
+    };
+
+    // Helper function to ensure project exists - creates it if it doesn't
+    const ensureProjectExists = async (): Promise<string | null> => {
+        // If project already exists, return its ID
+        if (currentProjectId) {
+            return currentProjectId;
+        }
+
+        // Prevent multiple simultaneous creation attempts
+        if (isCreatingProjectRef.current || createProjectMutation.isPending) {
+            // Wait for the creation to complete
+            return new Promise((resolve) => {
+                const checkInterval = setInterval(() => {
+                    if (currentProjectId && !isCreatingProjectRef.current && !createProjectMutation.isPending) {
+                        clearInterval(checkInterval);
+                        resolve(currentProjectId);
+                    } else if (!isCreatingProjectRef.current && !createProjectMutation.isPending) {
+                        // Creation failed or was cancelled
+                        clearInterval(checkInterval);
+                        resolve(null);
+                    }
+                }, 100);
+            });
+        }
+
+        // Create new project
+        isCreatingProjectRef.current = true;
+        try {
+            const result = await createProjectMutation.mutateAsync({
+                name: name || undefined,
+                pitch: pitch || "",
+                topics,
+                personas,
+                painPoints,
+                features,
+                competitors,
+            });
+            return result.project.id;
+        } catch (error) {
+            console.error("Failed to create project:", error);
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to create project",
+                variant: "destructive",
+            });
+            return null;
+        } finally {
+            isCreatingProjectRef.current = false;
+        }
+    };
+
+    // Manual save handler - creates project on first save
+    const handleSave = () => {
+        // Clear any pending auto-save
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+        }
+
+        if (!currentProjectId) {
+            // Create new project on first save
+            if (isCreatingProjectRef.current) return;
+            isCreatingProjectRef.current = true;
+            setIsSaving(true);
+
+            createProjectMutation.mutate({
+                name: name || undefined,
+                pitch: pitch || "",
+                topics,
+                personas,
+                painPoints,
+                features,
+                competitors,
+            }, {
+                onSuccess: () => {
+                    isCreatingProjectRef.current = false;
+                    setIsSaving(false);
+                    toast({
+                        title: "Project Saved",
+                        description: "Project created and saved successfully.",
+                    });
+                },
+                onError: (error) => {
+                    isCreatingProjectRef.current = false;
+                    setIsSaving(false);
+                    toast({
+                        title: "Error",
+                        description: error instanceof Error ? error.message : "Failed to save project",
+                        variant: "destructive",
+                    });
+                },
+            });
+        } else {
+            // Update existing project
+            setIsSaving(true);
+            updateProjectMutation.mutate(
+                {
+                    id: currentProjectId,
+                    name: name || undefined,
+                    pitch: pitch || "",
+                    topics,
+                    personas,
+                    painPoints,
+                    features,
+                    competitors,
+                },
+                {
+                    onSuccess: () => {
+                        toast({
+                            title: "Project Saved",
+                            description: "Project updated successfully.",
+                        });
+                    },
+                    onError: (error) => {
+                        toast({
+                            title: "Error",
+                            description: error instanceof Error ? error.message : "Failed to save project",
+                            variant: "destructive",
+                        });
+                    },
+                    onSettled: () => {
+                        setIsSaving(false);
+                    },
+                }
+            );
+        }
     };
 
     const generateIdeaMutation = useMutation({
@@ -1034,6 +1122,17 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             return;
         }
 
+        // Ensure project exists before proceeding
+        const projectId = await ensureProjectExists();
+        if (!projectId) {
+            toast({
+                title: "Error",
+                description: "Failed to create project. Please try again.",
+                variant: "destructive",
+            });
+            return;
+        }
+
         setIsFindingCompetitors(true);
         try {
             await findCompetitorsMutation.mutateAsync({
@@ -1092,7 +1191,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     stage: 'error',
                     currentStage: 'error',
                 }));
-                
+
                 const errorMessage = data.progress?.error || "Unknown error occurred";
                 toast({
                     title: "Pipeline Error",
@@ -1100,7 +1199,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     variant: "destructive",
                     duration: 10000,
                 });
-                
+
                 stopPolling();
                 setIsFindingKeywordsFromWebsite(false);
                 setIsGeneratingKeywords(false);
@@ -1124,16 +1223,17 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     newKeywords: progress.newKeywords || prev?.newKeywords || [],
                 }));
 
-                // Track step start times
-                if (stage && !stepStartTimes[stage]) {
-                    setStepStartTimes(prev => ({ ...prev, [stage]: Date.now() }));
-                }
-
-                // Update elapsed times
-                if (stage && stepStartTimes[stage]) {
-                    const elapsed = Math.floor((Date.now() - stepStartTimes[stage]) / 1000);
-                    setElapsedTimes(prev => ({ ...prev, [stage]: elapsed }));
-                }
+                // Track step start times - only set if stage doesn't exist yet
+                // Use functional update to ensure we have the latest state
+                setStepStartTimes(prev => {
+                    if (stage && !prev[stage]) {
+                        const newTimes = { ...prev, [stage]: Date.now() };
+                        // Update ref immediately so timer can use it
+                        stepStartTimesRef.current = newTimes;
+                        return newTimes;
+                    }
+                    return prev;
+                });
 
                 // Update stats
                 if (progress.keywordsFetchedCount !== undefined) {
@@ -1168,12 +1268,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             // If pipeline is complete, stop polling
             if (data.status === 'complete') {
-                setKeywordProgress(prev => ({
-                    ...prev,
-                    stage: 'complete',
-                    currentStage: 'complete',
-                }));
-
                 // Only set report data if it's for the current project
                 if (data.report && projectId === currentProjectId) {
                     setReportData(data.report);
@@ -1188,6 +1282,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 stopPolling();
                 setIsFindingKeywordsFromWebsite(false);
                 setIsGeneratingKeywords(false);
+                
+                // Clear progress state after a short delay to allow report to render
+                setTimeout(() => {
+                    setKeywordProgress(null);
+                    setStepStartTimes({});
+                    setElapsedTimes({});
+                }, 500);
             }
         } catch (error) {
             console.error("Error polling pipeline status:", error);
@@ -1208,10 +1309,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
         }
 
-        if (!currentProjectId) {
+        // Ensure project exists before proceeding
+        const projectId = await ensureProjectExists();
+        if (!projectId) {
             toast({
                 title: "Error",
-                description: "Please save your project first",
+                description: "Failed to create project. Please try again.",
                 variant: "destructive",
             });
             return;
@@ -1220,10 +1323,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setIsFindingKeywordsFromWebsite(true);
         setIsGeneratingKeywords(true);
         setShowQuadrantPopup(false);
-        
+
         // Stop any existing polling
         stopPolling();
-        
+
         // If resuming, restore progress state from savedProgress
         if (resume && savedProgress) {
             setKeywordProgress({
@@ -1258,7 +1361,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         try {
             // Get Supabase session token
             const { data: { session } } = await supabase.auth.getSession();
-            
+
             const headers: Record<string, string> = { "Content-Type": "application/json" };
             if (session?.access_token) {
                 headers["Authorization"] = `Bearer ${session.access_token}`;
@@ -1266,13 +1369,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             // When resuming, target is optional (API may have already been called)
             // Use savedProgress target if available, otherwise use websiteUrl
-            const targetToSend = resume && savedProgress?.dataForSEOSiteResults 
-                ? (savedProgress.target || websiteUrl?.trim() || '') 
+            const targetToSend = resume && savedProgress?.dataForSEOSiteResults
+                ? (savedProgress.target || websiteUrl?.trim() || '')
                 : websiteUrl?.trim() || '';
 
             // Ensure all values are serializable (primitives only)
             const requestBody = {
-                projectId: String(currentProjectId || ''),
+                projectId: String(projectId || ''),
                 target: String(targetToSend || ''),
                 location_code: selectedLocation?.code != null ? Number(selectedLocation.code) : undefined,
                 location_name: selectedLocation?.name ? String(selectedLocation.name) : undefined,
@@ -1291,19 +1394,19 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
 
             const result = await response.json();
-            
+
             // Start polling immediately
-            pollPipelineStatus(currentProjectId);
-            
+            pollPipelineStatus(projectId);
+
             // Set up polling interval (poll every 2 seconds)
             pollingIntervalRef.current = setInterval(() => {
-                pollPipelineStatus(currentProjectId);
+                pollPipelineStatus(projectId);
             }, 2000);
 
         } catch (error) {
             console.error("Error starting pipeline:", error);
             const errorMessage = error instanceof Error ? error.message : "Failed to start pipeline";
-            
+
             // Update progress to show error state
             setKeywordProgress(prev => ({
                 ...prev,
@@ -1317,7 +1420,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 variant: "destructive",
                 duration: 10000,
             });
-            
+
             stopPolling();
             setIsFindingKeywordsFromWebsite(false);
             setIsGeneratingKeywords(false);
@@ -1345,7 +1448,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
         setIsGeneratingKeywords(true);
         setShowQuadrantPopup(false);
-        
+
         // If resuming, restore progress state
         if (resume && savedProgress) {
             setKeywordProgress({
@@ -1396,7 +1499,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         try {
             // Get Supabase session token
             const { data: { session } } = await supabase.auth.getSession();
-            
+
             const headers: Record<string, string> = { "Content-Type": "application/json" };
             if (session?.access_token) {
                 headers["Authorization"] = `Bearer ${session.access_token}`;
@@ -1444,7 +1547,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             const data = JSON.parse(line.slice(6));
                             if (data.type === "progress") {
                                 const currentStage = data.currentStage || data.stage || 'initializing';
-                                
+
                                 // Track step start times for elapsed time calculation
                                 const stageMap: Record<string, string> = {
                                     'calling-api': 'calling-api',
@@ -1452,7 +1555,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     'computing-metrics': 'computing-metrics',
                                     'generating-report': 'generating-report'
                                 };
-                                
+
                                 const stepKey = stageMap[currentStage] || currentStage;
                                 // Only set start time if step key exists and we don't already have a start time for it
                                 // This prevents resetting the start time when progress updates come in periodically
@@ -1465,7 +1568,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         return prev;
                                     });
                                 }
-                                
+
                                 // Update progress with current stage
                                 setKeywordProgress({
                                     stage: currentStage,
@@ -1500,10 +1603,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 if (data.newKeywords && Array.isArray(data.newKeywords)) {
                                     setGeneratedKeywords(data.newKeywords);
                                 }
-                                setKeywordProgress(prev => prev ? { ...prev, stage: 'complete', currentStage: 'complete' } : null);
-                                // Reset step start times
-                                setStepStartTimes({});
-                                setElapsedTimes({});
+                                
                                 // Update saved progress to mark as complete
                                 if (currentProjectId) {
                                     queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
@@ -1511,10 +1611,18 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
                                     }, 500);
                                 }
+                                
                                 toast({
                                     title: "Report Generated!",
                                     description: `Successfully generated full report with ${data.report?.totalKeywords || 0} keywords`,
                                 });
+                                
+                                // Clear progress state after a short delay to allow report to render
+                                setTimeout(() => {
+                                    setKeywordProgress(null);
+                                    setStepStartTimes({});
+                                    setElapsedTimes({});
+                                }, 500);
                             } else if (data.type === "error") {
                                 const errorMessage = data.error || "Unknown error";
                                 console.error("Error from server:", errorMessage);
@@ -1612,6 +1720,24 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     )}
                     <Button
                         type="button"
+                        onClick={handleSave}
+                        disabled={isSaving || createProjectMutation.isPending || updateProjectMutation.isPending}
+                        className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            <>
+                                <Save className="h-4 w-4" />
+                                Save
+                            </>
+                        )}
+                    </Button>
+                    <Button
+                        type="button"
                         variant="outline"
                         onClick={handleNewProject}
                         disabled={createProjectMutation.isPending}
@@ -1704,181 +1830,181 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                 {/* Competitors Section */}
                 <div className="space-y-6 mt-6">
-                        {/* Find Competitors Button */}
-                        <div className="space-y-4">
-                            <Button
-                                type="button"
-                                onClick={handleFindCompetitors}
-                                disabled={
-                                    !pitch ||
-                                    pitch.trim().length === 0 ||
-                                    isFindingCompetitors
-                                }
-                                className="w-full"
-                            >
-                                {isFindingCompetitors ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Finding Competitors...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Search className="mr-2 h-4 w-4" />
-                                        Find Competitors
-                                    </>
-                                )}
-                            </Button>
+                    {/* Find Competitors Button */}
+                    <div className="space-y-4">
+                        <Button
+                            type="button"
+                            onClick={handleFindCompetitors}
+                            disabled={
+                                !pitch ||
+                                pitch.trim().length === 0 ||
+                                isFindingCompetitors
+                            }
+                            className="w-full"
+                        >
+                            {isFindingCompetitors ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Finding Competitors...
+                                </>
+                            ) : (
+                                <>
+                                    <Search className="mr-2 h-4 w-4" />
+                                    Find Competitors
+                                </>
+                            )}
+                        </Button>
 
-                            {/* Competitors List */}
-                            {competitors.length > 0 && (
-                                <div className="pt-4 border-t border-white/10">
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-2">
-                                            <Building2 className="h-5 w-5 text-white/60" />
-                                            <h3 className="text-sm font-semibold text-white">
-                                                Found Competitors ({competitors.length})
-                                            </h3>
-                                        </div>
-                                        <div className="grid grid-cols-3 gap-3">
-                                            {competitors.map((competitor, index) => {
-                                                // Helper function to normalize URLs for comparison
-                                                const normalizeUrl = (url: string): string => {
-                                                    if (!url) return '';
-                                                    try {
-                                                        // Add protocol if missing
-                                                        const urlWithProtocol = url.startsWith('http') ? url : `https://${url}`;
-                                                        const urlObj = new URL(urlWithProtocol);
-                                                        // Get hostname and remove www.
-                                                        return urlObj.hostname.replace(/^www\./, '').toLowerCase();
-                                                    } catch {
-                                                        // If URL parsing fails, just clean it up
-                                                        return url.replace(/^https?:\/\//, '').replace(/^www\./, '').toLowerCase().split('/')[0];
-                                                    }
-                                                };
+                        {/* Competitors List */}
+                        {competitors.length > 0 && (
+                            <div className="pt-4 border-t border-white/10">
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <Building2 className="h-5 w-5 text-white/60" />
+                                        <h3 className="text-sm font-semibold text-white">
+                                            Found Competitors ({competitors.length})
+                                        </h3>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {competitors.map((competitor, index) => {
+                                            // Helper function to normalize URLs for comparison
+                                            const normalizeUrl = (url: string): string => {
+                                                if (!url) return '';
+                                                try {
+                                                    // Add protocol if missing
+                                                    const urlWithProtocol = url.startsWith('http') ? url : `https://${url}`;
+                                                    const urlObj = new URL(urlWithProtocol);
+                                                    // Get hostname and remove www.
+                                                    return urlObj.hostname.replace(/^www\./, '').toLowerCase();
+                                                } catch {
+                                                    // If URL parsing fails, just clean it up
+                                                    return url.replace(/^https?:\/\//, '').replace(/^www\./, '').toLowerCase().split('/')[0];
+                                                }
+                                            };
 
-                                                // Check if this competitor's URL matches the target website used for keyword generation
-                                                const keywordTarget = savedProgress?.target || '';
-                                                const competitorUrlNormalized = competitor.url ? normalizeUrl(competitor.url) : '';
-                                                const targetNormalized = keywordTarget ? normalizeUrl(keywordTarget) : '';
-                                                const hasKeywordsGenerated = competitorUrlNormalized && targetNormalized && competitorUrlNormalized === targetNormalized;
+                                            // Check if this competitor's URL matches the target website used for keyword generation
+                                            const keywordTarget = savedProgress?.target || '';
+                                            const competitorUrlNormalized = competitor.url ? normalizeUrl(competitor.url) : '';
+                                            const targetNormalized = keywordTarget ? normalizeUrl(keywordTarget) : '';
+                                            const hasKeywordsGenerated = competitorUrlNormalized && targetNormalized && competitorUrlNormalized === targetNormalized;
 
-                                                return (
-                                                    <div
-                                                        key={index}
-                                                        className={`bg-white/5 hover:bg-white/10 border rounded-lg p-3 transition-colors ${
-                                                            hasKeywordsGenerated ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-white/10'
+                                            return (
+                                                <div
+                                                    key={index}
+                                                    className={`bg-white/5 hover:bg-white/10 border rounded-lg p-3 transition-colors ${hasKeywordsGenerated ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-white/10'
                                                         }`}
-                                                    >
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                                                    <h4 className="text-sm font-medium text-white">
-                                                                        {competitor.name}
-                                                                    </h4>
-                                                                    {hasKeywordsGenerated && (
-                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded">
-                                                                            <Sparkles className="h-3 w-3" />
-                                                                            Keywords Generated
-                                                                        </span>
-                                                                    )}
-                                                                    {competitor.url && (
-                                                                        <>
-                                                                            <a
-                                                                                href={competitor.url}
-                                                                                target="_blank"
-                                                                                rel="noopener noreferrer"
-                                                                                className="text-primary hover:text-primary/80 transition-colors"
-                                                                                onClick={(e) => e.stopPropagation()}
-                                                                            >
-                                                                                <ExternalLink className="h-3.5 w-3.5" />
-                                                                            </a>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    if (competitor.url) {
-                                                                                        // Extract domain from URL
-                                                                                        try {
-                                                                                            const url = new URL(competitor.url.startsWith('http') ? competitor.url : `https://${competitor.url}`);
-                                                                                            setWebsiteUrl(url.hostname.replace('www.', ''));
-                                                                                        } catch {
-                                                                                            // If URL parsing fails, use the URL as-is
-                                                                                            setWebsiteUrl(competitor.url.replace(/^https?:\/\//, '').replace(/^www\./, ''));
-                                                                                        }
+                                                >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                                <h4 className="text-sm font-medium text-white">
+                                                                    {competitor.name}
+                                                                </h4>
+                                                                {hasKeywordsGenerated && (
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded">
+                                                                        <Sparkles className="h-3 w-3" />
+                                                                        Keywords Generated
+                                                                    </span>
+                                                                )}
+                                                                {competitor.url && (
+                                                                    <>
+                                                                        <a
+                                                                            href={competitor.url}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="text-primary hover:text-primary/80 transition-colors"
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                        >
+                                                                            <ExternalLink className="h-3.5 w-3.5" />
+                                                                        </a>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (competitor.url) {
+                                                                                    // Extract domain from URL
+                                                                                    try {
+                                                                                        const url = new URL(competitor.url.startsWith('http') ? competitor.url : `https://${competitor.url}`);
+                                                                                        setWebsiteUrl(url.hostname.replace('www.', ''));
+                                                                                    } catch {
+                                                                                        // If URL parsing fails, use the URL as-is
+                                                                                        setWebsiteUrl(competitor.url.replace(/^https?:\/\//, '').replace(/^www\./, ''));
                                                                                     }
-                                                                                }}
-                                                                                className="text-cyan-500 hover:text-cyan-400 transition-colors p-1 hover:bg-white/10 rounded"
-                                                                                title="Use this URL for keyword search"
-                                                                            >
-                                                                                <Search className="h-3.5 w-3.5" />
-                                                                            </button>
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                                <p className="text-xs text-white/60 line-clamp-2">
-                                                                    {competitor.description}
-                                                                </p>
+                                                                                }
+                                                                            }}
+                                                                            className="text-cyan-500 hover:text-cyan-400 transition-colors p-1 hover:bg-white/10 rounded"
+                                                                            title="Use this URL for keyword search"
+                                                                        >
+                                                                            <Search className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                    </>
+                                                                )}
                                                             </div>
+                                                            <p className="text-xs text-white/60 line-clamp-2">
+                                                                {competitor.description}
+                                                            </p>
                                                         </div>
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
-                            )}
+                            </div>
+                        )}
 
-                            {/* Find Keywords from Website */}
-                            <div className="space-y-2 pt-4 border-t border-white/10">
-                                <label className="text-sm font-medium text-white">
-                                    Find Keywords from Website
-                                </label>
-                                <div className="flex gap-2">
-                                    <Input
-                                        type="text"
-                                        placeholder="Enter website URL (e.g., dataforseo.com)"
-                                        value={websiteUrl}
-                                        onChange={(e) => setWebsiteUrl(e.target.value)}
-                                        disabled={isFindingKeywordsFromWebsite || isGeneratingKeywords}
-                                        className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/40"
-                                    />
-                                    <LocationSelector
-                                        value={selectedLocation}
-                                        onChange={setSelectedLocation}
-                                        inline={true}
-                                    />
-                                    <Button
-                                        type="button"
-                                        onClick={handleFindKeywordsFromWebsite}
-                                        disabled={
-                                            !websiteUrl ||
-                                            websiteUrl.trim().length === 0 ||
-                                            isFindingKeywordsFromWebsite ||
-                                            isGeneratingKeywords ||
-                                            !currentProjectId
-                                        }
-                                        className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-                                    >
-                                        {isFindingKeywordsFromWebsite ? (
-                                            <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Finding...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Search className="mr-2 h-4 w-4" />
-                                                Find from Website
-                                            </>
-                                        )}
-                                    </Button>
-                                </div>
+                        {/* Find Keywords from Website */}
+                        <div className="space-y-2 pt-4 border-t border-white/10">
+                            <label className="text-sm font-medium text-white">
+                                Find Keywords from Website
+                            </label>
+                            <div className="flex gap-2">
+                                <Input
+                                    type="text"
+                                    placeholder="Enter website URL (e.g., example.com)"
+                                    value={websiteUrl}
+                                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                                    disabled={isFindingKeywordsFromWebsite || isGeneratingKeywords}
+                                    className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/40"
+                                />
+                                <LocationSelector
+                                    value={selectedLocation}
+                                    onChange={setSelectedLocation}
+                                    inline={true}
+                                />
+                                <Button
+                                    type="button"
+                                    onClick={handleFindKeywordsFromWebsite}
+                                    disabled={
+                                        !websiteUrl ||
+                                        websiteUrl.trim().length === 0 ||
+                                        isFindingKeywordsFromWebsite ||
+                                        isGeneratingKeywords ||
+                                        createProjectMutation.isPending
+                                    }
+                                    className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+                                >
+                                    {isFindingKeywordsFromWebsite ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Finding...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Search className="mr-2 h-4 w-4" />
+                                            Find from Website
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
 
-                                {/* Show resume option if progress exists and is incomplete (website search) */}
-                                {savedProgress && 
-                                 savedProgress.currentStage !== 'complete' && 
-                                 savedProgress.reportGenerated !== true &&
-                                 savedProgress.currentStage !== undefined &&
-                                 ['creating-task', 'polling-task', 'extracting-keywords', 'fetching-dataforseo', 'generating-report'].includes(savedProgress.currentStage) && (
+                            {/* Show resume option if progress exists and is incomplete (website search) - only show if NOT currently running */}
+                            {savedProgress &&
+                                !isFindingKeywordsFromWebsite &&
+                                savedProgress.currentStage !== 'complete' &&
+                                savedProgress.reportGenerated !== true &&
+                                savedProgress.currentStage !== undefined &&
+                                ['creating-task', 'polling-task', 'extracting-keywords', 'fetching-dataforseo', 'generating-report'].includes(savedProgress.currentStage) && (
                                     <div className="mt-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
                                         <div className="text-sm text-yellow-200 mb-2">
                                             Website search in progress: {savedProgress.newKeywordsCollected || 0} keywords found
@@ -1906,9 +2032,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     </div>
                                 )}
 
-                                {/* Progress Steps - Always display when pipeline is running or has progress, but hide if report is completed */}
-                                {(isFindingKeywordsFromWebsite || (keywordProgress && keywordProgress.stage && keywordProgress.stage !== 'idle')) && 
-                                 savedProgress?.reportGenerated !== true && (
+                            {/* Progress Steps - Always display when pipeline is running or has progress, but hide if report is completed */}
+                            {(isFindingKeywordsFromWebsite || (keywordProgress && keywordProgress.stage && keywordProgress.stage !== 'idle' && keywordProgress.stage !== 'complete')) &&
+                                savedProgress?.reportGenerated !== true &&
+                                savedProgress?.currentStage !== 'complete' &&
+                                keywordProgress?.stage !== 'complete' &&
+                                keywordProgress?.currentStage !== 'complete' &&
+                                !reportData && (
                                     <div className="mt-4 space-y-3 bg-white/5 rounded-lg p-4 border border-white/10">
                                         <div className="text-sm font-medium text-white mb-3">
                                             Progress
@@ -1918,14 +2048,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             const stages = [
                                                 {
                                                     key: 'creating-task',
-                                                    label: 'Creating DataForSEO task',
+                                                    label: 'Creating task',
                                                     description: 'Submitting request to find keywords for the website...',
                                                     estimate: 3,
                                                 },
                                                 {
                                                     key: 'polling-task',
                                                     label: 'Waiting for results',
-                                                    description: 'DataForSEO is analyzing the website. This may take 10-30 seconds (or 1-5 minutes if using task API)...',
+                                                    description: 'Analyzing the website. This may take 10-30 seconds (or 1-5 minutes if using task API)...',
                                                     estimate: 30,
                                                 },
                                                 {
@@ -1950,7 +2080,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                                             const hasError = currentStage === 'error';
                                             const errorMessage = savedProgress?.error || '';
-                                            
+
                                             return (
                                                 <div className="space-y-2">
                                                     {/* Explicit error display */}
@@ -1964,7 +2094,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                             </div>
                                                         </div>
                                                     )}
-                                                    
+
                                                     {stages.map((stage, index) => {
                                                         const isActive = currentStage === stage.key && !hasError;
                                                         const isCompleted = hasError ? false : stages.findIndex(s => s.key === currentStage) > index;
@@ -1993,18 +2123,16 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                                     )}
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
-                                                                    <div className={`text-sm font-medium ${
-                                                                        isError ? 'text-red-400' :
-                                                                        isCompleted ? 'text-green-400' : 
-                                                                        isActive ? 'text-blue-400' : 
-                                                                        'text-white/60'
-                                                                    }`}>
+                                                                    <div className={`text-sm font-medium ${isError ? 'text-red-400' :
+                                                                        isCompleted ? 'text-green-400' :
+                                                                            isActive ? 'text-blue-400' :
+                                                                                'text-white/60'
+                                                                        }`}>
                                                                         {stage.label}
                                                                     </div>
-                                                                    <div className={`text-xs mt-0.5 ${
-                                                                        isError ? 'text-red-300' :
+                                                                    <div className={`text-xs mt-0.5 ${isError ? 'text-red-300' :
                                                                         isActive ? 'text-white/80' : 'text-white/50'
-                                                                    }`}>
+                                                                        }`}>
                                                                         {isError ? 'Failed' : (
                                                                             isActive ? stage.description : (
                                                                                 isCompleted ? 'Completed' : 'Pending'
@@ -2025,11 +2153,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         })()}
                                     </div>
                                 )}
-                            </div>
                         </div>
+                    </div>
                 </div>
 
-                    {/* Tab 2: Custom Keywords - Commented out for future use
+                {/* Tab 2: Custom Keywords - Commented out for future use */}
+                {false && (
                     <TabsContent value="custom-keywords" className="space-y-6 mt-6">
                         <div className="grid grid-cols-2 gap-6">
                             <div className="space-y-2">
@@ -2146,8 +2275,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 )}
                             </Button>
 
-                            {/* Show resume option if progress exists and is incomplete */}
-                            {savedProgress && savedProgress.currentStage !== 'complete' && savedProgress.reportGenerated !== true && savedProgress.currentStage !== undefined && (
+                            {/* Show resume option if progress exists and is incomplete - only show if NOT currently running */}
+                            {savedProgress && !isGeneratingKeywords && savedProgress.currentStage !== 'complete' && savedProgress.reportGenerated !== true && savedProgress.currentStage !== undefined && (
                                 <div className="mt-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3">
                                     <div className="text-sm text-yellow-200 mb-2">
                                         Generation in progress: {savedProgress.newKeywordsCollected || 0} / 1000 keywords
@@ -2200,7 +2329,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 }).length;
 
                                 // Filter keywords with full data if checkbox is checked
-                                const filteredKeywords = showOnlyFullData 
+                                const filteredKeywords = showOnlyFullData
                                     ? reportData.keywords.filter((k: any) => {
                                         let volume: number | null = null;
                                         if (k.volume !== null && k.volume !== undefined) {
@@ -2212,7 +2341,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             }
                                         }
                                         const hasVolume = volume !== null && volume > 0;
-                                        
+
                                         let competition: number | null = null;
                                         if (k.competition !== null && k.competition !== undefined) {
                                             if (typeof k.competition === 'number') {
@@ -2223,25 +2352,25 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             }
                                         }
                                         const hasCompetition = competition !== null;
-                                        
+
                                         let cpc: number | null = null;
                                         if (k.cpc !== null && k.cpc !== undefined && k.cpc !== '') {
                                             const parsed = parseFloat(k.cpc);
                                             cpc = !isNaN(parsed) && parsed > 0 ? parsed : null;
                                         }
                                         const hasCpc = cpc !== null && cpc > 0;
-                                        
+
                                         let topPageBid: number | null = null;
                                         if (k.topPageBid !== null && k.topPageBid !== undefined && k.topPageBid !== '') {
                                             const parsed = parseFloat(k.topPageBid);
                                             topPageBid = !isNaN(parsed) && parsed > 0 ? parsed : null;
                                         }
                                         const hasTopPageBid = topPageBid !== null && topPageBid > 0;
-                                        
+
                                         return hasVolume && hasCompetition && hasCpc && hasTopPageBid;
                                     })
                                     : reportData.keywords;
-                                
+
                                 const displayedKeywords = filteredKeywords.slice(0, displayedKeywordCount);
                                 const hasMoreToShow = displayedKeywordCount < filteredKeywords.length;
 
@@ -2332,7 +2461,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             })()}
                         </div>
                     </TabsContent>
-                    */}
+                )}
             </form>
 
             {/* Quadrant Popup Dialog */}
@@ -2389,16 +2518,16 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 ))}
                             </div>
                         )}
-                        {(!keywordProgress || 
+                        {(!keywordProgress ||
                             (quadrantPopupType === 'seeds' && (!keywordProgress.seeds || keywordProgress.seeds.length === 0)) ||
                             (quadrantPopupType === 'keywords' && (!keywordProgress.allKeywords || keywordProgress.allKeywords.length === 0)) ||
                             (quadrantPopupType === 'duplicates' && (!keywordProgress.duplicates || keywordProgress.duplicates.length === 0)) ||
                             (quadrantPopupType === 'existing' && (!keywordProgress.existingKeywords || keywordProgress.existingKeywords.length === 0))
                         ) && (
-                            <div className="text-center text-white/60 py-8">
-                                No items to display yet.
-                            </div>
-                        )}
+                                <div className="text-center text-white/60 py-8">
+                                    No items to display yet.
+                                </div>
+                            )}
                     </div>
                 </DialogContent>
             </Dialog>
@@ -2416,7 +2545,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                 // Filter keywords with full data if checkbox is checked
                 // A keyword has "full data" if it has all essential metrics: volume, competition, cpc, and topPageBid
-                const filteredKeywords = showOnlyFullData 
+                const filteredKeywords = showOnlyFullData
                     ? reportData.keywords.filter((k: any) => {
                         // Check if volume exists and is > 0
                         let volume: number | null = null;
@@ -2429,7 +2558,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             }
                         }
                         const hasVolume = volume !== null && volume > 0;
-                        
+
                         // Check if competition exists
                         let competition: number | null = null;
                         if (k.competition !== null && k.competition !== undefined) {
@@ -2441,7 +2570,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             }
                         }
                         const hasCompetition = competition !== null;
-                        
+
                         // Check if CPC exists and is > 0
                         let cpc: number | null = null;
                         if (k.cpc !== null && k.cpc !== undefined && k.cpc !== '') {
@@ -2449,7 +2578,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             cpc = !isNaN(parsed) && parsed > 0 ? parsed : null;
                         }
                         const hasCpc = cpc !== null && cpc > 0;
-                        
+
                         // Check if top page bid exists and is > 0
                         let topPageBid: number | null = null;
                         if (k.topPageBid !== null && k.topPageBid !== undefined && k.topPageBid !== '') {
@@ -2457,12 +2586,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             topPageBid = !isNaN(parsed) && parsed > 0 ? parsed : null;
                         }
                         const hasTopPageBid = topPageBid !== null && topPageBid > 0;
-                        
+
                         // Require all metrics to be present
                         return hasVolume && hasCompetition && hasCpc && hasTopPageBid;
                     })
                     : reportData.keywords;
-                
+
                 // Slice keywords based on displayedKeywordCount (same logic as standard search)
                 const displayedKeywords = filteredKeywords.slice(0, displayedKeywordCount);
                 const hasMoreToShow = displayedKeywordCount < filteredKeywords.length;

@@ -186,14 +186,14 @@ export async function fetchKeywordMetrics(
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`DataForSEO API error: ${response.status} ${response.statusText} - ${errorText}`);
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data: DataForSEOResponse = await response.json();
 
     // Check for API-level errors
     if (data.status_code !== 20000) {
-        throw new Error(`DataForSEO API error: ${data.status_message} (code: ${data.status_code})`);
+        throw new Error(`API error: ${data.status_message} (code: ${data.status_code})`);
     }
 
     // Check for task-level errors
@@ -202,7 +202,7 @@ export async function fetchKeywordMetrics(
             .filter(task => task.status_code !== 20000)
             .map(task => `${task.status_message} (code: ${task.status_code})`)
             .join(", ");
-        throw new Error(`DataForSEO task errors: ${errorMessages}`);
+        throw new Error(`Task errors: ${errorMessages}`);
     }
 
     return data;
@@ -245,14 +245,14 @@ export async function createKeywordsForSiteTask(
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`DataForSEO API error: ${response.status} ${response.statusText} - ${errorText}`);
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data: KeywordsForSiteTaskPostResponse = await response.json();
 
     // Check for API-level errors
     if (data.status_code !== 20000) {
-        throw new Error(`DataForSEO API error: ${data.status_message} (code: ${data.status_code})`);
+        throw new Error(`API error: ${data.status_message} (code: ${data.status_code})`);
     }
 
     // Check for task-level errors
@@ -261,7 +261,7 @@ export async function createKeywordsForSiteTask(
             ?.filter(task => task.status_code !== 20100 && task.status_code !== 20000)
             .map(task => `${task.status_message} (code: ${task.status_code})`)
             .join(", ") || "No tasks returned";
-        throw new Error(`DataForSEO task errors: ${errorMessages}`);
+        throw new Error(`Task errors: ${errorMessages}`);
     }
 
     const task = data.tasks[0];
@@ -311,14 +311,14 @@ export async function getKeywordsForSiteTask(
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`DataForSEO API error: ${response.status} ${response.statusText} - ${errorText}`);
+            throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
         const data: KeywordsForSiteTaskGetResponse = await response.json();
 
         // Check for API-level errors
         if (data.status_code !== 20000) {
-            throw new Error(`DataForSEO API error: ${data.status_message} (code: ${data.status_code})`);
+            throw new Error(`API error: ${data.status_message} (code: ${data.status_code})`);
         }
 
         if (!data.tasks || data.tasks.length === 0) {
@@ -406,14 +406,14 @@ export async function getKeywordsForSiteLive(
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`DataForSEO API error: ${response.status} ${response.statusText} - ${errorText}`);
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data: KeywordsForSiteTaskGetResponse = await response.json();
 
     // Check for API-level errors
     if (data.status_code !== 20000) {
-        throw new Error(`DataForSEO API error: ${data.status_message} (code: ${data.status_code})`);
+        throw new Error(`API error: ${data.status_message} (code: ${data.status_code})`);
     }
 
     // Check for task-level errors
@@ -422,14 +422,14 @@ export async function getKeywordsForSiteLive(
             ?.filter(task => task.status_code !== 20000)
             .map(task => `${task.status_message} (code: ${task.status_code})`)
             .join(", ") || "No tasks returned";
-        throw new Error(`DataForSEO task errors: ${errorMessages}`);
+        throw new Error(`Task errors: ${errorMessages}`);
     }
 
     const task = data.tasks[0];
 
     // Check task status
     if (task.status_code !== 20000) {
-        throw new Error(`DataForSEO task error: ${task.status_message} (code: ${task.status_code})`);
+        throw new Error(`Task error: ${task.status_message} (code: ${task.status_code})`);
     }
 
     if (!task.result || task.result.length === 0) {
@@ -548,14 +548,14 @@ export async function createKeywordsForKeywordsTask(
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`DataForSEO API error: ${response.status} ${response.statusText} - ${errorText}`);
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data: KeywordsForKeywordsTaskPostResponse = await response.json();
 
     // Check for API-level errors
     if (data.status_code !== 20000) {
-        throw new Error(`DataForSEO API error: ${data.status_message} (code: ${data.status_code})`);
+        throw new Error(`API error: ${data.status_message} (code: ${data.status_code})`);
     }
 
     // Check for task-level errors
@@ -564,7 +564,7 @@ export async function createKeywordsForKeywordsTask(
             ?.filter(task => task.status_code !== 20100 && task.status_code !== 20000)
             .map(task => `${task.status_message} (code: ${task.status_code})`)
             .join(", ") || "No tasks returned";
-        throw new Error(`DataForSEO task errors: ${errorMessages}`);
+        throw new Error(`Task errors: ${errorMessages}`);
     }
 
     const task = data.tasks[0];
@@ -614,14 +614,14 @@ export async function getKeywordsForKeywordsTask(
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`DataForSEO API error: ${response.status} ${response.statusText} - ${errorText}`);
+            throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
         const data: KeywordsForKeywordsTaskGetResponse = await response.json();
 
         // Check for API-level errors
         if (data.status_code !== 20000) {
-            throw new Error(`DataForSEO API error: ${data.status_message} (code: ${data.status_code})`);
+            throw new Error(`API error: ${data.status_message} (code: ${data.status_code})`);
         }
 
         if (!data.tasks || data.tasks.length === 0) {
@@ -657,3 +657,77 @@ export async function getKeywordsForKeywordsTask(
     throw new Error(`Task did not complete within ${maxPollAttempts} attempts (${(maxPollAttempts * pollIntervalMs) / 1000} seconds)`);
 }
 
+/**
+ * Get keywords for keywords using DataForSEO Live API (synchronous)
+ * This is faster but has rate limits - use instead of task API to avoid duplicate calls
+ * 
+ * @param keywords - Array of 1-20 keywords to find related keywords for
+ * @param locationCode - Location code (default: 2840 for US)
+ * @param locationName - Location name (optional, e.g., "United States")
+ * @returns Promise with array of keyword results
+ */
+export async function getKeywordsForKeywordsLive(
+    keywords: string[],
+    locationCode: number = 2840,
+    locationName?: string
+): Promise<KeywordsForKeywordsKeywordResult[]> {
+    if (!keywords || keywords.length === 0 || keywords.length > 20) {
+        throw new Error("Keywords array must contain 1-20 keywords");
+    }
+
+    const apiUrl = "https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live";
+    const credB64 = process.env.DATA_FOR_SEO_CRED_B64;
+
+    if (!credB64) {
+        throw new Error("DATA_FOR_SEO_CRED_B64 environment variable is not set");
+    }
+
+    const requestBody: KeywordsForKeywordsRequest[] = [{
+        keywords: keywords,
+        location_code: locationCode,
+        ...(locationName && { location_name: locationName })
+    }];
+
+    const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+            "Authorization": `Basic ${credB64}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data: KeywordsForKeywordsTaskGetResponse = await response.json();
+
+    // Check for API-level errors
+    if (data.status_code !== 20000) {
+        throw new Error(`API error: ${data.status_message} (code: ${data.status_code})`);
+    }
+
+    // Check for task-level errors
+    if (data.tasks_error > 0 || !data.tasks || data.tasks.length === 0) {
+        const errorMessages = data.tasks
+            ?.filter(task => task.status_code !== 20000)
+            .map(task => `${task.status_message} (code: ${task.status_code})`)
+            .join(", ") || "No tasks returned";
+        throw new Error(`Task errors: ${errorMessages}`);
+    }
+
+    const task = data.tasks[0];
+
+    // Check task status
+    if (task.status_code !== 20000) {
+        throw new Error(`Task error: ${task.status_message} (code: ${task.status_code})`);
+    }
+
+    if (!task.result || task.result.length === 0) {
+        return [];
+    }
+
+    return task.result;
+}

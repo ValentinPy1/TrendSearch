@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "./ui/button";
@@ -23,7 +22,6 @@ export function CustomSearchProjectBrowser({
 }: CustomSearchProjectBrowserProps) {
     const { toast } = useToast();
     const queryClient = useQueryClient();
-    const [deletingId, setDeletingId] = useState<string | null>(null);
 
     interface ProjectWithStats extends CustomSearchProject {
         keywordCount?: number;
@@ -51,28 +49,48 @@ export function CustomSearchProjectBrowser({
             const res = await apiRequest("DELETE", `/api/custom-search/projects/${projectId}`);
             return res.json();
         },
+        onMutate: async (projectId: string) => {
+            // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+            await queryClient.cancelQueries({ queryKey: ["/api/custom-search/projects"] });
+
+            // Snapshot the previous value
+            const previousProjects = queryClient.getQueryData<{ projects: ProjectWithStats[] }>(["/api/custom-search/projects"]);
+
+            // Optimistically update to the new value
+            if (previousProjects) {
+                queryClient.setQueryData<{ projects: ProjectWithStats[] }>(["/api/custom-search/projects"], {
+                    projects: previousProjects.projects.filter(p => p.id !== projectId),
+                });
+            }
+
+            // Return a context object with the snapshotted value
+            return { previousProjects };
+        },
         onSuccess: () => {
+            // Invalidate to ensure we have the latest data
             queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
             toast({
                 title: "Project Deleted",
                 description: "Project has been deleted successfully.",
             });
-            setDeletingId(null);
         },
-        onError: (error) => {
+        onError: (error, projectId, context) => {
+            // If the mutation fails, use the context returned from onMutate to roll back
+            if (context?.previousProjects) {
+                queryClient.setQueryData(["/api/custom-search/projects"], context.previousProjects);
+            }
             toast({
                 title: "Error",
                 description: error instanceof Error ? error.message : "Failed to delete project",
                 variant: "destructive",
             });
-            setDeletingId(null);
         },
     });
 
     const handleDelete = async (projectId: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if (confirm("Are you sure you want to delete this project?")) {
-            setDeletingId(projectId);
+            // Optimistically remove from UI immediately
             deleteMutation.mutate(projectId);
         }
     };
@@ -209,13 +227,9 @@ export function CustomSearchProjectBrowser({
                                             size="icon"
                                             className="text-red-400 hover:text-red-300 hover:bg-red-500/20"
                                             onClick={(e) => handleDelete(project.id, e)}
-                                            disabled={deletingId === project.id}
+                                            disabled={deleteMutation.isPending}
                                         >
-                                            {deletingId === project.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <Trash2 className="h-4 w-4" />
-                                            )}
+                                            <Trash2 className="h-4 w-4" />
                                         </Button>
                                     </div>
                                 </GlassmorphicCard>
