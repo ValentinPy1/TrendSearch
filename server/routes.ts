@@ -3210,8 +3210,9 @@ Return ONLY the JSON array, no other text. Example format:
         location_name: string | undefined,
         resume: boolean
     ): Promise<void> {
+        // Declare finalKeywords outside try block so it's accessible in catch block
+        let finalKeywords: string[] = [];
         try {
-            let finalKeywords: string[] = [];
             const project = await storage.getCustomSearchProject(projectId);
             if (!project) {
                 throw new Error("Project not found");
@@ -3927,8 +3928,19 @@ Return ONLY the JSON array, no other text. Example format:
 
             // Try to save error state - use a basic save since saveProgress might not be available
             try {
-                // Ensure finalKeywords is defined (it might not be if error occurred early)
-                const keywordsForError = finalKeywords || [];
+                // Try to get keywords from saved progress if finalKeywords is empty
+                let keywordsForError = finalKeywords || [];
+                if (keywordsForError.length === 0) {
+                    try {
+                        const project = await storage.getCustomSearchProject(projectId);
+                        if (project?.keywordGenerationProgress?.newKeywords) {
+                            keywordsForError = project.keywordGenerationProgress.newKeywords;
+                        }
+                    } catch (e) {
+                        // Ignore errors when trying to get saved progress
+                    }
+                }
+
                 const errorProgress: any = {
                     currentStage: 'error',
                     stage: 'error',
@@ -3938,7 +3950,7 @@ Return ONLY the JSON array, no other text. Example format:
                     keywordsGenerated: 0,
                     duplicatesFound: 0,
                     existingKeywordsFound: 0,
-                    newKeywordsCollected: 0
+                    newKeywordsCollected: keywordsForError.length
                 };
                 await storage.saveKeywordGenerationProgress(projectId, errorProgress);
             } catch (saveError) {

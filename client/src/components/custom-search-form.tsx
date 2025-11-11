@@ -155,6 +155,35 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 return;
             }
 
+            // If project exists and is the current project, ensure form values are populated
+            // This ensures form values persist after project creation and query refetch
+            // IMPORTANT: Only restore form values if they're empty - don't overwrite user input
+            // This is especially important for automatic project creation (Find Competitors, Find Keywords)
+            // where we want to preserve what the user is typing
+            if (currentProject && currentProject.id === currentProjectId && !isCreatingProjectRef.current && !createProjectMutation.isPending) {
+                const currentFormValues = form.getValues();
+                // Only restore if form is empty but project has a value
+                // This prevents overwriting user input during automatic project creation
+                if (currentProject.pitch !== undefined) {
+                    const projectPitch = currentProject.pitch || "";
+                    const formPitch = currentFormValues.pitch || "";
+                    // Only update if form is completely empty but project has a value
+                    // This preserves user input during automatic project creation
+                    if (!formPitch && projectPitch) {
+                        form.setValue("pitch", projectPitch);
+                    }
+                }
+                if (currentProject.name !== undefined) {
+                    const projectName = currentProject.name || "";
+                    const formName = currentFormValues.name || "";
+                    // Only update if form is completely empty but project has a value
+                    // This preserves user input during automatic project creation
+                    if (!formName && projectName) {
+                        form.setValue("name", projectName);
+                    }
+                }
+            }
+
             if (currentProject?.keywordGenerationProgress) {
                 const progress = currentProject.keywordGenerationProgress;
                 setSavedProgress(progress);
@@ -248,6 +277,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     // Start polling
                     setIsFindingKeywordsFromWebsite(true);
                     setIsGeneratingKeywords(true);
+                    // Initialize previous status to 'running' so we can detect completion
+                    previousPipelineStatusRef.current = 'running';
                     pollPipelineStatus(currentProjectId);
                     pollingIntervalRef.current = setInterval(() => {
                         pollPipelineStatus(currentProjectId);
@@ -377,13 +408,30 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         onSuccess: (result) => {
             setCurrentProjectId(result.project.id);
             isCreatingProjectRef.current = false; // Clear guard after setting currentProjectId
-            // Update form values to match what was saved (in case server modified them)
+            
+            // For automatic project creation (via ensureProjectExists), preserve current form values
+            // Don't overwrite what the user is typing - only set if form is empty
+            const currentFormPitch = form.getValues("pitch");
+            const currentFormName = form.getValues("name");
+            
+            // Only update form if it's empty and project has a value
+            // This preserves user input during automatic project creation
             if (result.project.pitch !== undefined) {
-                form.setValue("pitch", result.project.pitch || "");
+                const projectPitch = result.project.pitch || "";
+                // Only set if form is empty but project has a value
+                if (!currentFormPitch && projectPitch) {
+                    form.setValue("pitch", projectPitch);
+                }
             }
             if (result.project.name !== undefined) {
-                form.setValue("name", result.project.name || "");
+                const projectName = result.project.name || "";
+                // Only set if form is empty but project has a value
+                if (!currentFormName && projectName) {
+                    form.setValue("name", projectName);
+                }
             }
+            
+            // Invalidate queries to refresh the projects list
             queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
         },
         onError: (error) => {
@@ -771,12 +819,17 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             });
         }
 
-        // Create new project
+        // Capture current form values at the moment of creation to ensure we use the latest values
+        const currentFormValues = form.getValues();
+        const currentPitch = currentFormValues.pitch || "";
+        const currentName = currentFormValues.name || "";
+
+        // Create new project with current form values
         isCreatingProjectRef.current = true;
         try {
             const result = await createProjectMutation.mutateAsync({
-                name: name || undefined,
-                pitch: pitch || "",
+                name: currentName || undefined,
+                pitch: currentPitch || "",
                 topics,
                 personas,
                 painPoints,
@@ -1175,11 +1228,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
     // Polling mechanism for pipeline status
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const previousPipelineStatusRef = useRef<string | null>(null); // Track previous status to detect transitions
     const stopPolling = () => {
         if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
         }
+        // Reset previous status when stopping polling
+        previousPipelineStatusRef.current = null;
     };
 
     // Poll pipeline status
@@ -1300,10 +1356,18 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     reportProjectIdRef.current = projectId;
                 }
 
-                toast({
-                    title: "Success!",
-                    description: `Successfully found keywords from website with ${data.report?.totalKeywords || 0} keywords`,
-                });
+                // Only show success toast if we transitioned from a non-complete status to complete
+                // This prevents showing the toast on page refresh when the pipeline was already complete
+                const wasRunning = previousPipelineStatusRef.current !== null && 
+                                   previousPipelineStatusRef.current !== 'complete' && 
+                                   previousPipelineStatusRef.current !== 'error';
+                
+                if (wasRunning) {
+                    toast({
+                        title: "Success!",
+                        description: `Successfully found keywords from website with ${data.report?.totalKeywords || 0} keywords`,
+                    });
+                }
 
                 stopPolling();
                 setIsFindingKeywordsFromWebsite(false);
@@ -1316,6 +1380,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     setElapsedTimes({});
                 }, 500);
             }
+
+            // Update previous status for next poll
+            previousPipelineStatusRef.current = data.status;
         } catch (error) {
             console.error("Error polling pipeline status:", error);
             // Don't stop polling on transient errors - continue trying
@@ -1420,6 +1487,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
 
             const result = await response.json();
+
+            // Initialize previous status to 'running' so we can detect completion
+            previousPipelineStatusRef.current = 'running';
 
             // Start polling immediately
             pollPipelineStatus(projectId);
