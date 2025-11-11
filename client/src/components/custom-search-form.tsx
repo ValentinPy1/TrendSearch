@@ -139,7 +139,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             const currentProject = projectsData.projects.find(p => p.id === currentProjectId);
 
             // If current project was deleted, clear the form
-            if (!currentProject && currentProjectId) {
+            // BUT: Don't clear if we're currently creating a project (race condition protection)
+            if (!currentProject && currentProjectId && !isCreatingProjectRef.current && !createProjectMutation.isPending) {
                 setCurrentProjectId(null);
                 form.reset({ name: "", pitch: "" });
                 setTopics([]);
@@ -376,6 +377,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         onSuccess: (result) => {
             setCurrentProjectId(result.project.id);
             isCreatingProjectRef.current = false; // Clear guard after setting currentProjectId
+            // Update form values to match what was saved (in case server modified them)
+            if (result.project.pitch !== undefined) {
+                form.setValue("pitch", result.project.pitch || "");
+            }
+            if (result.project.name !== undefined) {
+                form.setValue("name", result.project.name || "");
+            }
             queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
         },
         onError: (error) => {
