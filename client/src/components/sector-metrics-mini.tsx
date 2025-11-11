@@ -9,16 +9,24 @@ interface SectorMetricsMiniProps {
 export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMiniProps) {
     const getTrendGradientText = (value: number) => {
         if (value >= 0) {
-            const normalizedValue = Math.min(1, value / 200);
+            // For positive values, use green gradient
+            // Normalize to 0-1 range (cap at 200% growth)
+            const normalizedValue = Math.min(1, Math.max(0, value / 200));
+            // Lightness ranges from 100% (white) at 0% to 50% (darker green) at 200%
             const lightness = 100 - normalizedValue * 50;
+            // Ensure minimum lightness for visibility (at least 60%)
+            const finalLightness = Math.max(60, lightness);
             return {
-                color: `hsl(142, 70%, ${lightness}%)`,
+                color: `hsl(142, 70%, ${finalLightness}%)`,
             };
         } else {
-            const normalizedValue = Math.min(1, Math.abs(value) / 100);
+            // For negative values, use red gradient
+            const normalizedValue = Math.min(1, Math.max(0, Math.abs(value) / 100));
             const lightness = 100 - normalizedValue * 50;
+            // Ensure minimum lightness for visibility (at least 60%)
+            const finalLightness = Math.max(60, lightness);
             return {
-                color: `hsl(0, 80%, ${lightness}%)`,
+                color: `hsl(0, 80%, ${finalLightness}%)`,
             };
         }
     };
@@ -56,6 +64,11 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
     };
 
     // For compact display, we'll show 4 key metrics
+    // Ensure avgGrowthYoy is a valid number (handle NaN, undefined, null)
+    const avgGrowthYoy = typeof metrics.avgGrowthYoy === 'number' && !isNaN(metrics.avgGrowthYoy) 
+        ? metrics.avgGrowthYoy 
+        : 0;
+    
     const displayMetrics = [
         {
             label: "Volume",
@@ -71,9 +84,9 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
         },
         {
             label: "YoY Growth",
-            value: `${metrics.avgGrowthYoy >= 0 ? "+" : ""}${metrics.avgGrowthYoy.toFixed(1)}%`,
+            value: `${avgGrowthYoy >= 0 ? "+" : ""}${avgGrowthYoy.toFixed(1)}%`,
             icon: TrendingUp,
-            style: getTrendGradientText(metrics.avgGrowthYoy),
+            style: getTrendGradientText(avgGrowthYoy),
         },
         {
             label: "Avg CPC",

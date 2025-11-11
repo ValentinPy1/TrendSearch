@@ -135,3 +135,4 @@ vite.config.ts.*
 data/sectors_aggregated_metrics.json
 
 new_keywords
+log.txt

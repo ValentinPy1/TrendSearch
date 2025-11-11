@@ -64,8 +64,9 @@ interface CompanyMetricResult {
     url?: string;
 }
 
-interface SubIndustryAggregateResult {
-    subIndustry: string;
+interface IndustryAggregateResult {
+    industry: string; // Can be either main_industry or sub_industry
+    industryType: 'main' | 'sub'; // Indicates if it's a main or sub industry
     companyCount: number;
     aggregatedMetrics: AggregatedMetrics;
     monthlyTrendData: Array<{ month: string; volume: number }>;
@@ -73,10 +74,10 @@ interface SubIndustryAggregateResult {
 
 interface OutputData {
     companies: Record<string, CompanyMetricResult>;
-    subIndustries: Record<string, SubIndustryAggregateResult>;
+    industries: Record<string, IndustryAggregateResult>; // Flattened: both main and sub industries at same level
     metadata: {
         totalCompanies: number;
-        totalSubIndustries: number;
+        totalIndustries: number;
         generatedAt: string;
     };
 }
@@ -136,12 +137,32 @@ async function processKeywords(rawKeywords: any[]): Promise<ProcessedKeyword[]> 
 
     return rawKeywords.map((kw) => {
         // Convert monthly data from CSV format to app format with correct month labels
+        // Keywords from findSimilarKeywords have monthly_data JSONB converted to month columns (e.g., "2024_09")
         const monthlyData = allMonths.map(({ key, label }) => {
+            // Try to get volume from month column (e.g., kw["2024_09"])
+            // If not found, try to get from monthly_data JSONB array if present
+            let volume = (kw[key as keyof typeof kw] as number);
+            
+            // If month column not found, try to extract from monthly_data JSONB array
+            if (volume === undefined || volume === null) {
+                if (kw.monthly_data && Array.isArray(kw.monthly_data)) {
+                    const monthData = kw.monthly_data.find((item: any) => 
+                        item.month === key || item.month === label
+                    );
+                    if (monthData) {
+                        volume = monthData.volume;
+                    }
+                }
+            }
+            
+            // Fallback to search_volume if still not found
+            if (volume === undefined || volume === null) {
+                volume = kw.search_volume || 0;
+            }
+            
             return {
                 month: label,
-                volume: Math.floor(
-                    (kw[key as keyof typeof kw] as number) || kw.search_volume || 0,
-                ),
+                volume: Math.floor(volume),
             };
         });
 
@@ -157,16 +178,37 @@ async function processKeywords(rawKeywords: any[]): Promise<ProcessedKeyword[]> 
 
         let growthYoy = 0;
         if (monthlyData.length >= 12) {
-            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025
-            const oneYearAgo = monthlyData[monthlyData.length - 13].volume; // Sep 2024 (12 months ago)
-            if (oneYearAgo !== 0) {
-                growthYoy = ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
+            const currentVolume = monthlyData[monthlyData.length - 1].volume; // Sep 2025 (index 47)
+            // For YoY: compare Sep 2025 to Sep 2024 (12 months ago, which is index 35 for 48 months)
+            // With 48 months: length=48, last index=47, 12 months ago = 47-12+1 = 36... wait, that's Oct
+            // Actually: Sep 2025 is at index 47, Sep 2024 is at index 35 (12 months earlier)
+            // So: 47 - 12 = 35, which means we need length - 13
+            const oneYearAgoIndex = monthlyData.length - 13; // Sep 2024 (12 months before Sep 2025)
+            if (oneYearAgoIndex >= 0 && monthlyData[oneYearAgoIndex]) {
+                const oneYearAgo = monthlyData[oneYearAgoIndex].volume;
+                if (oneYearAgo !== 0) {
+                    growthYoy = ((currentVolume - oneYearAgo) / oneYearAgo) * 100;
+                }
             }
         }
 
         const similarityScore = typeof kw.similarityScore === 'number'
             ? kw.similarityScore
             : parseFloat(kw.similarityScore || "0");
+
+        // Use precomputed growth_yoy from database if available, otherwise use calculated value
+        let finalGrowthYoy = growthYoy;
+        if (kw.growth_YoY !== undefined && kw.growth_YoY !== null) {
+            finalGrowthYoy = parseFloat(String(kw.growth_YoY));
+        } else if (kw.growth_yoy !== undefined && kw.growth_yoy !== null) {
+            finalGrowthYoy = parseFloat(String(kw.growth_yoy));
+        }
+
+        // Use precomputed growth_3m from database if available
+        let finalGrowth3m = growth3m;
+        if (kw.growth_3m !== undefined && kw.growth_3m !== null) {
+            finalGrowth3m = parseFloat(String(kw.growth_3m));
+        }
 
         const result: ProcessedKeyword = {
             keyword: kw.keyword,
@@ -176,8 +218,8 @@ async function processKeywords(rawKeywords: any[]): Promise<ProcessedKeyword[]> 
             topPageBid: parseFloat(String(
                 kw.high_top_of_page_bid || kw.low_top_of_page_bid || "0"
             )),
-            growth3m,
-            growthYoy,
+            growth3m: finalGrowth3m,
+            growthYoy: finalGrowthYoy,
             similarityScore,
             monthlyData,
         };
@@ -460,10 +502,10 @@ async function aggregateCompanyMetrics(company: CompanyData): Promise<CompanyMet
 }
 
 async function aggregateSectorMetricsMain() {
-    console.log('=== Aggregating Sector Metrics (Sub-Industries + YC Startups) ===\n');
+    console.log('=== Aggregating Sector Metrics (Main + Sub-Industries + YC Startups) ===\n');
 
     // Load companies.csv
-    console.log('[1/4] Loading companies.csv...');
+    console.log('[1/5] Loading companies.csv...');
     const companiesPath = path.join(process.cwd(), 'new_keywords', 'companies.csv');
     if (!fs.existsSync(companiesPath)) {
         throw new Error(`Companies file not found at ${companiesPath}`);
@@ -475,49 +517,78 @@ async function aggregateSectorMetricsMain() {
         skip_empty_lines: true,
     }) as CompanyData[];
 
-    // Filter out companies with N/A sub_industry
-    const validCompanies = companies.filter(c => c.sub_industry && c.sub_industry !== 'N/A');
-    console.log(`✓ Loaded ${validCompanies.length} companies (${companies.length - validCompanies.length} excluded with N/A sub-industry)\n`);
+    // Filter companies: 
+    // - For sub-industries: only include companies with valid sub_industry (not N/A)
+    // - For main industries: include ALL companies with valid main_industry (even if sub_industry is N/A)
+    const validCompaniesForSubIndustry = companies.filter(c => 
+        c.sub_industry && c.sub_industry !== 'N/A' &&
+        c.main_industry && c.main_industry !== 'N/A'
+    );
+    
+    const validCompaniesForMainIndustry = companies.filter(c => 
+        c.main_industry && c.main_industry !== 'N/A'
+    );
+    
+    console.log(`✓ Loaded ${validCompaniesForSubIndustry.length} companies for sub-industries (${companies.length - validCompaniesForSubIndustry.length} excluded with N/A sub-industry)`);
+    console.log(`✓ Loaded ${validCompaniesForMainIndustry.length} companies for main-industries (${companies.length - validCompaniesForMainIndustry.length} excluded with N/A main-industry)\n`);
 
-    // Group companies by sub_industry
-    console.log('[2/4] Grouping companies by sub-industry...');
+    // Group companies by sub_industry (only those with valid sub_industry)
+    console.log('[2/5] Grouping companies by sub-industry...');
     const companiesBySubIndustry = new Map<string, CompanyData[]>();
-
-    for (const company of validCompanies) {
+    for (const company of validCompaniesForSubIndustry) {
         const subIndustry = company.sub_industry;
         if (!companiesBySubIndustry.has(subIndustry)) {
             companiesBySubIndustry.set(subIndustry, []);
         }
         companiesBySubIndustry.get(subIndustry)!.push(company);
     }
-
     const subIndustries = Array.from(companiesBySubIndustry.keys());
     console.log(`✓ Found ${subIndustries.length} unique sub-industries\n`);
 
+    // Group companies by main_industry (include ALL companies with valid main_industry, even if sub_industry is N/A)
+    console.log('[3/5] Grouping companies by main-industry...');
+    const companiesByMainIndustry = new Map<string, CompanyData[]>();
+    for (const company of validCompaniesForMainIndustry) {
+        const mainIndustry = company.main_industry;
+        if (!companiesByMainIndustry.has(mainIndustry)) {
+            companiesByMainIndustry.set(mainIndustry, []);
+        }
+        companiesByMainIndustry.get(mainIndustry)!.push(company);
+    }
+    const mainIndustries = Array.from(companiesByMainIndustry.keys());
+    console.log(`✓ Found ${mainIndustries.length} unique main-industries\n`);
+
     // Initialize KeywordVectorService
-    console.log('[3/4] Initializing KeywordVectorService...');
+    console.log('[4/5] Initializing KeywordVectorService...');
     await keywordVectorService.initialize();
     console.log('✓ KeywordVectorService initialized\n');
 
-    // Process companies
-    console.log(`[4/4] Processing ${validCompanies.length} companies...`);
+    // Process companies (process all companies that will be used in either sub or main industry aggregation)
+    const allCompaniesToProcess = new Set([...validCompaniesForSubIndustry, ...validCompaniesForMainIndustry]);
+    const uniqueCompaniesToProcess = Array.from(allCompaniesToProcess);
+    
+    console.log(`[5/5] Processing ${uniqueCompaniesToProcess.length} companies...`);
     const output: OutputData = {
         companies: {},
-        subIndustries: {},
+        industries: {}, // Flattened: both main and sub industries
         metadata: {
-            totalCompanies: validCompanies.length,
-            totalSubIndustries: subIndustries.length,
+            totalCompanies: uniqueCompaniesToProcess.length,
+            totalIndustries: mainIndustries.length + subIndustries.length,
             generatedAt: new Date().toISOString(),
         },
     };
 
     let processed = 0;
-    const totalCompanies = validCompanies.length;
+    const totalCompanies = uniqueCompaniesToProcess.length;
 
     // Process each company
-    for (const company of validCompanies) {
+    for (const company of uniqueCompaniesToProcess) {
         try {
-            const companyKey = `${company.name} (${company.sub_industry})`;
+            // Use sub_industry for key, or main_industry if sub_industry is N/A
+            const industryKey = company.sub_industry && company.sub_industry !== 'N/A' 
+                ? company.sub_industry 
+                : company.main_industry;
+            const companyKey = `${company.name} (${industryKey})`;
             const companyMetrics = await aggregateCompanyMetrics(company);
             // Store company info alongside metrics
             output.companies[companyKey] = {
@@ -560,8 +631,10 @@ async function aggregateSectorMetricsMain() {
             const aggregatedMetrics = aggregateMetricsFromResults(companyResults);
             const monthlyTrendData = aggregateMonthlyTrendFromResults(companyResults);
 
-            output.subIndustries[subIndustry] = {
-                subIndustry,
+            // Store in flattened industries structure
+            output.industries[subIndustry] = {
+                industry: subIndustry,
+                industryType: 'sub',
                 companyCount: companiesInSubIndustry.length,
                 aggregatedMetrics,
                 monthlyTrendData,
@@ -571,7 +644,54 @@ async function aggregateSectorMetricsMain() {
         }
     }
 
-    console.log(`✓ Aggregated ${Object.keys(output.subIndustries).length} sub-industries\n`);
+    console.log(`✓ Aggregated ${subIndustries.length} sub-industries\n`);
+
+    // Aggregate main industries from their companies
+    console.log(`[Aggregating] Processing ${mainIndustries.length} main-industries...`);
+    for (const mainIndustry of mainIndustries) {
+        try {
+            const companiesInMainIndustry = companiesByMainIndustry.get(mainIndustry)!;
+            const companyResults: CompanyMetricResult[] = [];
+
+            // Collect all company results for this main industry
+            for (const company of companiesInMainIndustry) {
+                // Use sub_industry for key, or main_industry if sub_industry is N/A
+                const industryKey = company.sub_industry && company.sub_industry !== 'N/A' 
+                    ? company.sub_industry 
+                    : company.main_industry;
+                const companyKey = `${company.name} (${industryKey})`;
+                const result = output.companies[companyKey];
+                if (result) {
+                    companyResults.push(result);
+                }
+            }
+
+            if (companyResults.length === 0) {
+                console.warn(`  Warning: No results found for main-industry "${mainIndustry}"`);
+                continue;
+            }
+
+            // Aggregate metrics from all companies
+            const aggregatedMetrics = aggregateMetricsFromResults(companyResults);
+            const monthlyTrendData = aggregateMonthlyTrendFromResults(companyResults);
+
+            // Store in flattened industries structure (same level as sub-industries)
+            // Use a prefix to distinguish main industries if there's a naming conflict
+            const industryKey = mainIndustry;
+            output.industries[industryKey] = {
+                industry: mainIndustry,
+                industryType: 'main',
+                companyCount: companiesInMainIndustry.length,
+                aggregatedMetrics,
+                monthlyTrendData,
+            };
+        } catch (error) {
+            console.error(`  Error aggregating main-industry "${mainIndustry}":`, error);
+        }
+    }
+
+    console.log(`✓ Aggregated ${mainIndustries.length} main-industries\n`);
+    console.log(`✓ Total industries aggregated: ${Object.keys(output.industries).length} (${subIndustries.length} sub + ${mainIndustries.length} main)\n`);
 
     // Save results
     console.log('\n[Saving] Writing results to file...');
@@ -583,7 +703,7 @@ async function aggregateSectorMetricsMain() {
 
     console.log('=== Aggregation Complete ===');
     console.log(`Total companies processed: ${Object.keys(output.companies).length}`);
-    console.log(`Total sub-industries aggregated: ${Object.keys(output.subIndustries).length}`);
+    console.log(`Total industries aggregated: ${Object.keys(output.industries).length} (${subIndustries.length} sub + ${mainIndustries.length} main)`);
 }
 
 aggregateSectorMetricsMain().catch(error => {

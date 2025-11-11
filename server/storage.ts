@@ -1,13 +1,16 @@
-import { eq, desc, inArray, sql } from "drizzle-orm";
+import { eq, desc, inArray, sql, or } from "drizzle-orm";
 import { db } from "./db";
 import {
-    users, ideas, reports, keywords, customSearchProjects,
+    users, ideas, reports, keywords, customSearchProjects, globalKeywords, customSearchProjectKeywords,
     type User, type InsertUser,
     type Idea, type InsertIdea,
     type Report, type InsertReport,
     type Keyword, type InsertKeyword,
     type IdeaWithReport,
-    type CustomSearchProject, type InsertCustomSearchProject
+    type CustomSearchProject, type InsertCustomSearchProject,
+    type GlobalKeyword, type InsertGlobalKeyword,
+    type CustomSearchProjectKeyword, type InsertCustomSearchProjectKeyword,
+    type KeywordGenerationProgress
 } from "@shared/schema";
 
 export interface IStorage {
@@ -41,6 +44,18 @@ export interface IStorage {
     createCustomSearchProject(project: InsertCustomSearchProject): Promise<CustomSearchProject>;
     updateCustomSearchProject(id: string, project: Partial<InsertCustomSearchProject>): Promise<CustomSearchProject>;
     deleteCustomSearchProject(id: string): Promise<void>;
+
+    // Global Keywords methods
+    getGlobalKeywordByText(keyword: string): Promise<GlobalKeyword | undefined>;
+    getGlobalKeywordsByTexts(keywords: string[]): Promise<GlobalKeyword[]>;
+    createGlobalKeywords(keywords: InsertGlobalKeyword[]): Promise<GlobalKeyword[]>;
+    linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[]): Promise<void>;
+    getProjectKeywords(projectId: string): Promise<GlobalKeyword[]>;
+    updateKeywordMetrics(keywordId: string, metrics: Partial<GlobalKeyword>): Promise<void>;
+    bulkUpdateKeywordMetrics(updates: Array<{ keywordId: string; metrics: Partial<GlobalKeyword> }>): Promise<void>;
+
+    // Keyword Generation Progress methods
+    saveKeywordGenerationProgress(projectId: string, progress: KeywordGenerationProgress): Promise<void>;
 
     // Health check
     healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }>;
@@ -226,6 +241,121 @@ export class DatabaseStorage implements IStorage {
 
     async deleteCustomSearchProject(id: string): Promise<void> {
         await db.delete(customSearchProjects).where(eq(customSearchProjects.id, id));
+    }
+
+    async getGlobalKeywordByText(keywordText: string): Promise<GlobalKeyword | undefined> {
+        // Case-insensitive lookup using LOWER()
+        const result = await db
+            .select()
+            .from(globalKeywords)
+            .where(sql`LOWER(${globalKeywords.keyword}) = LOWER(${keywordText})`)
+            .limit(1);
+        return result[0];
+    }
+
+    async getGlobalKeywordsByTexts(keywordTexts: string[]): Promise<GlobalKeyword[]> {
+        if (keywordTexts.length === 0) return [];
+        // Use SQL IN clause with case-insensitive comparison for efficient querying
+        const lowerKeywords = keywordTexts.map(kw => kw.toLowerCase());
+        // Use inArray with case-insensitive comparison
+        // We need to use sql template to do case-insensitive comparison
+        // Format array properly for PostgreSQL ANY operator
+        // Create a safe array literal by properly escaping and quoting values
+        const escapedKeywords = lowerKeywords.map(kw => kw.replace(/'/g, "''"));
+        // Use sql template with proper array casting for PostgreSQL
+        // The array needs to be properly formatted as a PostgreSQL array literal
+        // Build the array literal string with proper escaping
+        const arrayLiteral = `ARRAY[${escapedKeywords.map(kw => `'${kw}'`).join(',')}]::text[]`;
+        return await db
+            .select()
+            .from(globalKeywords)
+            .where(sql`LOWER(${globalKeywords.keyword}) = ANY(${sql.raw(arrayLiteral)})`);
+    }
+
+    async createGlobalKeywords(insertKeywords: InsertGlobalKeyword[]): Promise<GlobalKeyword[]> {
+        if (insertKeywords.length === 0) return [];
+        // Filter out keywords that already exist (case-insensitive)
+        const keywordTexts = insertKeywords.map(kw => kw.keyword);
+        const existingKeywords = await this.getGlobalKeywordsByTexts(keywordTexts);
+        const existingKeywordsSet = new Set(existingKeywords.map(kw => kw.keyword.toLowerCase()));
+        
+        const newKeywords = insertKeywords.filter(kw => !existingKeywordsSet.has(kw.keyword.toLowerCase()));
+        
+        if (newKeywords.length === 0) return [];
+        
+        // Insert only new keywords
+        const result = await db
+            .insert(globalKeywords)
+            .values(newKeywords as any)
+            .returning();
+        return result;
+    }
+
+    async linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[]): Promise<void> {
+        if (keywordIds.length === 0) return;
+        if (keywordIds.length !== similarityScores.length) {
+            throw new Error("keywordIds and similarityScores arrays must have the same length");
+        }
+
+        const links: InsertCustomSearchProjectKeyword[] = keywordIds.map((keywordId, index) => ({
+            customSearchProjectId: projectId,
+            globalKeywordId: keywordId,
+            similarityScore: similarityScores[index] ? similarityScores[index].toString() : null,
+        }));
+
+        await db.insert(customSearchProjectKeywords).values(links as any);
+    }
+
+    async getProjectKeywords(projectId: string): Promise<GlobalKeyword[]> {
+        // Join customSearchProjectKeywords with globalKeywords to get all keywords for a project
+        const result = await db
+            .select({
+                keyword: globalKeywords,
+            })
+            .from(customSearchProjectKeywords)
+            .innerJoin(globalKeywords, eq(customSearchProjectKeywords.globalKeywordId, globalKeywords.id))
+            .where(eq(customSearchProjectKeywords.customSearchProjectId, projectId));
+        
+        return result.map(r => r.keyword);
+    }
+
+    async updateKeywordMetrics(keywordId: string, metrics: Partial<GlobalKeyword>): Promise<void> {
+        await db
+            .update(globalKeywords)
+            .set(metrics as any)
+            .where(eq(globalKeywords.id, keywordId));
+    }
+
+    async bulkUpdateKeywordMetrics(updates: Array<{ keywordId: string; metrics: Partial<GlobalKeyword> }>): Promise<void> {
+        if (updates.length === 0) return;
+
+        // Optimize: Use sequential updates in smaller batches instead of parallel updates
+        // This reduces lock contention and is faster for bulk operations
+        const batchSize = 50; // Process 50 updates at a time
+        
+        for (let i = 0; i < updates.length; i += batchSize) {
+            const batch = updates.slice(i, i + batchSize);
+            
+            // Use a transaction for each batch
+            await db.transaction(async (tx) => {
+                // Process updates sequentially within the transaction (faster than parallel for bulk)
+                for (const update of batch) {
+                    await tx.update(globalKeywords)
+                        .set(update.metrics as any)
+                        .where(eq(globalKeywords.id, update.keywordId));
+                }
+            });
+        }
+    }
+
+    async saveKeywordGenerationProgress(projectId: string, progress: KeywordGenerationProgress): Promise<void> {
+        await db
+            .update(customSearchProjects)
+            .set({
+                keywordGenerationProgress: progress as any,
+                updatedAt: sql`now()`,
+            })
+            .where(eq(customSearchProjects.id, projectId));
     }
 
     async healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }> {

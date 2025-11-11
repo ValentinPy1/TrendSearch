@@ -46,6 +46,15 @@ export interface CompanyMetricResult {
     url?: string;
 }
 
+export interface IndustryAggregateResult {
+    industry: string; // Can be either main_industry or sub_industry
+    industryType: 'main' | 'sub'; // Indicates if it's a main or sub industry
+    companyCount: number;
+    aggregatedMetrics: AggregatedMetrics;
+    monthlyTrendData: Array<{ month: string; volume: number }>;
+}
+
+// Keep for backwards compatibility
 export interface SubIndustryAggregateResult {
     subIndustry: string;
     companyCount: number;
@@ -55,10 +64,12 @@ export interface SubIndustryAggregateResult {
 
 export interface SectorBrowserData {
     companies: Record<string, CompanyMetricResult>;
-    subIndustries: Record<string, SubIndustryAggregateResult>;
+    industries: Record<string, IndustryAggregateResult>; // Flattened: both main and sub industries
+    // Keep for backwards compatibility
+    subIndustries?: Record<string, SubIndustryAggregateResult>;
     metadata: {
         totalCompanies: number;
-        totalSubIndustries: number;
+        totalIndustries: number;
         generatedAt: string;
     };
 }

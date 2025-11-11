@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { IdeaGenerator } from "@/components/idea-generator";
@@ -62,18 +62,28 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         ideaText: string;
     } | null>(null);
     const [activeTab, setActiveTab] = useState("standard");
+    
+    // Track manually loaded keywords to prevent them from being overwritten
+    const manuallyLoadedKeywordsRef = useRef<Map<string, Set<string>>>(new Map());
+    // Track if filters are currently applied to prevent overwriting filtered keywords
+    const hasActiveFiltersRef = useRef<Map<string, boolean>>(new Map());
 
     // Clear selected idea when switching to custom search tab
     useEffect(() => {
         if (activeTab === "custom" && selectedIdea) {
             // Clear the selected idea when switching to custom search
             // This ensures standard search reports don't show in custom search
+            // Clear manually loaded keywords and filter flags for the current idea
+            if (selectedIdea.report?.id) {
+                manuallyLoadedKeywordsRef.current.delete(selectedIdea.report.id);
+                hasActiveFiltersRef.current.delete(selectedIdea.report.id);
+            }
             setSelectedIdea(null);
             setSelectedKeyword(null);
             setDisplayedKeywordCount(10);
             setExcludedKeywordIds(new Set());
         }
-    }, [activeTab]);
+    }, [activeTab, selectedIdea]);
 
     // Get filters from localStorage (same place IdeaGenerator stores them)
     const getFiltersFromStorage = (): KeywordFilter[] => {
@@ -109,6 +119,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 `/api/reports/${data.reportId}/load-more`,
                 {
                     filters: data.filters?.map(({ id, ...rest }) => rest) || [],
+                    existingKeywords: selectedIdea?.report?.keywords?.map(k => ({ keyword: k.keyword })) || [],
                 },
             );
             return response.json();
@@ -117,12 +128,47 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             if (result.noMoreFiltered) {
                 // Show dialog asking if user wants to load without filters
                 setShowNoMoreFilteredDialog(true);
+            } else if (result.keywords && selectedIdea?.report) {
+                // Merge new keywords into existing state
+                const newKeywords = result.keywords.map((kw: any) => ({
+                    ...kw,
+                    id: kw.id || `temp-${Date.now()}-${Math.random()}`, // Generate temp ID if not present
+                }));
+                
+                // Merge with existing keywords, avoiding duplicates
+                const existingKeywordSet = new Set(selectedIdea.report.keywords.map(k => k.keyword));
+                const uniqueNewKeywords = newKeywords.filter((kw: any) => !existingKeywordSet.has(kw.keyword));
+                
+                // Only update state if we got new keywords
+                if (uniqueNewKeywords.length > 0) {
+                    const updatedKeywords = [...selectedIdea.report.keywords, ...uniqueNewKeywords];
+                    
+                    // Track manually loaded keywords for this report
+                    if (!manuallyLoadedKeywordsRef.current.has(selectedIdea.report.id)) {
+                        manuallyLoadedKeywordsRef.current.set(selectedIdea.report.id, new Set());
+                    }
+                    const loadedSet = manuallyLoadedKeywordsRef.current.get(selectedIdea.report.id)!;
+                    uniqueNewKeywords.forEach(kw => loadedSet.add(kw.keyword));
+                    
+                    setSelectedIdea({
+                        ...selectedIdea,
+                        report: {
+                            ...selectedIdea.report,
+                            keywords: updatedKeywords,
+                        },
+                    });
+                    
+                    // Update displayed count AFTER successfully merging keywords
+                    setDisplayedKeywordCount(prev => prev + uniqueNewKeywords.length);
+                }
             } else {
+                // Fallback: invalidate query if result format is unexpected
                 queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
             }
         },
         onError: (error) => {
             console.error("Error loading more keywords:", error);
+            // Don't update displayedKeywordCount on error - keep current state
         },
     });
 
@@ -133,14 +179,47 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 `/api/reports/${data.reportId}/load-more`,
                 {
                     filters: [], // Load without filters
+                    existingKeywords: selectedIdea?.report?.keywords?.map(k => ({ keyword: k.keyword })) || [],
                 },
             );
             return response.json();
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
+        onSuccess: (result) => {
+            if (result.keywords && selectedIdea?.report) {
+                // Merge new unfiltered keywords into existing state
+                const newKeywords = result.keywords.map((kw: any) => ({
+                    ...kw,
+                    id: kw.id || `temp-${Date.now()}-${Math.random()}`,
+                }));
+                
+                // Merge with existing keywords, avoiding duplicates
+                const existingKeywordSet = new Set(selectedIdea.report.keywords.map(k => k.keyword));
+                const uniqueNewKeywords = newKeywords.filter((kw: any) => !existingKeywordSet.has(kw.keyword));
+                
+                if (uniqueNewKeywords.length > 0) {
+                    // Clear filter flag since we're loading without filters
+                    if (selectedIdea.report.id) {
+                        hasActiveFiltersRef.current.delete(selectedIdea.report.id);
+                    }
+                    
+                    // Merge unfiltered keywords with existing keywords
+                    setSelectedIdea({
+                        ...selectedIdea,
+                        report: {
+                            ...selectedIdea.report,
+                            keywords: [...selectedIdea.report.keywords, ...uniqueNewKeywords],
+                        },
+                    });
+                    
+                    // Update displayed count
+                    setDisplayedKeywordCount(prev => prev + uniqueNewKeywords.length);
+                }
+            }
             setShowNoMoreFilteredDialog(false);
             setPendingLoadMoreWithoutFilters(null);
+        },
+        onError: (error) => {
+            console.error("Error loading keywords without filters:", error);
         },
     });
 
@@ -181,10 +260,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         const totalKeywords = selectedIdea.report.keywords.length;
         const newDisplayCount = displayedKeywordCount + 5;
 
-        // Show 5 more keywords immediately
-        setDisplayedKeywordCount(newDisplayCount);
-
         // If we're within 5 of running out, preload 5 more in background
+        // Don't update displayedKeywordCount until keywords are successfully loaded
         if (newDisplayCount >= totalKeywords - 5) {
             const filters = getFiltersFromStorage();
             loadMoreKeywordsMutation.mutate({
@@ -198,16 +275,65 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     ideaText: selectedIdea.generatedIdea,
                 });
             }
+        } else {
+            // If we have enough keywords already loaded, just show more
+            setDisplayedKeywordCount(newDisplayCount);
         }
     };
 
     // Update selected idea with latest data (but don't auto-select on initial load)
+    // IMPORTANT: Preserve manually loaded keywords and filtered keywords when updating from query
     useEffect(() => {
         if (ideas && ideas.length > 0 && selectedIdea) {
             // Only update if there's already a selected idea
             const updated = ideas.find((i) => i.id === selectedIdea.id);
             if (updated) {
-                setSelectedIdea(updated);
+                // Check if we have manually loaded keywords for this report
+                const manuallyLoadedSet = manuallyLoadedKeywordsRef.current.get(selectedIdea.report?.id || '');
+                const hasActiveFilters = hasActiveFiltersRef.current.get(selectedIdea.report?.id || '');
+                const currentKeywords = selectedIdea.report?.keywords || [];
+                const updatedKeywords = updated.report?.keywords || [];
+                
+                // Check if current keywords are different from updated keywords (might be filtered)
+                // If they're different, we should preserve the current ones
+                const currentKeywordSet = new Set(currentKeywords.map(k => k.keyword));
+                const updatedKeywordSet = new Set(updatedKeywords.map(k => k.keyword));
+                const keywordsAreDifferent = currentKeywords.length !== updatedKeywords.length || 
+                    currentKeywords.some(k => !updatedKeywordSet.has(k.keyword)) ||
+                    updatedKeywords.some(k => !currentKeywordSet.has(k.keyword));
+                
+                // If filters are active, NEVER merge unfiltered keywords - only preserve current filtered keywords
+                if (hasActiveFilters) {
+                    // Filters are active - preserve ONLY the current filtered keywords
+                    // Don't merge in unfiltered keywords from the query
+                    setSelectedIdea({
+                        ...updated,
+                        report: updated.report ? {
+                            ...updated.report,
+                            keywords: currentKeywords, // Keep only current filtered keywords
+                        } : undefined,
+                    });
+                } else if ((manuallyLoadedSet && manuallyLoadedSet.size > 0) || keywordsAreDifferent) {
+                    // We have manually loaded keywords or keywords are different - preserve them
+                    // Merge: keep all current keywords (especially manually loaded ones), 
+                    // add any new ones from updated that aren't already present
+                    const mergedKeywords = [
+                        ...currentKeywords, // Preserve all current keywords (including manually loaded)
+                        ...updatedKeywords.filter(k => !currentKeywordSet.has(k.keyword))
+                    ];
+                    
+                    setSelectedIdea({
+                        ...updated,
+                        report: updated.report ? {
+                            ...updated.report,
+                            keywords: mergedKeywords,
+                        } : undefined,
+                    });
+                } else {
+                    // No manually loaded keywords, no filters, and keywords match - safe to update
+                    setSelectedIdea(updated);
+                }
+                
                 // Set first keyword if not already set
                 if (
                     updated?.report?.keywords &&
@@ -218,12 +344,17 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 }
             }
         }
-    }, [ideas]);
+    }, [ideas]); // Only depend on ideas, not selectedIdea to avoid infinite loops
 
     const handleIdeaGenerated = (newIdea: IdeaWithReport) => {
         setSelectedIdea(newIdea);
         setDisplayedKeywordCount(10); // Reset to show 10 initially
         setExcludedKeywordIds(new Set()); // Clear excluded keywords for new idea
+        // Clear manually loaded keywords and filter flags for new idea
+        if (newIdea.report?.id) {
+            manuallyLoadedKeywordsRef.current.delete(newIdea.report.id);
+            hasActiveFiltersRef.current.delete(newIdea.report.id);
+        }
         if (newIdea?.report?.keywords && newIdea.report.keywords.length > 0) {
             setSelectedKeyword(newIdea.report.keywords[0].keyword);
         }
@@ -231,6 +362,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     };
 
     const handleIdeaSelect = (idea: IdeaWithReport) => {
+        // Clear manually loaded keywords and filter flags for previous idea if switching
+        if (selectedIdea?.report?.id && selectedIdea.report.id !== idea.report?.id) {
+            manuallyLoadedKeywordsRef.current.delete(selectedIdea.report.id);
+            hasActiveFiltersRef.current.delete(selectedIdea.report.id);
+        }
         setSelectedIdea(idea);
         setDisplayedKeywordCount(10); // Reset to show 10 initially
         setExcludedKeywordIds(new Set()); // Clear excluded keywords when switching ideas
@@ -244,6 +380,20 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
     const handleReportGenerated = (ideaWithReport: IdeaWithReport) => {
         setSelectedIdea(ideaWithReport);
+        // Check if filters were applied (keywords might be filtered)
+        const filters = getFiltersFromStorage();
+        if (filters && filters.length > 0 && ideaWithReport.report?.id) {
+            // Mark that filters are active for this report
+            hasActiveFiltersRef.current.set(ideaWithReport.report.id, true);
+            // When filters are active, set displayed count to actual filtered keyword count
+            // Don't force it to 10 - show only what matches the filters
+            const filteredKeywordCount = ideaWithReport.report?.keywords?.length || 0;
+            setDisplayedKeywordCount(Math.min(filteredKeywordCount, 10)); // Show up to 10, but not more than available
+        } else if (ideaWithReport.report?.id) {
+            // No filters, clear the flag and use default count
+            hasActiveFiltersRef.current.delete(ideaWithReport.report.id);
+            setDisplayedKeywordCount(10); // Default to 10 when no filters
+        }
         if (
             ideaWithReport?.report?.keywords &&
             ideaWithReport.report.keywords.length > 0
@@ -297,15 +447,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     searchKeyword={searchKeyword}
                     onActiveTabChange={setActiveTab}
                 />
-
-                {isLoading && (
-                    <GlassmorphicCard className="p-12">
-                        <div className="flex flex-col items-center justify-center gap-4">
-                            <Loader2 className="h-12 w-12 text-primary animate-spin" />
-                            <p className="text-white/60">Loading your ideas...</p>
-                        </div>
-                    </GlassmorphicCard>
-                )}
 
                 {error && (
                     <GlassmorphicCard className="p-8">
@@ -510,7 +651,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                         <SheetTitle className="text-white">Idea History</SheetTitle>
                     </SheetHeader>
                     <div className="mt-6 overflow-y-auto h-[calc(100vh-100px)]">
-                        <IdeaHistory ideas={ideas || []} onIdeaSelect={handleIdeaSelect} />
+                        {isLoading ? (
+                            <div className="flex flex-col items-center justify-center gap-4 py-12">
+                                <Loader2 className="h-12 w-12 text-primary animate-spin" />
+                                <p className="text-white/60">Loading your ideas...</p>
+                            </div>
+                        ) : (
+                            <IdeaHistory ideas={ideas || []} onIdeaSelect={handleIdeaSelect} />
+                        )}
                     </div>
                 </SheetContent>
             </Sheet>

@@ -1,7 +1,9 @@
 import { pipeline } from '@xenova/transformers';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parse } from 'csv-parse/sync';
+import { db } from './db';
+import { sql } from 'drizzle-orm';
+import postgres from 'postgres';
 
 interface KeywordData {
     keyword: string;
@@ -119,12 +121,13 @@ interface EmbeddingsMetadata {
 
 class KeywordVectorService {
     private keywords: KeywordData[] = [];
-    private embeddings: Float32Array[] = [];
     private extractor: any = null;
     private initialized = false;
     private initializationPromise: Promise<void> | null = null;
     private precomputedMetrics: Map<string, PrecomputedOpportunityMetrics> | null = null;
     private preprocessedKeywords: Map<string, ProcessedKeywordData> | null = null;
+    private keywordSet: Set<string> | null = null; // Fast O(1) exact match lookup
+    private pgClient: ReturnType<typeof postgres> | null = null;
 
     async initialize() {
         if (this.initialized) return;
@@ -146,73 +149,88 @@ class KeywordVectorService {
     private async doInitialize() {
         try {
             this.keywords = [];
-            this.embeddings = [];
             this.extractor = null;
             this.initialized = false;
 
-            console.log('[KeywordVectorService] Loading binary chunk embeddings...');
+            console.log('[KeywordVectorService] Loading keywords from Supabase...');
 
-            // Load metadata
-            const metadataPath = path.join(process.cwd(), 'data', 'embeddings_metadata.json');
-            if (!fs.existsSync(metadataPath)) {
-                throw new Error(`Embeddings metadata not found at ${metadataPath}. Run: npx tsx scripts/build-binary-embeddings.ts`);
+            // Initialize postgres client for raw SQL queries
+            if (!process.env.DATABASE_URL) {
+                throw new Error('DATABASE_URL environment variable is required');
             }
 
-            const metadata: EmbeddingsMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
-            console.log(`[KeywordVectorService] Found ${metadata.total_keywords} keywords in ${metadata.chunks.length} binary chunks`);
+            this.pgClient = postgres(process.env.DATABASE_URL, {
+                max: 1,
+                idle_timeout: 20,
+                connect_timeout: 30,
+                max_lifetime: 60 * 30,
+                ssl: 'require',
+                prepare: false,
+            });
 
-            // Load keywords from CSV (new keywords dataset with 4 years of data)
-            const csvPath = path.join(process.cwd(), 'new_keywords', 'keywords_data.csv');
-            const csvContent = fs.readFileSync(csvPath, 'utf-8');
-            this.keywords = parse(csvContent, {
-                columns: true,
-                skip_empty_lines: true,
-                cast: (value, context) => {
-                    if (context.column && value === '') return null;
-                    if (!isNaN(Number(value))) return Number(value);
-                    return value;
-                },
-            }) as KeywordData[];
+            // Load keywords from database
+            const keywordRows = await db.execute(sql`
+                SELECT 
+                    keyword,
+                    search_volume,
+                    competition,
+                    low_top_of_page_bid,
+                    high_top_of_page_bid,
+                    cpc,
+                    monthly_data,
+                    growth_3m,
+                    growth_yoy,
+                    volatility,
+                    trend_strength,
+                    avg_top_page_bid,
+                    bid_efficiency,
+                    tac,
+                    sac,
+                    opportunity_score
+                FROM keyword_embeddings
+                ORDER BY keyword
+            `);
 
-            // Sanity check: verify CSV matches metadata
-            if (this.keywords.length !== metadata.total_keywords) {
-                throw new Error(`CSV/metadata mismatch: ${this.keywords.length} keywords in CSV but ${metadata.total_keywords} in metadata`);
-            }
+            // Convert database rows to KeywordData format
+            this.keywords = keywordRows.map((row: any) => {
+                const keyword: KeywordData = {
+                    keyword: row.keyword,
+                    search_volume: row.search_volume,
+                    competition: row.competition,
+                    low_top_of_page_bid: row.low_top_of_page_bid ? Number(row.low_top_of_page_bid) : undefined,
+                    high_top_of_page_bid: row.high_top_of_page_bid ? Number(row.high_top_of_page_bid) : undefined,
+                    cpc: row.cpc ? Number(row.cpc) : undefined,
+                    growth_3m: row.growth_3m ? Number(row.growth_3m) : undefined,
+                    growth_YoY: row.growth_yoy ? Number(row.growth_yoy) : undefined,
+                    volatility: row.volatility ? Number(row.volatility) : undefined,
+                    trend_strength: row.trend_strength ? Number(row.trend_strength) : undefined,
+                    avg_top_page_bid: row.avg_top_page_bid ? Number(row.avg_top_page_bid) : undefined,
+                    bid_efficiency: row.bid_efficiency ? Number(row.bid_efficiency) : undefined,
+                    TAC: row.tac ? Number(row.tac) : undefined,
+                    SAC: row.sac ? Number(row.sac) : undefined,
+                    opportunity_score: row.opportunity_score ? Number(row.opportunity_score) : undefined,
+                };
 
-            console.log(`[KeywordVectorService] Loaded ${this.keywords.length} keywords from CSV`);
+                // Convert monthly_data JSONB to individual month columns if needed
+                if (row.monthly_data && Array.isArray(row.monthly_data)) {
+                    row.monthly_data.forEach((item: { month: string; volume: number }) => {
+                        if (item.month && item.volume !== null && item.volume !== undefined) {
+                            (keyword as any)[item.month] = item.volume;
+                        }
+                    });
+                }
+
+                return keyword;
+            });
+
+            console.log(`[KeywordVectorService] Loaded ${this.keywords.length} keywords from Supabase`);
+
+            // Build Set for fast exact match lookups
+            this.keywordSet = new Set(this.keywords.map(k => k.keyword.toLowerCase().trim()));
+            console.log(`[KeywordVectorService] Built keyword Set for fast lookups (${this.keywordSet.size} keywords)`);
 
             // Load precomputed opportunity metrics (if available)
             this.loadPrecomputedMetrics();
-
-            // Load binary chunks
-            const embeddingsDir = path.join(process.cwd(), 'data', 'embeddings_chunks');
-            this.embeddings = new Array(metadata.total_keywords);
-
-            for (const chunk of metadata.chunks) {
-                const chunkPath = path.join(embeddingsDir, chunk.file_path);
-                if (!fs.existsSync(chunkPath)) {
-                    throw new Error(`Binary chunk not found: ${chunkPath}`);
-                }
-
-                const buffer = fs.readFileSync(chunkPath);
-                const float32Array = new Float32Array(buffer.buffer, buffer.byteOffset, buffer.byteLength / 4);
-
-                // Verify chunk size matches metadata
-                const expectedSize = chunk.keyword_count * metadata.embedding_dimensions;
-                if (float32Array.length !== expectedSize) {
-                    throw new Error(`Chunk ${chunk.chunk_id} size mismatch: expected ${expectedSize} floats, got ${float32Array.length}`);
-                }
-
-                // Extract individual embeddings from this chunk
-                for (let i = 0; i < chunk.keyword_count; i++) {
-                    const globalIndex = chunk.start_index + i;
-                    const embeddingStart = i * metadata.embedding_dimensions;
-                    const embeddingEnd = embeddingStart + metadata.embedding_dimensions;
-                    this.embeddings[globalIndex] = float32Array.slice(embeddingStart, embeddingEnd);
-                }
-            }
-
-            console.log(`[KeywordVectorService] Loaded ${this.embeddings.length} binary embeddings (${(this.embeddings.length * 384 * 4 / 1024 / 1024).toFixed(2)} MB)`);
 
             // Initialize sentence transformer for query encoding
             console.log('[KeywordVectorService] Initializing sentence transformer for queries...');
@@ -277,17 +295,25 @@ class KeywordVectorService {
         return dotProduct;
     }
 
-    async isKeyword(text: string, threshold: number = 0.95): Promise<boolean> {
+    async isKeyword(text: string, threshold: number = 0.95, exactMatchOnly: boolean = false): Promise<boolean> {
         if (!this.initialized) {
             await this.initialize();
         }
 
-        // First check for exact match (fast path)
+        // Fast exact match check using Set (O(1) lookup)
         const normalizedText = text.toLowerCase().trim();
-        const exactMatch = this.keywords.some(k => k.keyword.toLowerCase() === normalizedText);
-        if (exactMatch) return true;
+        if (this.keywordSet && this.keywordSet.has(normalizedText)) {
+            return true;
+        }
+
+        // For keyword generation/deduplication, we only care about exact matches
+        // Skip expensive similarity search for non-existing keywords
+        if (exactMatchOnly) {
+            return false;
+        }
 
         // Check similarity score (slower but catches near-matches)
+        // Only do this for fuzzy matching scenarios, not for keyword generation
         const results = await this.findSimilarKeywords(text, 1);
         if (results.length > 0 && results[0].similarityScore >= threshold) {
             return true;
@@ -296,39 +322,94 @@ class KeywordVectorService {
         return false;
     }
 
+    /**
+     * Calculate cosine similarity between two text strings
+     * Returns a value between -1 and 1, where 1 is most similar
+     */
+    async calculateTextSimilarity(text1: string, text2: string): Promise<number> {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+
+        // Generate embeddings for both texts
+        const output1 = await this.extractor(text1, { pooling: 'mean', normalize: true });
+        const embedding1 = new Float32Array(output1.data);
+
+        const output2 = await this.extractor(text2, { pooling: 'mean', normalize: true });
+        const embedding2 = new Float32Array(output2.data);
+
+        // Calculate cosine similarity
+        return this.cosineSimilarity(embedding1, embedding2);
+    }
+
     async findSimilarKeywords(query: string, topN: number = 10): Promise<KeywordWithScore[]> {
         if (!this.initialized) {
             await this.initialize();
         }
 
-        // Defensive check: ensure embeddings and keywords are in sync
-        if (this.embeddings.length !== this.keywords.length) {
-            throw new Error(
-                `Data corruption detected: ${this.embeddings.length} embeddings but ${this.keywords.length} keywords. Reinitialize the service.`
-            );
+        if (!this.pgClient) {
+            throw new Error('PostgreSQL client not initialized');
         }
 
         // Generate query embedding
         const queryOutput = await this.extractor(query, { pooling: 'mean', normalize: true });
         const queryEmbedding = new Float32Array(queryOutput.data);
+        const embeddingArray = Array.from(queryEmbedding);
 
-        // Calculate cosine similarities across all keywords
-        const similarities: Array<{ index: number; score: number }> = [];
+        // Call Supabase match_keywords function
+        const results = await this.pgClient.unsafe(
+            `SELECT * FROM match_keywords($1::vector(384), $2, $3)`,
+            [`[${embeddingArray.join(',')}]`, 0.0, topN]
+        );
 
-        for (let i = 0; i < this.embeddings.length; i++) {
-            const similarity = this.cosineSimilarity(queryEmbedding, this.embeddings[i]);
-            similarities.push({ index: i, score: similarity });
-        }
+        // Convert database results to KeywordWithScore format
+        return results.map((row: any) => {
+            const keyword: KeywordWithScore = {
+                keyword: row.keyword,
+                search_volume: row.search_volume,
+                competition: row.competition,
+                low_top_of_page_bid: row.low_top_of_page_bid ? Number(row.low_top_of_page_bid) : undefined,
+                high_top_of_page_bid: row.high_top_of_page_bid ? Number(row.high_top_of_page_bid) : undefined,
+                cpc: row.cpc ? Number(row.cpc) : undefined,
+                growth_3m: row.growth_3m ? Number(row.growth_3m) : undefined,
+                growth_YoY: row.growth_yoy ? Number(row.growth_yoy) : undefined,
+                volatility: row.volatility ? Number(row.volatility) : undefined,
+                trend_strength: row.trend_strength ? Number(row.trend_strength) : undefined,
+                avg_top_page_bid: row.avg_top_page_bid ? Number(row.avg_top_page_bid) : undefined,
+                bid_efficiency: row.bid_efficiency ? Number(row.bid_efficiency) : undefined,
+                TAC: row.tac ? Number(row.tac) : undefined,
+                SAC: row.sac ? Number(row.sac) : undefined,
+                opportunity_score: row.opportunity_score ? Number(row.opportunity_score) : undefined,
+                similarityScore: Number(row.similarity),
+            };
 
-        // Sort by similarity score (descending)
-        similarities.sort((a, b) => b.score - a.score);
+            // Convert monthly_data JSONB to individual month columns if needed
+            if (row.monthly_data && Array.isArray(row.monthly_data)) {
+                row.monthly_data.forEach((item: { month: string; volume: number }) => {
+                    if (item.month && item.volume !== null && item.volume !== undefined) {
+                        (keyword as any)[item.month] = item.volume;
+                    }
+                });
+            }
 
-        // Return top N results
-        const topResults = similarities.slice(0, topN);
-        return topResults.map(({ index, score }) => ({
-            ...this.keywords[index],
-            similarityScore: score,
-        }));
+            // Attach precomputed metrics if available
+            if (this.precomputedMetrics) {
+                const metrics = this.precomputedMetrics.get(row.keyword);
+                if (metrics) {
+                    keyword.precomputedMetrics = metrics;
+                }
+            }
+
+            // Attach preprocessed data if available
+            if (this.preprocessedKeywords) {
+                const processed = this.preprocessedKeywords.get(row.keyword);
+                if (processed) {
+                    keyword.preprocessedData = processed;
+                }
+            }
+
+            return keyword;
+        });
     }
 
     /**
@@ -383,28 +464,71 @@ class KeywordVectorService {
             await this.initialize();
         }
 
+        if (!this.pgClient) {
+            throw new Error('PostgreSQL client not initialized');
+        }
+
+        // Get the keywords by indices
+        const targetKeywords = keywordIndices
+            .filter(idx => idx >= 0 && idx < this.keywords.length)
+            .map(idx => this.keywords[idx].keyword);
+
+        if (targetKeywords.length === 0) {
+            return [];
+        }
+
         // Generate query embedding
         const queryOutput = await this.extractor(query, { pooling: 'mean', normalize: true });
         const queryEmbedding = new Float32Array(queryOutput.data);
+        const embeddingArray = Array.from(queryEmbedding);
 
-        // Calculate similarities for the specified keywords
-        const similarities: Array<{ index: number; score: number }> = [];
+        // Query database for these specific keywords and calculate similarity
+        // Build parameterized query with proper placeholders
+        const placeholders = targetKeywords.map((_, i) => `LOWER($${i + 2})`).join(', ');
+        const sqlQuery = `SELECT 
+            ke.*,
+            1 - (ke.embedding <=> $1::vector(384)) AS similarity
+        FROM keyword_embeddings ke
+        WHERE LOWER(ke.keyword) IN (${placeholders})
+        ORDER BY ke.embedding <=> $1::vector(384)`;
+        
+        const results = await this.pgClient.unsafe(
+            sqlQuery,
+            [`[${embeddingArray.join(',')}]`, ...targetKeywords]
+        );
 
-        for (const index of keywordIndices) {
-            if (index >= 0 && index < this.embeddings.length) {
-                const similarity = this.cosineSimilarity(queryEmbedding, this.embeddings[index]);
-                similarities.push({ index, score: similarity });
+        // Convert to KeywordWithScore format
+        return results.map((row: any) => {
+            const keyword: KeywordWithScore = {
+                keyword: row.keyword,
+                search_volume: row.search_volume,
+                competition: row.competition,
+                low_top_of_page_bid: row.low_top_of_page_bid ? Number(row.low_top_of_page_bid) : undefined,
+                high_top_of_page_bid: row.high_top_of_page_bid ? Number(row.high_top_of_page_bid) : undefined,
+                cpc: row.cpc ? Number(row.cpc) : undefined,
+                growth_3m: row.growth_3m ? Number(row.growth_3m) : undefined,
+                growth_YoY: row.growth_yoy ? Number(row.growth_yoy) : undefined,
+                volatility: row.volatility ? Number(row.volatility) : undefined,
+                trend_strength: row.trend_strength ? Number(row.trend_strength) : undefined,
+                avg_top_page_bid: row.avg_top_page_bid ? Number(row.avg_top_page_bid) : undefined,
+                bid_efficiency: row.bid_efficiency ? Number(row.bid_efficiency) : undefined,
+                TAC: row.tac ? Number(row.tac) : undefined,
+                SAC: row.sac ? Number(row.sac) : undefined,
+                opportunity_score: row.opportunity_score ? Number(row.opportunity_score) : undefined,
+                similarityScore: Number(row.similarity),
+            };
+
+            // Convert monthly_data JSONB to individual month columns if needed
+            if (row.monthly_data && Array.isArray(row.monthly_data)) {
+                row.monthly_data.forEach((item: { month: string; volume: number }) => {
+                    if (item.month && item.volume !== null && item.volume !== undefined) {
+                        (keyword as any)[item.month] = item.volume;
+                    }
+                });
             }
-        }
 
-        // Sort by similarity score (descending)
-        similarities.sort((a, b) => b.score - a.score);
-
-        // Return keywords with similarity scores
-        return similarities.map(({ index, score }) => ({
-            ...this.keywords[index],
-            similarityScore: score,
-        }));
+            return keyword;
+        });
     }
 
     /**
