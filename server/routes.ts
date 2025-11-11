@@ -2750,7 +2750,8 @@ Return ONLY the JSON array, no other text. Example format:
                     if (savedProgress.taskId) {
                         try {
                             const { getKeywordsForKeywordsTask } = await import("./dataforseo-service");
-                            dataForSEOResults = await getKeywordsForKeywordsTask(savedProgress.taskId, 1, 0);
+                            const { DATAFORSEO_MAX_POLL_ATTEMPTS, DATAFORSEO_POLL_INTERVAL_MS } = await import("./config/keyword-generation");
+                            dataForSEOResults = await getKeywordsForKeywordsTask(savedProgress.taskId, DATAFORSEO_MAX_POLL_ATTEMPTS, DATAFORSEO_POLL_INTERVAL_MS);
                             if (dataForSEOResults && dataForSEOResults.length > 0) {
                                 // Update progress with fetched results
                                 await saveProgress({
@@ -2811,7 +2812,8 @@ Return ONLY the JSON array, no other text. Example format:
                     const taskId = savedProgress?.taskId;
                     if (taskId) {
                         const { getKeywordsForKeywordsTask } = await import("./dataforseo-service");
-                        dataForSEOResults = await getKeywordsForKeywordsTask(taskId, 1, 0);
+                        const { DATAFORSEO_MAX_POLL_ATTEMPTS, DATAFORSEO_POLL_INTERVAL_MS } = await import("./config/keyword-generation");
+                        dataForSEOResults = await getKeywordsForKeywordsTask(taskId, DATAFORSEO_MAX_POLL_ATTEMPTS, DATAFORSEO_POLL_INTERVAL_MS);
                         if (dataForSEOResults && dataForSEOResults.length > 0) {
                             // Save fetched results to progress
                             await saveProgress({

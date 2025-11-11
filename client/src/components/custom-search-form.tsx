@@ -1702,25 +1702,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     </p>
                 </div>
 
-                {/* Sub-Tabs Section */}
-                <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
-                    <TabsList className="flex gap-8 bg-transparent p-0 h-auto mb-6 border-b border-white/10">
-                        <TabsTrigger 
-                            value="competitors" 
-                            className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
-                        >
-                            Competitors
-                        </TabsTrigger>
-                        <TabsTrigger 
-                            value="custom-keywords" 
-                            className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
-                        >
-                            Custom Keywords
-                        </TabsTrigger>
-                    </TabsList>
-
-                    {/* Tab 1: Competitors */}
-                    <TabsContent value="competitors" className="space-y-6 mt-6">
+                {/* Competitors Section */}
+                <div className="space-y-6 mt-6">
                         {/* Find Competitors Button */}
                         <div className="space-y-4">
                             <Button
@@ -2044,13 +2027,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 )}
                             </div>
                         </div>
-                    </TabsContent>
+                </div>
 
-                    {/* Tab 2: Custom Keywords */}
+                    {/* Tab 2: Custom Keywords - Commented out for future use
                     <TabsContent value="custom-keywords" className="space-y-6 mt-6">
-                        {/* List Inputs in 2x2 Grid */}
                         <div className="grid grid-cols-2 gap-6">
-                            {/* Topics */}
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-white">
                                     Topics
@@ -2351,7 +2332,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             })()}
                         </div>
                     </TabsContent>
-                </Tabs>
+                    */}
             </form>
 
             {/* Quadrant Popup Dialog */}
