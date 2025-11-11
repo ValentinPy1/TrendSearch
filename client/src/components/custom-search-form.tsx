@@ -1072,6 +1072,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             });
 
             if (!response.ok) {
+                // If 404, the pipeline doesn't exist - stop polling
+                if (response.status === 404) {
+                    console.log("Pipeline not found, stopping polling");
+                    stopPolling();
+                    setIsFindingKeywordsFromWebsite(false);
+                    setIsGeneratingKeywords(false);
+                    return;
+                }
                 throw new Error("Failed to fetch pipeline status");
             }
 
@@ -1743,112 +1751,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     </>
                                 )}
                             </Button>
-
-                            {/* Progress Indicators for Website Discovery */}
-                            {isFindingKeywordsFromWebsite && isGeneratingKeywords && (
-                                <div className="mt-4 space-y-2 flex flex-col items-center">
-                                    {(() => {
-                                        const currentStage = keywordProgress?.stage || keywordProgress?.currentStage || '';
-                                        const isWebsiteDiscovery = ['creating-task', 'polling-task', 'extracting-keywords'].includes(currentStage);
-                                        
-                                        if (isWebsiteDiscovery) {
-                                            // Website discovery pipeline steps
-                                            return (
-                                                <>
-                                                    {/* Step 1: Creating Task */}
-                                                    <div className="flex items-center gap-2">
-                                                        {(() => {
-                                                            const isActive = currentStage === 'creating-task';
-                                                            const isCompleted = ['polling-task', 'extracting-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                                            const elapsed = elapsedTimes['creating-task'] || 0;
-                                                            const estimate = 5;
-                                                            return (
-                                                                <>
-                                                                    {isCompleted ? (
-                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                    ) : isActive ? (
-                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                    ) : (
-                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                    )}
-                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                        Creating task
-                                                                    </span>
-                                                                    {isActive ? (
-                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                    ) : !isCompleted ? (
-                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                    ) : null}
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </div>
-
-                                                    {/* Step 2: Polling Task */}
-                                                    <div className="flex items-center gap-2">
-                                                        {(() => {
-                                                            const isActive = currentStage === 'polling-task';
-                                                            const isCompleted = ['extracting-keywords', 'fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                                            const elapsed = elapsedTimes['polling-task'] || 0;
-                                                            const estimate = 60;
-                                                            return (
-                                                                <>
-                                                                    {isCompleted ? (
-                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                    ) : isActive ? (
-                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                    ) : (
-                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                    )}
-                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                        Polling task
-                                                                    </span>
-                                                                    {isActive ? (
-                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                    ) : !isCompleted ? (
-                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                    ) : null}
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </div>
-
-                                                    {/* Step 3: Extracting Keywords */}
-                                                    <div className="flex items-center gap-2">
-                                                        {(() => {
-                                                            const isActive = currentStage === 'extracting-keywords';
-                                                            const isCompleted = ['fetching-dataforseo', 'computing-metrics', 'generating-report', 'complete'].includes(currentStage);
-                                                            const elapsed = elapsedTimes['extracting-keywords'] || 0;
-                                                            const estimate = 5;
-                                                            return (
-                                                                <>
-                                                                    {isCompleted ? (
-                                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                    ) : isActive ? (
-                                                                        <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
-                                                                    ) : (
-                                                                        <div className="h-4 w-4 rounded-full border-2 border-white/40" />
-                                                                    )}
-                                                                    <span className={`text-sm ${isCompleted ? 'text-green-500' : isActive ? 'text-yellow-500' : 'text-white/60'}`}>
-                                                                        Extracting keywords
-                                                                    </span>
-                                                                    {isActive ? (
-                                                                        <span className="text-xs text-white/60">{elapsed}s / ~{estimate}s</span>
-                                                                    ) : !isCompleted ? (
-                                                                        <span className="text-xs text-white/40">~{estimate}s</span>
-                                                                    ) : null}
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                </>
-                                            );
-                                        }
-                                        return null;
-                                    })()}
-
-                                </div>
-                            )}
 
                             {/* Competitors List */}
                             {competitors.length > 0 && (

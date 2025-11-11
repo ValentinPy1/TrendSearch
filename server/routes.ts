@@ -3235,7 +3235,7 @@ Return ONLY the JSON array, no other text. Example format:
             }
 
             // Get saved progress early to check if we're resuming
-            const savedProgress = project.keywordGenerationProgress;
+            let savedProgress = project.keywordGenerationProgress;
 
             // When resuming, target is optional if we already have progress
             // Otherwise, target is required for new requests
@@ -4099,11 +4099,13 @@ Return ONLY the JSON array, no other text. Example format:
 
             // Try to save error state - use a basic save since saveProgress might not be available
             try {
+                // Ensure finalKeywords is defined (it might not be if error occurred early)
+                const keywordsForError = finalKeywords || [];
                 const errorProgress: any = {
                     currentStage: 'error',
                     stage: 'error',
                     error: error instanceof Error ? error.message : "Unknown error",
-                    newKeywords: finalKeywords || [],
+                    newKeywords: keywordsForError,
                     seedsGenerated: 0,
                     keywordsGenerated: 0,
                     duplicatesFound: 0,

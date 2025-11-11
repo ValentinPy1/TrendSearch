@@ -875,9 +875,14 @@ export function KeywordsTable({
             </thead>
             <tbody>
               {sortedKeywords.map((keyword, index) => {
+                // Create a unique key by combining id (if available) with index and keyword text
+                // This ensures uniqueness even if there are duplicate IDs
+                const uniqueKey = keyword.id 
+                  ? `${keyword.id}-${index}-${keyword.keyword}` 
+                  : `keyword-${index}-${keyword.keyword}`;
                 return (
                   <tr
-                    key={keyword.id || `keyword-${index}`}
+                    key={uniqueKey}
                     onClick={() => onKeywordSelect(keyword.keyword)}
                     className={`
                       group border-b border-white/5 cursor-pointer transition-all
