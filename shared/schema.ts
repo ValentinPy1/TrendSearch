@@ -130,6 +130,7 @@ export interface KeywordGenerationProgress {
     cpc: number | null;
     monthly_searches: Array<{ year: number; month: number; search_volume: number }>;
   }>; // Full DataForSEO API response from keywords_for_site
+  target?: string; // Website URL/domain used for keywords_for_site API (e.g., "dataforseo.com")
   // Fields for accurate resume (legacy)
   processedSeeds?: string[]; // Track which seeds were processed (legacy)
   seedSimilarities?: Record<string, number>; // Persist similarity scores (legacy)

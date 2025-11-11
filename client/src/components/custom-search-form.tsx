@@ -1757,58 +1757,89 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             </h3>
                                         </div>
                                         <div className="grid grid-cols-3 gap-3">
-                                            {competitors.map((competitor, index) => (
-                                                <div
-                                                    key={index}
-                                                    className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg p-3 transition-colors"
-                                                >
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                <h4 className="text-sm font-medium text-white">
-                                                                    {competitor.name}
-                                                                </h4>
-                                                                {competitor.url && (
-                                                                    <>
-                                                                        <a
-                                                                            href={competitor.url}
-                                                                            target="_blank"
-                                                                            rel="noopener noreferrer"
-                                                                            className="text-primary hover:text-primary/80 transition-colors"
-                                                                            onClick={(e) => e.stopPropagation()}
-                                                                        >
-                                                                            <ExternalLink className="h-3.5 w-3.5" />
-                                                                        </a>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                if (competitor.url) {
-                                                                                    // Extract domain from URL
-                                                                                    try {
-                                                                                        const url = new URL(competitor.url.startsWith('http') ? competitor.url : `https://${competitor.url}`);
-                                                                                        setWebsiteUrl(url.hostname.replace('www.', ''));
-                                                                                    } catch {
-                                                                                        // If URL parsing fails, use the URL as-is
-                                                                                        setWebsiteUrl(competitor.url.replace(/^https?:\/\//, '').replace(/^www\./, ''));
+                                            {competitors.map((competitor, index) => {
+                                                // Helper function to normalize URLs for comparison
+                                                const normalizeUrl = (url: string): string => {
+                                                    if (!url) return '';
+                                                    try {
+                                                        // Add protocol if missing
+                                                        const urlWithProtocol = url.startsWith('http') ? url : `https://${url}`;
+                                                        const urlObj = new URL(urlWithProtocol);
+                                                        // Get hostname and remove www.
+                                                        return urlObj.hostname.replace(/^www\./, '').toLowerCase();
+                                                    } catch {
+                                                        // If URL parsing fails, just clean it up
+                                                        return url.replace(/^https?:\/\//, '').replace(/^www\./, '').toLowerCase().split('/')[0];
+                                                    }
+                                                };
+
+                                                // Check if this competitor's URL matches the target website used for keyword generation
+                                                const keywordTarget = savedProgress?.target || '';
+                                                const competitorUrlNormalized = competitor.url ? normalizeUrl(competitor.url) : '';
+                                                const targetNormalized = keywordTarget ? normalizeUrl(keywordTarget) : '';
+                                                const hasKeywordsGenerated = competitorUrlNormalized && targetNormalized && competitorUrlNormalized === targetNormalized;
+
+                                                return (
+                                                    <div
+                                                        key={index}
+                                                        className={`bg-white/5 hover:bg-white/10 border rounded-lg p-3 transition-colors ${
+                                                            hasKeywordsGenerated ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-white/10'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                                    <h4 className="text-sm font-medium text-white">
+                                                                        {competitor.name}
+                                                                    </h4>
+                                                                    {hasKeywordsGenerated && (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded">
+                                                                            <Sparkles className="h-3 w-3" />
+                                                                            Keywords Generated
+                                                                        </span>
+                                                                    )}
+                                                                    {competitor.url && (
+                                                                        <>
+                                                                            <a
+                                                                                href={competitor.url}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className="text-primary hover:text-primary/80 transition-colors"
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                            >
+                                                                                <ExternalLink className="h-3.5 w-3.5" />
+                                                                            </a>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    if (competitor.url) {
+                                                                                        // Extract domain from URL
+                                                                                        try {
+                                                                                            const url = new URL(competitor.url.startsWith('http') ? competitor.url : `https://${competitor.url}`);
+                                                                                            setWebsiteUrl(url.hostname.replace('www.', ''));
+                                                                                        } catch {
+                                                                                            // If URL parsing fails, use the URL as-is
+                                                                                            setWebsiteUrl(competitor.url.replace(/^https?:\/\//, '').replace(/^www\./, ''));
+                                                                                        }
                                                                                     }
-                                                                                }
-                                                                            }}
-                                                                            className="text-cyan-500 hover:text-cyan-400 transition-colors p-1 hover:bg-white/10 rounded"
-                                                                            title="Use this URL for keyword search"
-                                                                        >
-                                                                            <Search className="h-3.5 w-3.5" />
-                                                                        </button>
-                                                                    </>
-                                                                )}
+                                                                                }}
+                                                                                className="text-cyan-500 hover:text-cyan-400 transition-colors p-1 hover:bg-white/10 rounded"
+                                                                                title="Use this URL for keyword search"
+                                                                            >
+                                                                                <Search className="h-3.5 w-3.5" />
+                                                                            </button>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                                <p className="text-xs text-white/60 line-clamp-2">
+                                                                    {competitor.description}
+                                                                </p>
                                                             </div>
-                                                            <p className="text-xs text-white/60 line-clamp-2">
-                                                                {competitor.description}
-                                                            </p>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>
