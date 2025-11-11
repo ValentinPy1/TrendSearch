@@ -448,15 +448,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     onActiveTabChange={setActiveTab}
                 />
 
-                {isLoading && (
-                    <GlassmorphicCard className="p-12">
-                        <div className="flex flex-col items-center justify-center gap-4">
-                            <Loader2 className="h-12 w-12 text-primary animate-spin" />
-                            <p className="text-white/60">Loading your ideas...</p>
-                        </div>
-                    </GlassmorphicCard>
-                )}
-
                 {error && (
                     <GlassmorphicCard className="p-8">
                         <div className="text-center">
@@ -660,7 +651,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                         <SheetTitle className="text-white">Idea History</SheetTitle>
                     </SheetHeader>
                     <div className="mt-6 overflow-y-auto h-[calc(100vh-100px)]">
-                        <IdeaHistory ideas={ideas || []} onIdeaSelect={handleIdeaSelect} />
+                        {isLoading ? (
+                            <div className="flex flex-col items-center justify-center gap-4 py-12">
+                                <Loader2 className="h-12 w-12 text-primary animate-spin" />
+                                <p className="text-white/60">Loading your ideas...</p>
+                            </div>
+                        ) : (
+                            <IdeaHistory ideas={ideas || []} onIdeaSelect={handleIdeaSelect} />
+                        )}
                     </div>
                 </SheetContent>
             </Sheet>

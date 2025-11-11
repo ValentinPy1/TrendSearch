@@ -30,9 +30,10 @@ interface LocationSelectorProps {
     value: { code: number; name: string } | null;
     onChange: (location: { code: number; name: string } | null) => void;
     className?: string;
+    inline?: boolean;
 }
 
-export function LocationSelector({ value, onChange, className }: LocationSelectorProps) {
+export function LocationSelector({ value, onChange, className, inline = false }: LocationSelectorProps) {
     const [open, setOpen] = React.useState(false);
     const [searchQuery, setSearchQuery] = React.useState("");
     const [locations, setLocations] = React.useState<Location[]>([]);
@@ -161,22 +162,27 @@ export function LocationSelector({ value, onChange, className }: LocationSelecto
     };
 
     return (
-        <div className={cn("space-y-2", className)}>
-            <label className="text-sm font-medium text-white">
-                Location <span className="text-white/60 text-xs">(optional - global if not selected)</span>
-            </label>
+        <div className={cn(inline ? "" : "space-y-2", className)}>
+            {!inline && (
+                <label className="text-sm font-medium text-white">
+                    Location <span className="text-white/60 text-xs">(optional - global if not selected)</span>
+                </label>
+            )}
             <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
                     <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={open}
-                        className="w-full justify-between bg-white/5 border-white/10 text-white hover:bg-white/10"
+                        className={cn(
+                            "justify-between bg-white/5 border-white/10 text-white hover:bg-white/10",
+                            inline ? "w-auto min-w-[200px]" : "w-full"
+                        )}
                     >
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                             <MapPin className="h-4 w-4 shrink-0 text-white/60" />
                             <span className="truncate">
-                                {value ? value.name : "Select location (optional)"}
+                                {value ? value.name : inline ? "Location (optional)" : "Select location (optional)"}
                             </span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
@@ -304,7 +310,7 @@ export function LocationSelector({ value, onChange, className }: LocationSelecto
                     </Command>
                 </PopoverContent>
             </Popover>
-            {value && (
+            {!inline && value && (
                 <div className="text-xs text-white/60 flex items-center gap-1">
                     <MapPin className="h-3 w-3" />
                     <span>Searching in: {value.name}</span>

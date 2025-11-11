@@ -1702,12 +1702,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     </p>
                 </div>
 
-                {/* Location Selector */}
-                <LocationSelector
-                    value={selectedLocation}
-                    onChange={setSelectedLocation}
-                />
-
                 {/* Sub-Tabs Section */}
                 <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
                     <TabsList className="flex gap-8 bg-transparent p-0 h-auto mb-6 border-b border-white/10">
@@ -1833,6 +1827,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         onChange={(e) => setWebsiteUrl(e.target.value)}
                                         disabled={isFindingKeywordsFromWebsite || isGeneratingKeywords}
                                         className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/40"
+                                    />
+                                    <LocationSelector
+                                        value={selectedLocation}
+                                        onChange={setSelectedLocation}
+                                        inline={true}
                                     />
                                     <Button
                                         type="button"
