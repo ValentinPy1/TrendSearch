@@ -2258,7 +2258,78 @@ Return ONLY the JSON array, no other text. Example format:
     app.get("/api/custom-search/projects", requireAuth, async (req, res) => {
         try {
             const projects = await storage.getCustomSearchProjects(req.user.id);
-            res.json({ projects });
+            
+            // Enrich projects with keyword counts and progress
+            const projectsWithStats = await Promise.all(
+                projects.map(async (project) => {
+                    // Get keyword count
+                    const keywords = await storage.getProjectKeywords(project.id);
+                    const keywordCount = keywords.length;
+                    
+                    // Extract progress information
+                    const progress = project.keywordGenerationProgress;
+                    let currentStage = null;
+                    let progressInfo = null;
+                    
+                    if (progress) {
+                        currentStage = progress.currentStage || progress.stage || null;
+                        
+                        // Determine progress info based on stage
+                        if (currentStage === 'complete' || progress.completedAt) {
+                            progressInfo = {
+                                stage: 'complete',
+                                label: 'Complete',
+                                newKeywordsCollected: progress.newKeywordsCollected || progress.newKeywords?.length || 0,
+                            };
+                        } else if (currentStage === 'generating-report' || progress.reportGenerated) {
+                            progressInfo = {
+                                stage: 'generating-report',
+                                label: 'Generating Report',
+                                newKeywordsCollected: progress.newKeywordsCollected || progress.newKeywords?.length || 0,
+                            };
+                        } else if (currentStage === 'computing-metrics' || progress.metricsComputed) {
+                            progressInfo = {
+                                stage: 'computing-metrics',
+                                label: 'Computing Metrics',
+                                metricsProcessedCount: progress.metricsProcessedCount || 0,
+                                newKeywordsCollected: progress.newKeywordsCollected || progress.newKeywords?.length || 0,
+                            };
+                        } else if (currentStage === 'fetching-dataforseo' || progress.dataForSEOFetched) {
+                            progressInfo = {
+                                stage: 'fetching-dataforseo',
+                                label: 'Fetching Data',
+                                keywordsFetchedCount: progress.keywordsFetchedCount || 0,
+                                newKeywordsCollected: progress.newKeywordsCollected || progress.newKeywords?.length || 0,
+                            };
+                        } else if (currentStage === 'generating-keywords' || progress.newKeywordsCollected) {
+                            progressInfo = {
+                                stage: 'generating-keywords',
+                                label: 'Generating Keywords',
+                                newKeywordsCollected: progress.newKeywordsCollected || progress.newKeywords?.length || 0,
+                            };
+                        } else if (currentStage === 'generating-seeds' || progress.seedsGenerated) {
+                            progressInfo = {
+                                stage: 'generating-seeds',
+                                label: 'Generating Seeds',
+                                seedsGenerated: progress.seedsGenerated || progress.seeds?.length || 0,
+                            };
+                        } else if (currentStage === 'calling-api') {
+                            progressInfo = {
+                                stage: 'calling-api',
+                                label: 'Initializing',
+                            };
+                        }
+                    }
+                    
+                    return {
+                        ...project,
+                        keywordCount,
+                        progress: progressInfo,
+                    };
+                })
+            );
+            
+            res.json({ projects: projectsWithStats });
         } catch (error) {
             console.error("Error fetching projects:", error);
             res.status(500).json({

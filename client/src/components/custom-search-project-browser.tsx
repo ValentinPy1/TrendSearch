@@ -4,7 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { Loader2, Trash2, FileText, Calendar } from "lucide-react";
+import { Loader2, Trash2, FileText, Calendar, Search, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { CustomSearchProject } from "@shared/schema";
 
@@ -25,7 +25,19 @@ export function CustomSearchProjectBrowser({
     const queryClient = useQueryClient();
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
-    const { data, isLoading, error } = useQuery<{ projects: CustomSearchProject[] }>({
+    interface ProjectWithStats extends CustomSearchProject {
+        keywordCount?: number;
+        progress?: {
+            stage: string;
+            label: string;
+            newKeywordsCollected?: number;
+            keywordsFetchedCount?: number;
+            metricsProcessedCount?: number;
+            seedsGenerated?: number;
+        } | null;
+    }
+
+    const { data, isLoading, error } = useQuery<{ projects: ProjectWithStats[] }>({
         queryKey: ["/api/custom-search/projects"],
         queryFn: async () => {
             const res = await apiRequest("GET", "/api/custom-search/projects");
@@ -65,7 +77,7 @@ export function CustomSearchProjectBrowser({
         }
     };
 
-    const handleSelect = (project: CustomSearchProject) => {
+    const handleSelect = (project: ProjectWithStats) => {
         onSelectProject(project);
         onOpenChange(false);
     };
@@ -138,7 +150,7 @@ export function CustomSearchProjectBrowser({
                                             <p className="text-sm text-white/60 mb-3 line-clamp-2">
                                                 {truncateText(project.pitch)}
                                             </p>
-                                            <div className="flex items-center gap-4 text-xs text-white/40">
+                                            <div className="flex items-center gap-4 text-xs text-white/40 mb-2">
                                                 <div className="flex items-center gap-1">
                                                     <Calendar className="h-3 w-3" />
                                                     <span>Updated {formatDate(project.updatedAt)}</span>
@@ -148,6 +160,47 @@ export function CustomSearchProjectBrowser({
                                                 )}
                                                 {project.competitors && project.competitors.length > 0 && (
                                                     <span>{project.competitors.length} competitors</span>
+                                                )}
+                                            </div>
+                                            {/* Keyword count and progress */}
+                                            <div className="flex items-center gap-4 text-xs">
+                                                {(project.keywordCount !== undefined && project.keywordCount > 0) && (
+                                                    <div className="flex items-center gap-1.5 text-white/70">
+                                                        <Search className="h-3.5 w-3.5" />
+                                                        <span className="font-medium">{project.keywordCount} {project.keywordCount === 1 ? 'keyword' : 'keywords'}</span>
+                                                    </div>
+                                                )}
+                                                {project.progress && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <TrendingUp className="h-3.5 w-3.5 text-blue-400" />
+                                                        <span className={`font-medium ${
+                                                            project.progress.stage === 'complete' 
+                                                                ? 'text-green-400' 
+                                                                : 'text-blue-400'
+                                                        }`}>
+                                                            {project.progress.label}
+                                                            {project.progress.newKeywordsCollected !== undefined && project.progress.newKeywordsCollected > 0 && (
+                                                                <span className="text-white/60 ml-1">
+                                                                    ({project.progress.newKeywordsCollected})
+                                                                </span>
+                                                            )}
+                                                            {project.progress.keywordsFetchedCount !== undefined && project.progress.keywordsFetchedCount > 0 && (
+                                                                <span className="text-white/60 ml-1">
+                                                                    ({project.progress.keywordsFetchedCount} fetched)
+                                                                </span>
+                                                            )}
+                                                            {project.progress.metricsProcessedCount !== undefined && project.progress.metricsProcessedCount > 0 && (
+                                                                <span className="text-white/60 ml-1">
+                                                                    ({project.progress.metricsProcessedCount} processed)
+                                                                </span>
+                                                            )}
+                                                            {project.progress.seedsGenerated !== undefined && project.progress.seedsGenerated > 0 && (
+                                                                <span className="text-white/60 ml-1">
+                                                                    ({project.progress.seedsGenerated} seeds)
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
