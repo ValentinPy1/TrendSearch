@@ -272,11 +272,11 @@ export function IdeaGenerator({
                     </TabsList>
 
                     <TabsContent value="standard" className="space-y-6">
-                        <div className="flex gap-3 items-center">
+                        <div className="flex items-center gap-0">
                             <div className="relative flex-1">
                                 <Input
                                     placeholder="Write a short pitch here and press enter to find semantically related keywords."
-                                    className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-32 rounded-full"
+                                    className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-32 rounded-l-full rounded-r-2xl border-r border-r-white/10"
                                     data-testid="input-idea"
                                     onKeyDown={handleKeyDown}
                                     {...form.register("idea")}
@@ -322,7 +322,7 @@ export function IdeaGenerator({
                                 type="button"
                                 variant="outline"
                                 onClick={() => setShowSectorBrowser(true)}
-                                className="h-14 px-4 bg-white/5 border-white/10 text-white hover:bg-white/10 hover:border-primary/50 transition-colors whitespace-nowrap"
+                                className="h-14 px-4 bg-purple-600/20 border-purple-500/50 text-white hover:bg-purple-600/30 hover:border-purple-400 transition-colors whitespace-nowrap rounded-r-full rounded-l-none"
                                 data-testid="button-browse-sectors"
                             >
                                 <Building2 className="h-5 w-5 stroke-[2.5] mr-2" />
