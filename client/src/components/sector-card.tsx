@@ -1,6 +1,6 @@
 import { GlassmorphicCard } from "./glassmorphic-card";
 import { SectorMetricsMini } from "./sector-metrics-mini";
-import { Building2, Users, Package, ChevronRight, ExternalLink } from "lucide-react";
+import { Building2, Users, Package, ChevronRight, ExternalLink, LucideIcon } from "lucide-react";
 import type { AggregatedMetrics } from "@/hooks/use-sector-data";
 import { Button } from "./ui/button";
 
@@ -14,6 +14,8 @@ interface SectorCardProps {
     productFitCount?: number;
     description?: string;
     url?: string;
+    icon?: LucideIcon;
+    batch?: string;
 }
 
 export function SectorCard({
@@ -26,8 +28,13 @@ export function SectorCard({
     productFitCount,
     description,
     url,
+    icon: customIcon,
+    batch,
 }: SectorCardProps) {
     const getIcon = () => {
+        if (customIcon) {
+            return customIcon;
+        }
         switch (type) {
             case "sector":
                 return Building2;
@@ -82,6 +89,11 @@ export function SectorCard({
                             {type === "sector" && userTypeCount !== undefined && (
                                 <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
                                     <span>{userTypeCount} {userTypeCount === 1 ? "startup" : "startups"}</span>
+                                </div>
+                            )}
+                            {batch && type !== "sector" && (
+                                <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
+                                    <span className="px-2 py-0.5 rounded bg-white/10 text-white/70">{batch}</span>
                                 </div>
                             )}
                         </div>

@@ -62,6 +62,7 @@ interface CompanyMetricResult {
     }>;
     description?: string;
     url?: string;
+    batch?: string;
 }
 
 interface IndustryAggregateResult {
@@ -498,6 +499,7 @@ async function aggregateCompanyMetrics(company: CompanyData): Promise<CompanyMet
         topKeywords,
         description: company.description,
         url: company.url,
+        batch: company.batch,
     };
 }
 

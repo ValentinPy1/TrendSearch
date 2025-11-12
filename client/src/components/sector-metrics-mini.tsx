@@ -10,9 +10,10 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
     const getTrendGradientText = (value: number) => {
         if (value >= 0) {
             // For positive values, use green gradient
-            // Normalize to 0-1 range (cap at 200% growth)
-            const normalizedValue = Math.min(1, Math.max(0, value / 200));
-            // Lightness ranges from 100% (white) at 0% to 50% (darker green) at 200%
+            // Range: 0 to 50
+            // Normalize to 0-1 range
+            const normalizedValue = Math.min(1, Math.max(0, value / 50));
+            // Lightness ranges from 100% (white) at 0% to 50% (darker green) at 50%
             const lightness = 100 - normalizedValue * 50;
             // Ensure minimum lightness for visibility (at least 60%)
             const finalLightness = Math.max(60, lightness);
@@ -21,7 +22,8 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
             };
         } else {
             // For negative values, use red gradient
-            const normalizedValue = Math.min(1, Math.max(0, Math.abs(value) / 100));
+            // Range: 0 to -10
+            const normalizedValue = Math.min(1, Math.max(0, Math.abs(value) / 10));
             const lightness = 100 - normalizedValue * 50;
             // Ensure minimum lightness for visibility (at least 60%)
             const finalLightness = Math.max(60, lightness);
@@ -31,25 +33,35 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
         }
     };
 
-    const getPurpleGradientText = (value: number, max: number) => {
-        const normalizedValue = Math.min(1, value / max);
+    const getPurpleGradientText = (value: number) => {
+        // Range: 3 to 10
+        const minCpc = 3;
+        const maxCpc = 10;
+        // Clamp value to range and normalize
+        const clampedValue = Math.max(minCpc, Math.min(maxCpc, value));
+        const normalizedValue = (clampedValue - minCpc) / (maxCpc - minCpc);
         const lightness = 100 - normalizedValue * 40;
         return {
             color: `hsl(250, 80%, ${lightness}%)`,
         };
     };
 
-    const getOrangeGradientText = (value: number, max: number = 100) => {
-        const normalizedValue = Math.min(1, Math.max(0, value / max));
+    const getOrangeGradientText = (value: number) => {
+        // Range: 20 to 35
+        const minOpportunity = 20;
+        const maxOpportunity = 32;
+        // Clamp value to range and normalize
+        const clampedValue = Math.max(minOpportunity, Math.min(maxOpportunity, value));
+        const normalizedValue = (clampedValue - minOpportunity) / (maxOpportunity - minOpportunity);
 
-        // Interpolate from white (at 0) to orange (at 100)
+        // Interpolate from white (at 20) to orange (at 35)
         // White: hsl(0, 0%, 100%) -> Orange: hsl(25, 100%, 60%)
         if (normalizedValue === 0) {
-            return { color: `hsl(0, 0%, 100%)` }; // Pure white at 0
+            return { color: `hsl(0, 0%, 100%)` }; // Pure white at 20
         }
 
-        // At 0: white (0% saturation, 100% lightness)
-        // At 100: orange (25 hue, 100% saturation, 60% lightness)
+        // At 20: white (0% saturation, 100% lightness)
+        // At 35: orange (25 hue, 100% saturation, 60% lightness)
         const hue = 25;
         const saturation = normalizedValue * 100; // 0% to 100%
         const lightness = 100 - (normalizedValue * 40); // 100% to 60%
@@ -57,33 +69,47 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
         return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
     };
 
-    const getWhiteGradientText = (value: number, max: number) => {
-        const normalizedValue = Math.min(1, value / max);
-        const lightness = 100 - normalizedValue * 40;
-        return { color: `hsl(0, 0%, ${lightness}%)` };
+    const getBlueGradientText = (value: number) => {
+        // Range: 0 to 6,000,000
+        const maxVolume = 6000000;
+        const normalizedValue = Math.min(1, Math.max(0, value / maxVolume));
+        // Blue gradient: lighter blue at 0, darker blue at max
+        // Using blue hue around 210-220
+        const lightness = 100 - normalizedValue * 40; // 100% to 60%
+        return { color: `hsl(210, 80%, ${lightness}%)` };
     };
 
     // For compact display, we'll show 4 key metrics
     // Ensure avgGrowthYoy is a valid number (handle NaN, undefined, null)
-    const avgGrowthYoy = typeof metrics.avgGrowthYoy === 'number' && !isNaN(metrics.avgGrowthYoy) 
-        ? metrics.avgGrowthYoy 
+    const avgGrowthYoy = typeof metrics.avgGrowthYoy === 'number' && !isNaN(metrics.avgGrowthYoy)
+        ? metrics.avgGrowthYoy
         : 0;
-    
+
+    // Format volume to 3 significant digits
+    const formatVolume = (volume: number): string => {
+        if (volume === 0) return "0 k";
+        const significantDigits = 3;
+        const magnitude = Math.floor(Math.log10(Math.abs(volume)));
+        const factor = Math.pow(10, significantDigits - 1 - magnitude);
+        const rounded = Math.round(volume * factor) / factor;
+        return rounded.toLocaleString() + " k";
+    };
+
     const displayMetrics = [
         {
-            label: "Volume",
-            value: metrics.avgVolume.toLocaleString(),
+            label: "Avg Volume",
+            value: formatVolume(metrics.avgVolume),
             icon: BarChart3,
-            style: getWhiteGradientText(metrics.avgVolume, Math.max(metrics.avgVolume, 100000)),
+            style: getBlueGradientText(metrics.avgVolume),
         },
         {
-            label: "Opportunity",
-            value: metrics.opportunityScore.toFixed(1),
+            label: "Avg Opportunity",
+            value: Math.round(metrics.opportunityScore).toString(),
             icon: Zap,
-            style: getOrangeGradientText(metrics.opportunityScore, 40),
+            style: getOrangeGradientText(metrics.opportunityScore),
         },
         {
-            label: "YoY Growth",
+            label: "Avg YoY Growth",
             value: `${avgGrowthYoy >= 0 ? "+" : ""}${avgGrowthYoy.toFixed(1)}%`,
             icon: TrendingUp,
             style: getTrendGradientText(avgGrowthYoy),
@@ -92,7 +118,7 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
             label: "Avg CPC",
             value: `$${metrics.avgCpc.toFixed(2)}`,
             icon: DollarSign,
-            style: getPurpleGradientText(metrics.avgCpc, Math.max(metrics.avgCpc, 10)),
+            style: getPurpleGradientText(metrics.avgCpc),
         },
     ];
 
@@ -114,7 +140,7 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
                     );
                 })}
             </div>
-    );
+        );
     }
 
     return (

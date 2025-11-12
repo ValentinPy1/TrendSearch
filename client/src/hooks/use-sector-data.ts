@@ -44,6 +44,7 @@ export interface CompanyMetricResult {
     }>;
     description?: string;
     url?: string;
+    batch?: string;
 }
 
 export interface IndustryAggregateResult {
