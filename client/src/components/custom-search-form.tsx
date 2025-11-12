@@ -2602,11 +2602,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 </div>
                             )}
 
-                        {/* Progress Steps - Always display when pipeline is running or has progress, but hide if report is completed */}
+                        {/* Progress Steps - Always display when pipeline is running or has progress, but hide if report is completed or generating-report is done */}
                         {(isFindingKeywordsFromWebsite || (keywordProgress && keywordProgress.stage && keywordProgress.stage !== 'idle' && keywordProgress.stage !== 'complete')) &&
                             savedProgress?.reportGenerated !== true &&
                             savedProgress?.currentStage !== 'complete' &&
                             keywordProgress?.stage !== 'complete' &&
+                            !(savedProgress?.currentStage === 'generating-report' && savedProgress?.reportGenerated === true) &&
                             !reportData && (() => {
                                 // Use savedProgress.currentStage as primary source, fallback to keywordProgress.stage
                                 const currentStage = savedProgress?.currentStage || keywordProgress?.stage || '';
@@ -2710,15 +2711,23 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 return null;
                             })()}
 
-                        {/* Loading Report - Show after progress completes but before report is loaded */}
+                        {/* Loading Report - Show after generating-report step or when report is being loaded */}
                         {(() => {
                             const currentStage = savedProgress?.currentStage || keywordProgress?.stage || '';
+                            const isGeneratingReport = currentStage === 'generating-report' || savedProgress?.currentStage === 'generating-report';
                             const isProgressComplete = currentStage === 'complete' ||
                                 savedProgress?.currentStage === 'complete' ||
                                 keywordProgress?.stage === 'complete';
-                            const shouldShowLoadingReport = isProgressComplete &&
-                                !reportData &&
-                                (isLoadingReport || savedProgress?.reportGenerated === true);
+
+                            // Show loading indicator if:
+                            // 1. We're in generating-report stage and reportGenerated is true (report generation done, waiting for load)
+                            // 2. Progress is complete and reportGenerated is true but reportData is not loaded yet
+                            // 3. isLoadingReport is true (actively loading)
+                            const shouldShowLoadingReport = !reportData && (
+                                (isGeneratingReport && savedProgress?.reportGenerated === true) ||
+                                (isProgressComplete && savedProgress?.reportGenerated === true) ||
+                                isLoadingReport
+                            );
 
                             if (shouldShowLoadingReport) {
                                 return (
