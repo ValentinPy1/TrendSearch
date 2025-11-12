@@ -141,13 +141,22 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
         const order = Math.floor(Math.log10(Math.abs(value)));
         const rounded = Math.round(value / Math.pow(10, order - 1)) * Math.pow(10, order - 1);
 
-        // Format with thousands (k) if >= 100,000
+        // Format with millions (M) if >= 1,000,000
+        if (rounded >= 1000000) {
+            const inMillions = rounded / 1000000;
+            // Round to 2 significant digits for the millions value
+            const millionsOrder = Math.floor(Math.log10(Math.abs(inMillions)));
+            const roundedMillions = Math.round(inMillions / Math.pow(10, millionsOrder - 1)) * Math.pow(10, millionsOrder - 1);
+            return `${roundedMillions.toLocaleString('en-US', { maximumFractionDigits: 1 })}M`;
+        }
+
+        // Format with thousands (k) if >= 1,000
         if (rounded >= 1000) {
             const inThousands = rounded / 1000;
             // Round to 2 significant digits for the thousands value
             const thousandsOrder = Math.floor(Math.log10(Math.abs(inThousands)));
             const roundedThousands = Math.round(inThousands / Math.pow(10, thousandsOrder - 1)) * Math.pow(10, thousandsOrder - 1);
-            return `${roundedThousands.toLocaleString('en-US', { maximumFractionDigits: 0 })}k`;
+            return `${roundedThousands.toLocaleString('en-US', { maximumFractionDigits: 1 })}k`;
         }
 
         // Format with thousands separators for smaller values
@@ -168,13 +177,22 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
         const order = Math.floor(Math.log10(Math.abs(value)));
         const rounded = Math.round(value / Math.pow(10, order - 1)) * Math.pow(10, order - 1);
 
-        // Format with thousands (k) if >= 100,000
+        // Format with millions (M) if >= 1,000,000
+        if (rounded >= 1000000) {
+            const inMillions = rounded / 1000000;
+            // Round to 2 significant digits for the millions value
+            const millionsOrder = Math.floor(Math.log10(Math.abs(inMillions)));
+            const roundedMillions = Math.round(inMillions / Math.pow(10, millionsOrder - 1)) * Math.pow(10, millionsOrder - 1);
+            return `$${roundedMillions.toLocaleString('en-US', { maximumFractionDigits: 1 })}M`;
+        }
+
+        // Format with thousands (k) if >= 1,000
         if (rounded >= 1000) {
             const inThousands = rounded / 1000;
             // Round to 2 significant digits for the thousands value
             const thousandsOrder = Math.floor(Math.log10(Math.abs(inThousands)));
             const roundedThousands = Math.round(inThousands / Math.pow(10, thousandsOrder - 1)) * Math.pow(10, thousandsOrder - 1);
-            return `$${roundedThousands.toLocaleString('en-US', { maximumFractionDigits: 0 })}k`;
+            return `$${roundedThousands.toLocaleString('en-US', { maximumFractionDigits: 1 })}k`;
         }
 
         // Format with thousands separators for smaller values
