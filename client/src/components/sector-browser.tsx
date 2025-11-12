@@ -16,10 +16,20 @@ import {
     Palette, BookOpen, Home, CreditCard, LucideIcon,
     BarChart3, Shirt, Wallet, Building, Rocket,
     Syringe, Truck, Scale, Target, MessageSquare,
-    Package, Sparkles, HelpCircle, DollarSign
+    Package, Sparkles, HelpCircle, DollarSign,
+    LayoutGrid, Table2, ArrowUp, ArrowDown, ExternalLink,
+    ChevronLeft, ChevronRight
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { PaywallModal } from "./paywall-modal";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "./ui/table";
 
 type SortOption = "name" | "volume" | "opportunityScore" | "growthYoy" | "cpc" | "startups";
 
@@ -178,6 +188,12 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
     const [companyFilterQuery, setCompanyFilterQuery] = useState("");
     const [companySortBy, setCompanySortBy] = useState<SortOption>("opportunityScore");
     const [showPaywall, setShowPaywall] = useState(false);
+    const [viewMode, setViewMode] = useState<"card" | "table">("card");
+    const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+    const [companyViewMode, setCompanyViewMode] = useState<"card" | "table">("card");
+    const [companySortDirection, setCompanySortDirection] = useState<"asc" | "desc">("desc");
+    const [companyCurrentPage, setCompanyCurrentPage] = useState(1);
+    const companiesPerPage = 100;
 
     // Check if payment is required
     const hasPaid = paymentStatus?.hasPaid ?? false;
@@ -202,7 +218,13 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
         setSelectedSubIndustry(subIndustryName);
         setFilterQuery("");
         setCompanyFilterQuery("");
+        setCompanyCurrentPage(1); // Reset to first page when changing sector
     };
+
+    // Reset pagination when filter or sort changes
+    useEffect(() => {
+        setCompanyCurrentPage(1);
+    }, [companyFilterQuery, companySortBy, companySortDirection]);
 
     const handleBack = () => {
         setSelectedSubIndustry(null);
@@ -245,26 +267,34 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
 
         // Sort
         industries = [...industries].sort((a, b) => {
+            let comparison = 0;
             switch (sortBy) {
                 case "name":
-                    return a.industry.localeCompare(b.industry);
+                    comparison = a.industry.localeCompare(b.industry);
+                    break;
                 case "volume":
-                    return b.aggregatedMetrics.avgVolume - a.aggregatedMetrics.avgVolume;
+                    comparison = b.aggregatedMetrics.avgVolume - a.aggregatedMetrics.avgVolume;
+                    break;
                 case "opportunityScore":
-                    return b.aggregatedMetrics.opportunityScore - a.aggregatedMetrics.opportunityScore;
+                    comparison = b.aggregatedMetrics.opportunityScore - a.aggregatedMetrics.opportunityScore;
+                    break;
                 case "growthYoy":
-                    return b.aggregatedMetrics.avgGrowthYoy - a.aggregatedMetrics.avgGrowthYoy;
+                    comparison = b.aggregatedMetrics.avgGrowthYoy - a.aggregatedMetrics.avgGrowthYoy;
+                    break;
                 case "cpc":
-                    return b.aggregatedMetrics.avgCpc - a.aggregatedMetrics.avgCpc;
+                    comparison = b.aggregatedMetrics.avgCpc - a.aggregatedMetrics.avgCpc;
+                    break;
                 case "startups":
-                    return (b.companyCount || 0) - (a.companyCount || 0);
+                    comparison = (b.companyCount || 0) - (a.companyCount || 0);
+                    break;
                 default:
                     return 0;
             }
+            return sortDirection === "asc" ? -comparison : comparison;
         });
 
         return industries;
-    }, [data, filterQuery, sortBy]);
+    }, [data, filterQuery, sortBy, sortDirection]);
 
     const industryCompaniesRaw = useMemo(() => {
         if (!selectedSubIndustry || !data) return [];
@@ -329,24 +359,31 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
 
         // Sort companies
         companies = companies.sort((a, b) => {
+            let comparison = 0;
             switch (companySortBy) {
                 case "name":
-                    return a.name.localeCompare(b.name);
+                    comparison = a.name.localeCompare(b.name);
+                    break;
                 case "volume":
-                    return b.aggregatedMetrics.avgVolume - a.aggregatedMetrics.avgVolume;
+                    comparison = b.aggregatedMetrics.avgVolume - a.aggregatedMetrics.avgVolume;
+                    break;
                 case "opportunityScore":
-                    return b.aggregatedMetrics.opportunityScore - a.aggregatedMetrics.opportunityScore;
+                    comparison = b.aggregatedMetrics.opportunityScore - a.aggregatedMetrics.opportunityScore;
+                    break;
                 case "growthYoy":
-                    return b.aggregatedMetrics.avgGrowthYoy - a.aggregatedMetrics.avgGrowthYoy;
+                    comparison = b.aggregatedMetrics.avgGrowthYoy - a.aggregatedMetrics.avgGrowthYoy;
+                    break;
                 case "cpc":
-                    return b.aggregatedMetrics.avgCpc - a.aggregatedMetrics.avgCpc;
+                    comparison = b.aggregatedMetrics.avgCpc - a.aggregatedMetrics.avgCpc;
+                    break;
                 default:
                     return 0;
             }
+            return companySortDirection === "asc" ? -comparison : comparison;
         });
 
         return companies;
-    }, [industryCompaniesRaw, companyFilterQuery, companySortBy]);
+    }, [industryCompaniesRaw, companyFilterQuery, companySortBy, companySortDirection]);
 
     if (isLoading) {
         return (
@@ -423,7 +460,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col bg-background/95 backdrop-blur-xl">
-                <DialogHeader className="border-b border-white/10 pb-4 px-6 relative">
+                <DialogHeader className="border-b border-white/10 pb-4 px-6">
                     <div className="flex items-center justify-between">
                         {selectedSubIndustry ? (
                             (() => {
@@ -431,6 +468,33 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                 const industryName = industry?.industry || ('subIndustry' in (industry || {}) ? (industry as any).subIndustry : null) || selectedSubIndustry;
                                 const metrics = industry?.aggregatedMetrics;
                                 const SectorIcon = getSectorIcon(selectedSubIndustry);
+
+                                // Calculate company count for header
+                                let companyCount = 0;
+                                if (data && selectedSubIndustry) {
+                                    const headerIndustry = data.industries?.[selectedSubIndustry];
+                                    if (headerIndustry) {
+                                        if (headerIndustry.industryType === 'sub') {
+                                            companyCount = Object.entries(data.companies || {})
+                                                .filter(([name]) => name.includes(`(${selectedSubIndustry})`))
+                                                .length;
+                                        } else {
+                                            companyCount = Object.entries(data.companies || {})
+                                                .filter(([name]) => {
+                                                    // For main industries, count all companies
+                                                    return true;
+                                                })
+                                                .length;
+                                        }
+                                    } else {
+                                        const headerSubIndustry = data.subIndustries?.[selectedSubIndustry];
+                                        if (headerSubIndustry) {
+                                            companyCount = Object.entries(data.companies || {})
+                                                .filter(([name]) => name.includes(`(${selectedSubIndustry})`))
+                                                .length;
+                                        }
+                                    }
+                                }
 
                                 // Format metrics for inline display
                                 const formatVolume = (volume: number): string => {
@@ -447,48 +511,53 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                     : 0;
 
                                 return (
-                                    <>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={handleBack}
-                                            className="h-8 w-8 absolute left-0"
-                                        >
-                                            <ArrowLeft className="h-4 w-4" />
-                                        </Button>
-                                        <div className="flex items-center gap-6 flex-wrap w-full">
-                                            <div className="flex items-center gap-3">
-                                                <SectorIcon className="h-6 w-6 text-primary shrink-0" />
-                                                <DialogTitle className="text-xl">{industryName}</DialogTitle>
-                                            </div>
-                                            {metrics && (
-                                                <div className="flex items-center gap-6 flex-wrap">
-                                                    <div className="flex items-center gap-2">
-                                                        <BarChart3 className="h-4 w-4 text-white/50" />
-                                                        <span className="text-sm text-white/60">Avg Volume:</span>
-                                                        <span className="text-sm font-semibold text-white">{formatVolume(metrics.avgVolume)}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Zap className="h-4 w-4 text-white/50" />
-                                                        <span className="text-sm text-white/60">Avg Opportunity:</span>
-                                                        <span className="text-sm font-semibold text-white">{Math.round(metrics.opportunityScore)}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <TrendingUp className="h-4 w-4 text-white/50" />
-                                                        <span className="text-sm text-white/60">Avg YoY Growth:</span>
-                                                        <span className={`text-sm font-semibold ${avgGrowthYoy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                            {avgGrowthYoy >= 0 ? "+" : ""}{avgGrowthYoy.toFixed(1)}%
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <DollarSign className="h-4 w-4 text-white/50" />
-                                                        <span className="text-sm text-white/60">Avg CPC:</span>
-                                                        <span className="text-sm font-semibold text-white">${metrics.avgCpc.toFixed(2)}</span>
-                                                    </div>
-                                                </div>
-                                            )}
+                                    <div className="flex flex-col gap-3 w-full">
+                                        <div className="flex items-center gap-3">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={handleBack}
+                                                className="h-8 w-8"
+                                            >
+                                                <ArrowLeft className="h-4 w-4" />
+                                            </Button>
+                                            <SectorIcon className="h-6 w-6 text-primary shrink-0" />
+                                            <DialogTitle className="text-xl">
+                                                {industryName}
+                                                {companyCount > 0 && (
+                                                    <span className="ml-2 text-base font-normal text-white/60">
+                                                        ({companyCount})
+                                                    </span>
+                                                )}
+                                            </DialogTitle>
                                         </div>
-                                    </>
+                                        {metrics && (
+                                            <div className="flex items-center gap-6 flex-wrap">
+                                                <div className="flex items-center gap-2">
+                                                    <BarChart3 className="h-4 w-4 text-white/50" />
+                                                    <span className="text-sm text-white/60">Avg Volume:</span>
+                                                    <span className="text-sm font-semibold text-white">{formatVolume(metrics.avgVolume)}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Zap className="h-4 w-4 text-white/50" />
+                                                    <span className="text-sm text-white/60">Avg Opportunity:</span>
+                                                    <span className="text-sm font-semibold text-white">{Math.round(metrics.opportunityScore)}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <TrendingUp className="h-4 w-4 text-white/50" />
+                                                    <span className="text-sm text-white/60">Avg YoY Growth:</span>
+                                                    <span className={`text-sm font-semibold ${avgGrowthYoy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                        {avgGrowthYoy >= 0 ? "+" : ""}{avgGrowthYoy.toFixed(1)}%
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <DollarSign className="h-4 w-4 text-white/50" />
+                                                    <span className="text-sm text-white/60">Avg CPC:</span>
+                                                    <span className="text-sm font-semibold text-white">${metrics.avgCpc.toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 );
                             })()
                         ) : (
@@ -602,7 +671,10 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                 </div>
                                 <select
                                     value={sortBy}
-                                    onChange={(e) => setSortBy(e.target.value as SortOption)}
+                                    onChange={(e) => {
+                                        setSortBy(e.target.value as SortOption);
+                                        setSortDirection("desc"); // Reset to descending when changing sort column
+                                    }}
                                     className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary appearance-none cursor-pointer"
                                     style={{
                                         backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.5)' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
@@ -618,23 +690,238 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                     <option value="growthYoy" className="bg-background">Sort by Avg Growth YoY</option>
                                     <option value="cpc" className="bg-background">Sort by Avg CPC</option>
                                 </select>
+                                <div className="flex gap-2 border border-white/10 rounded-lg p-1 bg-white/5">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className={`h-8 w-8 ${viewMode === "card" ? "bg-white/10" : ""}`}
+                                        onClick={() => setViewMode("card")}
+                                        title="Card view"
+                                    >
+                                        <LayoutGrid className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className={`h-8 w-8 ${viewMode === "table" ? "bg-white/10" : ""}`}
+                                        onClick={() => setViewMode("table")}
+                                        title="Table view"
+                                    >
+                                        <Table2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
                             </div>
 
                             {/* Industries Grid (Main + Sub flattened) */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {industriesList.map((industry, index) => (
-                                    <SectorCard
-                                        key={`${industry.industry}-${industry.industryType || 'sub'}-${index}`}
-                                        name={`${industry.industry}${industry.industryType === 'main' ? ' (Main)' : ''}`}
-                                        metrics={industry.aggregatedMetrics}
-                                        type="sector"
-                                        onClick={() => handleSubIndustryClick(industry.industry)}
-                                        userTypeCount={industry.companyCount}
-                                        productFitCount={0}
-                                        icon={getSectorIcon(industry.industry)}
-                                    />
-                                ))}
-                            </div>
+                            {viewMode === "card" ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {industriesList.map((industry, index) => (
+                                        <SectorCard
+                                            key={`${industry.industry}-${industry.industryType || 'sub'}-${index}`}
+                                            name={`${industry.industry}${industry.industryType === 'main' ? ' (Main)' : ''}`}
+                                            metrics={industry.aggregatedMetrics}
+                                            type="sector"
+                                            onClick={() => handleSubIndustryClick(industry.industry)}
+                                            userTypeCount={industry.companyCount}
+                                            productFitCount={0}
+                                            icon={getSectorIcon(industry.industry)}
+                                        />
+                                    ))}
+                                </div>
+                            ) : (
+                                (() => {
+                                    // Format volume to 3 significant digits
+                                    const formatVolume = (volume: number): string => {
+                                        if (volume === 0) return "0 k";
+                                        const significantDigits = 3;
+                                        const magnitude = Math.floor(Math.log10(Math.abs(volume)));
+                                        const factor = Math.pow(10, significantDigits - 1 - magnitude);
+                                        const rounded = Math.round(volume * factor) / factor;
+                                        return rounded.toLocaleString() + " k";
+                                    };
+
+                                    // Gradient functions (same as in SectorMetricsMini)
+                                    const getTrendGradientText = (value: number) => {
+                                        if (value >= 0) {
+                                            const normalizedValue = Math.min(1, Math.max(0, value / 50));
+                                            const lightness = 100 - normalizedValue * 50;
+                                            const finalLightness = Math.max(60, lightness);
+                                            return { color: `hsl(142, 70%, ${finalLightness}%)` };
+                                        } else {
+                                            const normalizedValue = Math.min(1, Math.max(0, Math.abs(value) / 10));
+                                            const lightness = 100 - normalizedValue * 50;
+                                            const finalLightness = Math.max(60, lightness);
+                                            return { color: `hsl(0, 80%, ${finalLightness}%)` };
+                                        }
+                                    };
+
+                                    const getPurpleGradientText = (value: number) => {
+                                        const minCpc = 3;
+                                        const maxCpc = 10;
+                                        const clampedValue = Math.max(minCpc, Math.min(maxCpc, value));
+                                        const normalizedValue = (clampedValue - minCpc) / (maxCpc - minCpc);
+                                        const lightness = 100 - normalizedValue * 40;
+                                        return { color: `hsl(250, 80%, ${lightness}%)` };
+                                    };
+
+                                    const getOrangeGradientText = (value: number) => {
+                                        const minOpportunity = 20;
+                                        const maxOpportunity = 32;
+                                        const clampedValue = Math.max(minOpportunity, Math.min(maxOpportunity, value));
+                                        const normalizedValue = (clampedValue - minOpportunity) / (maxOpportunity - minOpportunity);
+                                        if (normalizedValue === 0) {
+                                            return { color: `hsl(0, 0%, 100%)` };
+                                        }
+                                        const hue = 25;
+                                        const saturation = normalizedValue * 100;
+                                        const lightness = 100 - (normalizedValue * 40);
+                                        return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
+                                    };
+
+                                    const getBlueGradientText = (value: number) => {
+                                        const maxVolume = 6000;
+                                        const normalizedValue = Math.min(1, Math.max(0, value / maxVolume));
+                                        // Vibrant blue gradient: light blue at 0, more vibrant blue at max
+                                        const lightness = 100 - normalizedValue * 25; // 100% to 75% (slightly darker for vibrancy)
+                                        const saturation = 70 + normalizedValue * 25; // 70% to 95% (high saturation for vibrancy)
+                                        return { color: `hsl(200, ${saturation}%, ${lightness}%)` };
+                                    };
+
+                                    const handleColumnSort = (column: SortOption) => {
+                                        if (sortBy === column) {
+                                            // Toggle direction if clicking the same column
+                                            setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+                                        } else {
+                                            // Set new column and default to descending
+                                            setSortBy(column);
+                                            setSortDirection("desc");
+                                        }
+                                    };
+
+                                    const SortIcon = ({ column }: { column: SortOption }) => {
+                                        if (sortBy !== column) return null;
+                                        return sortDirection === "asc" ? (
+                                            <ArrowUp className="h-3 w-3 ml-1" />
+                                        ) : (
+                                            <ArrowDown className="h-3 w-3 ml-1" />
+                                        );
+                                    };
+
+                                    return (
+                                        <div className="border border-white/10 rounded-lg overflow-hidden">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow className="border-white/10 hover:bg-white/5">
+                                                        <TableHead
+                                                            className="text-white/90 cursor-pointer hover:text-white select-none"
+                                                            onClick={() => handleColumnSort("name")}
+                                                        >
+                                                            <div className="flex items-center">
+                                                                Sector
+                                                                <SortIcon column="name" />
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead
+                                                            className="text-white/90 text-right cursor-pointer hover:text-white select-none"
+                                                            onClick={() => handleColumnSort("startups")}
+                                                        >
+                                                            <div className="flex items-center justify-end">
+                                                                Startups
+                                                                <SortIcon column="startups" />
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead
+                                                            className="text-white/90 text-right cursor-pointer hover:text-white select-none"
+                                                            onClick={() => handleColumnSort("volume")}
+                                                        >
+                                                            <div className="flex items-center justify-end">
+                                                                Avg Volume
+                                                                <SortIcon column="volume" />
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead
+                                                            className="text-white/90 text-right cursor-pointer hover:text-white select-none"
+                                                            onClick={() => handleColumnSort("opportunityScore")}
+                                                        >
+                                                            <div className="flex items-center justify-end">
+                                                                Avg Opportunity
+                                                                <SortIcon column="opportunityScore" />
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead
+                                                            className="text-white/90 text-right cursor-pointer hover:text-white select-none"
+                                                            onClick={() => handleColumnSort("growthYoy")}
+                                                        >
+                                                            <div className="flex items-center justify-end">
+                                                                Avg YoY Growth
+                                                                <SortIcon column="growthYoy" />
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead
+                                                            className="text-white/90 text-right cursor-pointer hover:text-white select-none"
+                                                            onClick={() => handleColumnSort("cpc")}
+                                                        >
+                                                            <div className="flex items-center justify-end">
+                                                                Avg CPC
+                                                                <SortIcon column="cpc" />
+                                                            </div>
+                                                        </TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {industriesList.map((industry, index) => {
+                                                        const SectorIcon = getSectorIcon(industry.industry);
+                                                        const metrics = industry.aggregatedMetrics;
+                                                        const avgGrowthYoy = typeof metrics.avgGrowthYoy === 'number' && !isNaN(metrics.avgGrowthYoy)
+                                                            ? metrics.avgGrowthYoy
+                                                            : 0;
+
+                                                        return (
+                                                            <TableRow
+                                                                key={`${industry.industry}-${industry.industryType || 'sub'}-${index}`}
+                                                                className="border-white/10 hover:bg-white/5 cursor-pointer"
+                                                                onClick={() => handleSubIndustryClick(industry.industry)}
+                                                            >
+                                                                <TableCell className="font-medium">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <SectorIcon className="h-4 w-4 text-primary shrink-0" />
+                                                                        <span className="text-white">
+                                                                            {industry.industry}{industry.industryType === 'main' ? ' (Main)' : ''}
+                                                                        </span>
+                                                                    </div>
+                                                                </TableCell>
+                                                                <TableCell className="text-right text-white/90">
+                                                                    {industry.companyCount || 0}
+                                                                </TableCell>
+                                                                <TableCell className="text-right">
+                                                                    <span style={getBlueGradientText(metrics.avgVolume)}>
+                                                                        {formatVolume(metrics.avgVolume)}
+                                                                    </span>
+                                                                </TableCell>
+                                                                <TableCell className="text-right">
+                                                                    <span style={getOrangeGradientText(metrics.opportunityScore)}>
+                                                                        {Math.round(metrics.opportunityScore)}
+                                                                    </span>
+                                                                </TableCell>
+                                                                <TableCell className="text-right">
+                                                                    <span style={getTrendGradientText(avgGrowthYoy)}>
+                                                                        {avgGrowthYoy >= 0 ? "+" : ""}{avgGrowthYoy.toFixed(1)}%
+                                                                    </span>
+                                                                </TableCell>
+                                                                <TableCell className="text-right">
+                                                                    <span style={getPurpleGradientText(metrics.avgCpc)}>
+                                                                        ${metrics.avgCpc.toFixed(2)}
+                                                                    </span>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    })}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    );
+                                })()
+                            )}
 
                             {industriesList.length === 0 && (
                                 <div className="text-center py-12 text-white/60">
@@ -652,9 +939,6 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                             {/* YC Startups in this Industry */}
                             <div>
-                                <h3 className="text-lg font-semibold text-white mb-4">
-                                    YC Companies ({industryCompanies.length})
-                                </h3>
 
                                 {/* Search and Sort Controls */}
                                 <div className="flex gap-4 items-center mb-4">
@@ -679,7 +963,10 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                     </div>
                                     <select
                                         value={companySortBy}
-                                        onChange={(e) => setCompanySortBy(e.target.value as SortOption)}
+                                        onChange={(e) => {
+                                            setCompanySortBy(e.target.value as SortOption);
+                                            setCompanySortDirection("desc"); // Reset to descending when changing sort column
+                                        }}
                                         className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary appearance-none cursor-pointer"
                                         style={{
                                             backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.5)' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
@@ -694,25 +981,329 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                         <option value="cpc" className="bg-background">Sort by Avg CPC</option>
                                         <option value="name" className="bg-background">Sort by Name</option>
                                     </select>
+                                    <div className="flex gap-2 border border-white/10 rounded-lg p-1 bg-white/5">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={`h-8 w-8 ${companyViewMode === "card" ? "bg-white/10" : ""}`}
+                                            onClick={() => setCompanyViewMode("card")}
+                                            title="Card view"
+                                        >
+                                            <LayoutGrid className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={`h-8 w-8 ${companyViewMode === "table" ? "bg-white/10" : ""}`}
+                                            onClick={() => setCompanyViewMode("table")}
+                                            title="Table view"
+                                        >
+                                            <Table2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
 
-                                {/* Companies Grid */}
+                                {/* Companies Grid or Table */}
                                 {industryCompanies.length > 0 ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {industryCompanies.map((company, index) => (
-                                            <SectorCard
-                                                key={`${company.name}-${index}${company.url ? `-${company.url}` : ''}`}
-                                                name={company.name}
-                                                metrics={company.aggregatedMetrics}
-                                                description={company.description}
-                                                url={company.url}
-                                                batch={company.batch}
-                                                type="user_type"
-                                                onClick={() => handleItemClick(company.description || company.name)}
-                                                compact
-                                            />
-                                        ))}
-                                    </div>
+                                    (() => {
+                                        // Calculate pagination
+                                        const totalPages = Math.ceil(industryCompanies.length / companiesPerPage);
+                                        const startIndex = (companyCurrentPage - 1) * companiesPerPage;
+                                        const endIndex = startIndex + companiesPerPage;
+                                        const paginatedCompanies = industryCompanies.slice(startIndex, endIndex);
+
+                                        return (
+                                            <>
+                                                {companyViewMode === "card" ? (
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                        {paginatedCompanies.map((company, index) => {
+                                                            const actualIndex = startIndex + index;
+                                                            return (
+                                                                <SectorCard
+                                                                    key={`${company.name}-${actualIndex}${company.url ? `-${company.url}` : ''}`}
+                                                                    name={company.name}
+                                                                    metrics={company.aggregatedMetrics}
+                                                                    description={company.description}
+                                                                    url={company.url}
+                                                                    batch={company.batch}
+                                                                    type="user_type"
+                                                                    onClick={() => handleItemClick(company.description || company.name)}
+                                                                    compact
+                                                                />
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    (() => {
+                                                        // Format volume to 3 significant digits
+                                                        const formatVolume = (volume: number): string => {
+                                                            if (volume === 0) return "0 k";
+                                                            const significantDigits = 3;
+                                                            const magnitude = Math.floor(Math.log10(Math.abs(volume)));
+                                                            const factor = Math.pow(10, significantDigits - 1 - magnitude);
+                                                            const rounded = Math.round(volume * factor) / factor;
+                                                            return rounded.toLocaleString() + " k";
+                                                        };
+
+                                                        // Gradient functions (same as in SectorMetricsMini)
+                                                        const getTrendGradientText = (value: number) => {
+                                                            if (value >= 0) {
+                                                                const normalizedValue = Math.min(1, Math.max(0, value / 50));
+                                                                const lightness = 100 - normalizedValue * 50;
+                                                                const finalLightness = Math.max(60, lightness);
+                                                                return { color: `hsl(142, 70%, ${finalLightness}%)` };
+                                                            } else {
+                                                                const normalizedValue = Math.min(1, Math.max(0, Math.abs(value) / 10));
+                                                                const lightness = 100 - normalizedValue * 50;
+                                                                const finalLightness = Math.max(60, lightness);
+                                                                return { color: `hsl(0, 80%, ${finalLightness}%)` };
+                                                            }
+                                                        };
+
+                                                        const getPurpleGradientText = (value: number) => {
+                                                            const minCpc = 3;
+                                                            const maxCpc = 10;
+                                                            const clampedValue = Math.max(minCpc, Math.min(maxCpc, value));
+                                                            const normalizedValue = (clampedValue - minCpc) / (maxCpc - minCpc);
+                                                            const lightness = 100 - normalizedValue * 40;
+                                                            return { color: `hsl(250, 80%, ${lightness}%)` };
+                                                        };
+
+                                                        const getOrangeGradientText = (value: number) => {
+                                                            const minOpportunity = 20;
+                                                            const maxOpportunity = 32;
+                                                            const clampedValue = Math.max(minOpportunity, Math.min(maxOpportunity, value));
+                                                            const normalizedValue = (clampedValue - minOpportunity) / (maxOpportunity - minOpportunity);
+                                                            if (normalizedValue === 0) {
+                                                                return { color: `hsl(0, 0%, 100%)` };
+                                                            }
+                                                            const hue = 25;
+                                                            const saturation = normalizedValue * 100;
+                                                            const lightness = 100 - (normalizedValue * 40);
+                                                            return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
+                                                        };
+
+                                                        const getBlueGradientText = (value: number) => {
+                                                            const maxVolume = 6000;
+                                                            const normalizedValue = Math.min(1, Math.max(0, value / maxVolume));
+                                                            // Vibrant blue gradient: light blue at 0, more vibrant blue at max
+                                                            const lightness = 100 - normalizedValue * 25; // 100% to 75% (slightly darker for vibrancy)
+                                                            const saturation = 70 + normalizedValue * 25; // 70% to 95% (high saturation for vibrancy)
+                                                            return { color: `hsl(200, ${saturation}%, ${lightness}%)` };
+                                                        };
+
+                                                        const handleCompanyColumnSort = (column: SortOption) => {
+                                                            if (companySortBy === column) {
+                                                                // Toggle direction if clicking the same column
+                                                                setCompanySortDirection(companySortDirection === "asc" ? "desc" : "asc");
+                                                            } else {
+                                                                // Set new column and default to descending
+                                                                setCompanySortBy(column);
+                                                                setCompanySortDirection("desc");
+                                                            }
+                                                        };
+
+                                                        const CompanySortIcon = ({ column }: { column: SortOption }) => {
+                                                            if (companySortBy !== column) return null;
+                                                            return companySortDirection === "asc" ? (
+                                                                <ArrowUp className="h-3 w-3 ml-1" />
+                                                            ) : (
+                                                                <ArrowDown className="h-3 w-3 ml-1" />
+                                                            );
+                                                        };
+
+                                                        return (
+                                                            <div className="border border-white/10 rounded-lg overflow-hidden">
+                                                                <Table>
+                                                                    <TableHeader>
+                                                                        <TableRow className="border-white/10 hover:bg-white/5">
+                                                                            <TableHead
+                                                                                className="text-white/90 cursor-pointer hover:text-white select-none"
+                                                                                onClick={() => handleCompanyColumnSort("name")}
+                                                                            >
+                                                                                <div className="flex items-center">
+                                                                                    Company
+                                                                                    <CompanySortIcon column="name" />
+                                                                                </div>
+                                                                            </TableHead>
+                                                                            <TableHead className="text-white/90">Batch</TableHead>
+                                                                            <TableHead className="text-white/90">Description</TableHead>
+                                                                            <TableHead
+                                                                                className="text-white/90 text-right cursor-pointer hover:text-white select-none"
+                                                                                onClick={() => handleCompanyColumnSort("volume")}
+                                                                            >
+                                                                                <div className="flex items-center justify-end">
+                                                                                    Avg Volume
+                                                                                    <CompanySortIcon column="volume" />
+                                                                                </div>
+                                                                            </TableHead>
+                                                                            <TableHead
+                                                                                className="text-white/90 text-right cursor-pointer hover:text-white select-none"
+                                                                                onClick={() => handleCompanyColumnSort("opportunityScore")}
+                                                                            >
+                                                                                <div className="flex items-center justify-end">
+                                                                                    Avg Opportunity
+                                                                                    <CompanySortIcon column="opportunityScore" />
+                                                                                </div>
+                                                                            </TableHead>
+                                                                            <TableHead
+                                                                                className="text-white/90 text-right cursor-pointer hover:text-white select-none"
+                                                                                onClick={() => handleCompanyColumnSort("growthYoy")}
+                                                                            >
+                                                                                <div className="flex items-center justify-end">
+                                                                                    Avg YoY Growth
+                                                                                    <CompanySortIcon column="growthYoy" />
+                                                                                </div>
+                                                                            </TableHead>
+                                                                            <TableHead
+                                                                                className="text-white/90 text-right cursor-pointer hover:text-white select-none"
+                                                                                onClick={() => handleCompanyColumnSort("cpc")}
+                                                                            >
+                                                                                <div className="flex items-center justify-end">
+                                                                                    Avg CPC
+                                                                                    <CompanySortIcon column="cpc" />
+                                                                                </div>
+                                                                            </TableHead>
+                                                                        </TableRow>
+                                                                    </TableHeader>
+                                                                    <TableBody>
+                                                                        {paginatedCompanies.map((company, index) => {
+                                                                            const actualIndex = startIndex + index;
+                                                                            const metrics = company.aggregatedMetrics;
+                                                                            const avgGrowthYoy = typeof metrics.avgGrowthYoy === 'number' && !isNaN(metrics.avgGrowthYoy)
+                                                                                ? metrics.avgGrowthYoy
+                                                                                : 0;
+
+                                                                            return (
+                                                                                <TableRow
+                                                                                    key={`${company.name}-${actualIndex}${company.url ? `-${company.url}` : ''}`}
+                                                                                    className="border-white/10 hover:bg-white/5 cursor-pointer"
+                                                                                    onClick={() => handleItemClick(company.description || company.name)}
+                                                                                >
+                                                                                    <TableCell className="font-medium">
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <span className="text-white">{company.name}</span>
+                                                                                            {company.url && (
+                                                                                                <Button
+                                                                                                    variant="ghost"
+                                                                                                    size="icon"
+                                                                                                    className="h-5 w-5 text-white/60 hover:text-white/90"
+                                                                                                    onClick={(e) => {
+                                                                                                        e.stopPropagation();
+                                                                                                        window.open(company.url, '_blank', 'noopener,noreferrer');
+                                                                                                    }}
+                                                                                                    title="View on YC"
+                                                                                                >
+                                                                                                    <ExternalLink className="h-3.5 w-3.5" />
+                                                                                                </Button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </TableCell>
+                                                                                    <TableCell>
+                                                                                        {company.batch ? (
+                                                                                            <span className="px-2 py-0.5 rounded bg-white/10 text-white/70 text-sm">
+                                                                                                {company.batch}
+                                                                                            </span>
+                                                                                        ) : (
+                                                                                            <span className="text-white/50 text-sm">-</span>
+                                                                                        )}
+                                                                                    </TableCell>
+                                                                                    <TableCell>
+                                                                                        <span className="text-white/70 text-sm line-clamp-2 max-w-xs">
+                                                                                            {company.description || "-"}
+                                                                                        </span>
+                                                                                    </TableCell>
+                                                                                    <TableCell className="text-right">
+                                                                                        <span style={getBlueGradientText(metrics.avgVolume)}>
+                                                                                            {formatVolume(metrics.avgVolume)}
+                                                                                        </span>
+                                                                                    </TableCell>
+                                                                                    <TableCell className="text-right">
+                                                                                        <span style={getOrangeGradientText(metrics.opportunityScore)}>
+                                                                                            {Math.round(metrics.opportunityScore)}
+                                                                                        </span>
+                                                                                    </TableCell>
+                                                                                    <TableCell className="text-right">
+                                                                                        <span style={getTrendGradientText(avgGrowthYoy)}>
+                                                                                            {avgGrowthYoy >= 0 ? "+" : ""}{avgGrowthYoy.toFixed(1)}%
+                                                                                        </span>
+                                                                                    </TableCell>
+                                                                                    <TableCell className="text-right">
+                                                                                        <span style={getPurpleGradientText(metrics.avgCpc)}>
+                                                                                            ${metrics.avgCpc.toFixed(2)}
+                                                                                        </span>
+                                                                                    </TableCell>
+                                                                                </TableRow>
+                                                                            );
+                                                                        })}
+                                                                    </TableBody>
+                                                                </Table>
+                                                            </div>
+                                                        );
+                                                    })()
+                                                )}
+
+                                                {/* Pagination Controls */}
+                                                {totalPages > 1 && (
+                                                    <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+                                                        <div className="text-sm text-white/60">
+                                                            Showing {startIndex + 1} to {Math.min(endIndex, industryCompanies.length)} of {industryCompanies.length} companies
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => setCompanyCurrentPage(prev => Math.max(1, prev - 1))}
+                                                                disabled={companyCurrentPage === 1}
+                                                                className="text-white/90 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                <ChevronLeft className="h-4 w-4 mr-1" />
+                                                                Previous
+                                                            </Button>
+                                                            <div className="flex items-center gap-1">
+                                                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                                                    let pageNum;
+                                                                    if (totalPages <= 5) {
+                                                                        pageNum = i + 1;
+                                                                    } else if (companyCurrentPage <= 3) {
+                                                                        pageNum = i + 1;
+                                                                    } else if (companyCurrentPage >= totalPages - 2) {
+                                                                        pageNum = totalPages - 4 + i;
+                                                                    } else {
+                                                                        pageNum = companyCurrentPage - 2 + i;
+                                                                    }
+                                                                    return (
+                                                                        <Button
+                                                                            key={pageNum}
+                                                                            variant={companyCurrentPage === pageNum ? "default" : "ghost"}
+                                                                            size="sm"
+                                                                            onClick={() => setCompanyCurrentPage(pageNum)}
+                                                                            className={`min-w-[2.5rem] ${companyCurrentPage === pageNum
+                                                                                ? "bg-primary text-primary-foreground"
+                                                                                : "text-white/90 hover:text-white hover:bg-white/10"
+                                                                                }`}
+                                                                        >
+                                                                            {pageNum}
+                                                                        </Button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => setCompanyCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                                                disabled={companyCurrentPage === totalPages}
+                                                                className="text-white/90 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                Next
+                                                                <ChevronRight className="h-4 w-4 ml-1" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()
                                 ) : (
                                     <div className="text-center py-12 text-white/60">
                                         {companyFilterQuery && companyFilterQuery.trim()

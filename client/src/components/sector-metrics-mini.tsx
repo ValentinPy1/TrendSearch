@@ -73,10 +73,10 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
         // Range: 0 to 6,000,000
         const maxVolume = 6000000;
         const normalizedValue = Math.min(1, Math.max(0, value / maxVolume));
-        // Blue gradient: lighter blue at 0, darker blue at max
-        // Using blue hue around 210-220
-        const lightness = 100 - normalizedValue * 40; // 100% to 60%
-        return { color: `hsl(210, 80%, ${lightness}%)` };
+        // Vibrant blue gradient: light blue at 0, more vibrant blue at max
+        const lightness = 100 - normalizedValue * 25; // 100% to 75% (slightly darker for vibrancy)
+        const saturation = 70 + normalizedValue * 25; // 70% to 95% (high saturation for vibrancy)
+        return { color: `hsl(200, ${saturation}%, ${lightness}%)` };
     };
 
     // For compact display, we'll show 4 key metrics
