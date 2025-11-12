@@ -418,15 +418,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                         <span className="text-sm text-white/60">{user.email}</span>
                         <Button
                             variant="ghost"
-                            onClick={() => setShowHelp(true)}
-                            data-testid="button-help"
-                            className="gap-2"
-                        >
-                            <HelpCircle className="h-5 w-5" />
-                            <span>Help</span>
-                        </Button>
-                        <Button
-                            variant="ghost"
                             size="icon"
                             onClick={onLogout}
                             data-testid="button-logout"

@@ -10,7 +10,7 @@ import { LocationSelector } from "@/components/ui/location-selector";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabase";
-import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil, Sparkle, CheckCircle2, Save, HelpCircle } from "lucide-react";
+import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil, Sparkle, CheckCircle2, Save, HelpCircle, MapPin } from "lucide-react";
 import { CustomSearchProjectBrowser } from "./custom-search-project-browser";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { CustomSearchProject, Keyword } from "@shared/schema";
@@ -1963,14 +1963,29 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             <h3 className="text-lg font-semibold text-white">1. Start with Your Idea</h3>
                             <p className="text-sm text-white/80">
                                 Write a one or two sentence pitch describing your business idea in the <strong>Idea Pitch</strong> field.
-                                You can use the <strong>Generate New</strong> button to get AI-generated ideas, or <strong>Expand Current</strong> to enhance your existing pitch.
+                                You can use the{" "}
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-yellow-300/10 border border-yellow-300/20">
+                                    <Sparkles className="h-3.5 w-3.5 text-yellow-300" />
+                                    <strong className="text-yellow-300">Generate New</strong>
+                                </span>{" "}
+                                button to get AI-generated ideas, or{" "}
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-300/10 border border-blue-300/20">
+                                    <Sparkles className="h-3.5 w-3.5 text-blue-300" />
+                                    <strong className="text-blue-300">Expand Current</strong>
+                                </span>{" "}
+                                to enhance your existing pitch.
                             </p>
                         </div>
 
                         <div className="space-y-2">
                             <h3 className="text-lg font-semibold text-white">2. Find Competitors</h3>
                             <p className="text-sm text-white/80">
-                                Click the <strong>Find Competitors</strong> button to discover companies similar to your idea.
+                                Click the{" "}
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600/20 border border-purple-500/30">
+                                    <Search className="h-3.5 w-3.5 text-purple-400" />
+                                    <strong className="text-purple-400">Find Competitors</strong>
+                                </span>{" "}
+                                button to discover companies similar to your idea.
                                 The system will analyze your pitch and return a list of competitors with their descriptions and websites.
                             </p>
                         </div>
@@ -1978,9 +1993,30 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         <div className="space-y-2">
                             <h3 className="text-lg font-semibold text-white">3. Generate Keywords from Website</h3>
                             <p className="text-sm text-white/80">
-                                Enter a website URL (yours or a competitor's) in the search field. Optionally select a location to focus on specific regions.
-                                Click <strong>Get Keywords</strong> to extract relevant keywords that the website targets.
-                                You can click the search icon on any competitor card to quickly use their URL.
+                                Enter a website URL (yours or a competitor's) in the search field. Optionally select a{" "}
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 border border-white/20">
+                                    <MapPin className="h-3.5 w-3.5 text-white/80" />
+                                    <strong>Location</strong>
+                                </span>{" "}
+                                to focus on specific regions. Click{" "}
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border border-blue-500/30">
+                                    <Search className="h-3.5 w-3.5 text-blue-400" />
+                                    <strong className="text-blue-400">Get Keywords</strong>
+                                </span>{" "}
+                                to extract relevant keywords that the website targets.
+                                You can click the{" "}
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/30">
+                                    <Search className="h-3 w-3 text-cyan-400" />
+                                </span>{" "}
+                                search icon on any competitor card to quickly use their URL.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-semibold text-white">4. Refine Your Search (Optional)</h3>
+                            <p className="text-sm text-white/80">
+                                Use the <strong>Topics</strong>, <strong>Personas</strong>, <strong>Pain Points</strong>, and <strong>Features</strong> sections 
+                                to add more context. These help generate more targeted keywords and improve search relevance.
                             </p>
                         </div>
 
@@ -1997,7 +2033,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                         <div className="space-y-2 pt-2 border-t border-white/10">
                             <p className="text-sm text-white/70">
-                                <strong>Tip:</strong> Save your project regularly to preserve your work. Projects auto-save after 2 seconds of inactivity.
+                                <strong>Tip:</strong> Use the{" "}
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600/20 border border-purple-500/30">
+                                    <Save className="h-3.5 w-3.5 text-purple-400" />
+                                    <strong className="text-purple-400">Save</strong>
+                                </span>{" "}
+                                button to preserve your work. Projects auto-save after 2 seconds of inactivity.
                             </p>
                         </div>
                     </div>
