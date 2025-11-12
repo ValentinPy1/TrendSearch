@@ -631,6 +631,49 @@ function safeSetTimeout(callback: () => void, delay: number): NodeJS.Timeout {
 }
 
 /**
+ * Convert processed keywords (from processDataForSEOResults) to format needed for report generation
+ * Creates temporary IDs and sets up keyword objects with all required fields
+ * Note: Similarity scores will be calculated in generateReportData based on keyword text
+ */
+function convertProcessedKeywordsToReportFormat(
+    keywordsToInsert: Array<{
+        keyword: string;
+        volume: number | null;
+        competition: number | null;
+        cpc: number | null;
+        topPageBid: number | null;
+        monthlyData: Array<{ month: string; volume: number }>;
+        source: string;
+    }>,
+    projectId: string
+): any[] {
+    // Filter keywords with data
+    const keywordsWithData = keywordsToInsert.filter(kw =>
+        (kw.volume !== null && kw.volume !== undefined) ||
+        (kw.competition !== null && kw.competition !== undefined) ||
+        (kw.cpc !== null && kw.cpc !== undefined) ||
+        (kw.topPageBid !== null && kw.topPageBid !== undefined)
+    );
+
+    // Convert to report format with temporary IDs
+    // Note: IDs are temporary and won't match database IDs, but similarity scores
+    // will be calculated based on keyword text in generateReportData
+    return keywordsWithData.map((kw, index) => ({
+        id: `temp-${projectId}-${index}`, // Temporary ID for report generation
+        keyword: kw.keyword,
+        volume: kw.volume,
+        competition: kw.competition,
+        cpc: kw.cpc ? kw.cpc.toString() : null,
+        topPageBid: kw.topPageBid ? kw.topPageBid.toString() : null,
+        monthlyData: kw.monthlyData || [],
+        growthYoy: null, // Will be calculated later in background
+        growth3m: null, // Will be calculated later in background
+        volatility: null, // Will be calculated later in background
+        trendStrength: null, // Will be calculated later in background
+    }));
+}
+
+/**
  * Generate report data from keywords
  * Extracted to reduce code duplication between new report generation and already-generated report paths
  */
@@ -783,43 +826,70 @@ async function generateReportData(
         keywordIdToTextMap.set(kw.id, kw.keyword);
     });
 
-    for (const link of projectLinks) {
-        let similarity = link.similarityScore ? parseFloat(link.similarityScore) : null;
-        // Recalculate if similarity is null, 0.8 (old default), or 0.5 (current default when pitch was empty)
-        if (similarity === null || similarity === 0.8 || similarity === 0.5) {
-            const keywordText = keywordIdToTextMap.get(link.globalKeywordId);
-            if (keywordText && pitch.trim()) {
+    // If we have project links (keywords already saved to database), use them
+    if (projectLinks.length > 0) {
+        for (const link of projectLinks) {
+            let similarity = link.similarityScore ? parseFloat(link.similarityScore) : null;
+            // Recalculate if similarity is null, 0.8 (old default), or 0.5 (current default when pitch was empty)
+            if (similarity === null || similarity === 0.8 || similarity === 0.5) {
+                const keywordText = keywordIdToTextMap.get(link.globalKeywordId);
+                if (keywordText && pitch.trim()) {
+                    try {
+                        similarity = await keywordVectorService.calculateTextSimilarity(pitch, keywordText);
+                        await db
+                            .update(customSearchProjectKeywords)
+                            .set({ similarityScore: similarity.toString() })
+                            .where(eq(customSearchProjectKeywords.id, link.id));
+                        similarityCalculated++;
+                    } catch (error) {
+                        logger.warn("Failed to calculate similarity for keyword", {
+                            keyword: keywordText,
+                            error: error instanceof Error ? error.message : String(error),
+                        });
+                        similarity = similarity || 0.5;
+                        similarityErrors++;
+                    }
+                } else {
+                    similarity = similarity || 0.5;
+                }
+            } else {
+                similarityCached++;
+            }
+            similarityScoreMap.set(link.globalKeywordId, similarity.toString());
+        }
+    } else {
+        // No project links yet (generating from in-memory data) - calculate similarity directly from keyword text
+        logger.debug("No project links found, calculating similarity scores directly from keyword text");
+        for (const kw of keywordsWithData) {
+            // Check if this is a temporary ID (from in-memory processing)
+            const isTemporaryId = kw.id.startsWith('temp-');
+            if (isTemporaryId && pitch.trim()) {
                 try {
-                    similarity = await keywordVectorService.calculateTextSimilarity(pitch, keywordText);
-                    await db
-                        .update(customSearchProjectKeywords)
-                        .set({ similarityScore: similarity.toString() })
-                        .where(eq(customSearchProjectKeywords.id, link.id));
+                    const similarity = await keywordVectorService.calculateTextSimilarity(pitch, kw.keyword);
+                    similarityScoreMap.set(kw.id, similarity.toString());
                     similarityCalculated++;
                 } catch (error) {
                     logger.warn("Failed to calculate similarity for keyword", {
-                        keyword: keywordText,
+                        keyword: kw.keyword,
                         error: error instanceof Error ? error.message : String(error),
                     });
-                    similarity = similarity || 0.5;
+                    similarityScoreMap.set(kw.id, '0.5');
                     similarityErrors++;
                 }
             } else {
-                similarity = similarity || 0.5;
+                similarityScoreMap.set(kw.id, '0.5');
             }
-        } else {
-            similarityCached++;
         }
-        similarityScoreMap.set(link.globalKeywordId, similarity.toString());
     }
 
     const similarityDuration = Date.now() - similarityStartTime;
+    const totalSimilarities = projectLinks.length > 0 ? projectLinks.length : keywordsWithData.length;
     logger.info("Similarity calculation complete", {
         duration: `${similarityDuration}ms (${(similarityDuration / 1000).toFixed(2)}s)`,
         calculated: similarityCalculated,
         cached: similarityCached,
         errors: similarityErrors,
-        total: projectLinks.length,
+        total: totalSimilarities,
     });
 
     logger.debug("Calculating opportunity scores for keywords", {
@@ -3540,12 +3610,24 @@ Return ONLY the JSON array, no other text. Example format:
                 }
             }
 
-            // STEP 3: Process DataForSEO results (skip if already done)
+            // STEP 3: Process DataForSEO results in memory (skip if already done)
             // This runs regardless of whether keywords were just extracted or loaded from saved progress
             // Re-check flags after potential updates
             savedProgress = project.keywordGenerationProgress;
             hasDataForSEOMetrics = savedProgress?.dataForSEOFetched === true;
             hasDataForSEOResults = savedProgress?.dataForSEOSiteResults && Array.isArray(savedProgress.dataForSEOSiteResults) && savedProgress.dataForSEOSiteResults.length > 0;
+
+            // Variables to hold processed data for report generation
+            let processedKeywordsToInsert: Array<{
+                keyword: string;
+                volume: number | null;
+                competition: number | null;
+                cpc: number | null;
+                topPageBid: number | null;
+                monthlyData: Array<{ month: string; volume: number }>;
+                source: string;
+            }> | null = null;
+            let processedKeywordsWithDataCount = 0;
 
             logger.info("Checking if DataForSEO metrics need to be processed", {
                 projectId,
@@ -3556,7 +3638,7 @@ Return ONLY the JSON array, no other text. Example format:
             });
 
             if (!hasDataForSEOMetrics && finalKeywords && finalKeywords.length > 0) {
-                logger.info("Processing DataForSEO metrics", { projectId, keywordsCount: finalKeywords.length });
+                logger.info("Processing DataForSEO metrics in memory", { projectId, keywordsCount: finalKeywords.length });
                 await saveProgress({
                     currentStage: 'fetching-dataforseo',
                 });
@@ -3578,27 +3660,22 @@ Return ONLY the JSON array, no other text. Example format:
                     throw new Error(errorMessage);
                 }
 
-                // Process DataForSEO results using shared function
-                const { processDataForSEOResults, saveKeywordsToProject } = await import("./keyword-processing-service");
-                const { keywordsToInsert, keywordMap, keywordsWithData } = processDataForSEOResults(siteResults, finalKeywords);
-                const savedKeywordsCount = await saveKeywordsToProject(keywordsToInsert, finalKeywords, projectId, project.pitch || '', storage, keywordVectorService);
+                // Process DataForSEO results in memory (fast, no database operations)
+                const { processDataForSEOResults } = await import("./keyword-processing-service");
+                const { keywordsToInsert, keywordsWithData } = processDataForSEOResults(siteResults, finalKeywords);
+                processedKeywordsToInsert = keywordsToInsert;
+                processedKeywordsWithDataCount = keywordsWithData;
 
-                // Save progress
-                logger.info("Fetched DataForSEO metrics", {
+                logger.info("Processed DataForSEO metrics in memory", {
                     projectId,
                     keywordsWithData,
                     totalKeywords: finalKeywords.length
                 });
-                await saveProgress({
-                    currentStage: 'fetching-dataforseo',
-                    dataForSEOFetched: true,
-                    keywordsFetchedCount: keywordsWithData
-                });
             } else {
-                logger.info("DataForSEO metrics already fetched, skipping", { projectId });
+                logger.info("DataForSEO metrics already processed, skipping", { projectId });
             }
 
-            // STEP 5: Generate report FIRST (before computing metrics)
+            // STEP 4: Generate report FIRST (before saving to database)
             // Re-check hasReport flag after potential updates
             savedProgress = project.keywordGenerationProgress;
             hasReport = savedProgress?.reportGenerated === true;
@@ -3609,35 +3686,46 @@ Return ONLY the JSON array, no other text. Example format:
                     timestamp: new Date().toISOString(),
                 });
 
-                logger.info("Generating final report", { projectId });
+                logger.info("Generating final report from in-memory data", { projectId });
                 await saveProgress({
                     currentStage: 'generating-report',
                 });
 
-                // Reuse logic from existing generate-report endpoint
-                const allKeywords = await storage.getProjectKeywords(projectId);
-                logger.debug("Retrieved keywords for report generation", {
-                    totalKeywords: allKeywords.length,
-                });
+                let keywordsForReport: any[] = [];
 
-                // Include keywords with any data metric
-                const keywordsWithData = allKeywords.filter(kw =>
-                    (kw.volume !== null && kw.volume !== undefined) ||
-                    (kw.competition !== null && kw.competition !== undefined) ||
-                    (kw.cpc !== null && kw.cpc !== undefined && kw.cpc !== '') ||
-                    (kw.topPageBid !== null && kw.topPageBid !== undefined && kw.topPageBid !== '')
-                );
+                // If we just processed keywords in memory, use those
+                if (processedKeywordsToInsert && processedKeywordsToInsert.length > 0) {
+                    keywordsForReport = convertProcessedKeywordsToReportFormat(processedKeywordsToInsert, projectId);
+                    logger.debug("Using in-memory processed keywords for report generation", {
+                        totalKeywords: processedKeywordsToInsert.length,
+                        keywordsWithData: keywordsForReport.length,
+                    });
+                } else {
+                    // Fallback: load from database (for resume scenarios)
+                    const allKeywords = await storage.getProjectKeywords(projectId);
+                    logger.debug("Retrieved keywords from database for report generation", {
+                        totalKeywords: allKeywords.length,
+                    });
+
+                    // Include keywords with any data metric
+                    keywordsForReport = allKeywords.filter(kw =>
+                        (kw.volume !== null && kw.volume !== undefined) ||
+                        (kw.competition !== null && kw.competition !== undefined) ||
+                        (kw.cpc !== null && kw.cpc !== undefined && kw.cpc !== '') ||
+                        (kw.topPageBid !== null && kw.topPageBid !== undefined && kw.topPageBid !== '')
+                    );
+                }
 
                 logger.info("Filtered keywords with data", {
-                    totalKeywords: allKeywords.length,
-                    keywordsWithData: keywordsWithData.length,
-                    keywordsWithoutData: allKeywords.length - keywordsWithData.length,
+                    totalKeywords: processedKeywordsToInsert?.length || 0,
+                    keywordsWithData: keywordsForReport.length,
+                    keywordsWithoutData: (processedKeywordsToInsert?.length || 0) - keywordsForReport.length,
                 });
 
-                if (keywordsWithData.length === 0) {
+                if (keywordsForReport.length === 0) {
                     logger.error("No keywords with data found for report generation", {
                         projectId,
-                        totalKeywords: allKeywords.length,
+                        totalKeywords: processedKeywordsToInsert?.length || 0,
                     });
                     const errorMessage = "No keywords with data found. Please ensure keywords have been generated and metrics have been fetched.";
                     await saveProgress({
@@ -3651,7 +3739,7 @@ Return ONLY the JSON array, no other text. Example format:
                 const reportData = await generateReportData(
                     projectId,
                     project,
-                    keywordsWithData,
+                    keywordsForReport,
                     keywordVectorService,
                     db,
                     customSearchProjectKeywords
@@ -3672,6 +3760,46 @@ Return ONLY the JSON array, no other text. Example format:
                 });
             } else {
                 logger.info("Report already generated", { projectId });
+            }
+
+            // STEP 5: Save DataForSEO metrics to database in background (after report generation)
+            // This allows users to see the report immediately while database operations happen in background
+            if (!hasDataForSEOMetrics && processedKeywordsToInsert && processedKeywordsToInsert.length > 0) {
+                // Start database save in background (fire and forget, but with error handling)
+                (async () => {
+                    try {
+                        logger.info("Saving DataForSEO metrics to database (background)", {
+                            projectId,
+                            keywordsCount: processedKeywordsToInsert!.length,
+                        });
+
+                        const { saveKeywordsToProject } = await import("./keyword-processing-service");
+                        const savedKeywordsCount = await saveKeywordsToProject(
+                            processedKeywordsToInsert!,
+                            finalKeywords,
+                            projectId,
+                            project.pitch || '',
+                            storage,
+                            keywordVectorService
+                        );
+
+                        // Update progress after save completes
+                        logger.info("Saved DataForSEO metrics to database", {
+                            projectId,
+                            keywordsWithData: savedKeywordsCount,
+                            totalKeywords: finalKeywords.length
+                        });
+                        await saveProgress({
+                            dataForSEOFetched: true,
+                            keywordsFetchedCount: savedKeywordsCount
+                        });
+                    } catch (error) {
+                        logger.error("Error saving DataForSEO metrics to database (background)", error, {
+                            projectId,
+                        });
+                        // Don't throw - this is background operation, report is already generated
+                    }
+                })();
             }
 
             // STEP 6: Compute metrics in the background (asynchronously, after sending report)

@@ -182,6 +182,24 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         form.setValue("name", projectName);
                     }
                 }
+                
+                // Restore array fields only if form arrays are empty but project has values
+                // This preserves user input while ensuring data is loaded when needed
+                if (currentProject.topics && currentProject.topics.length > 0 && topics.length === 0) {
+                    setTopics(currentProject.topics);
+                }
+                if (currentProject.personas && currentProject.personas.length > 0 && personas.length === 0) {
+                    setPersonas(currentProject.personas);
+                }
+                if (currentProject.painPoints && currentProject.painPoints.length > 0 && painPoints.length === 0) {
+                    setPainPoints(currentProject.painPoints);
+                }
+                if (currentProject.features && currentProject.features.length > 0 && features.length === 0) {
+                    setFeatures(currentProject.features);
+                }
+                if (currentProject.competitors && currentProject.competitors.length > 0 && competitors.length === 0) {
+                    setCompetitors(currentProject.competitors);
+                }
             }
 
             if (currentProject?.keywordGenerationProgress) {
@@ -409,29 +427,35 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             setCurrentProjectId(result.project.id);
             isCreatingProjectRef.current = false; // Clear guard after setting currentProjectId
             
-            // For automatic project creation (via ensureProjectExists), preserve current form values
-            // Don't overwrite what the user is typing - only set if form is empty
-            const currentFormPitch = form.getValues("pitch");
-            const currentFormName = form.getValues("name");
-            
-            // Only update form if it's empty and project has a value
-            // This preserves user input during automatic project creation
-            if (result.project.pitch !== undefined) {
-                const projectPitch = result.project.pitch || "";
-                // Only set if form is empty but project has a value
-                if (!currentFormPitch && projectPitch) {
-                    form.setValue("pitch", projectPitch);
-                }
-            }
-            if (result.project.name !== undefined) {
-                const projectName = result.project.name || "";
-                // Only set if form is empty but project has a value
-                if (!currentFormName && projectName) {
-                    form.setValue("name", projectName);
-                }
-            }
+            // Preserve all current form values - don't let query refetch clear them
+            // The form already has the correct values that were just saved
+            // We don't need to update the form from the server response since we just sent those values
             
             // Invalidate queries to refresh the projects list
+            // Use optimistic update to immediately add the new project to the cache
+            // This prevents the form from being cleared during refetch
+            queryClient.setQueryData<{ projects: CustomSearchProject[] }>(
+                ["/api/custom-search/projects"],
+                (oldData) => {
+                    if (!oldData) return { projects: [result.project] };
+                    // Check if project already exists in the list
+                    const exists = oldData.projects.some(p => p.id === result.project.id);
+                    if (exists) {
+                        // Update existing project
+                        return {
+                            projects: oldData.projects.map(p => 
+                                p.id === result.project.id ? result.project : p
+                            )
+                        };
+                    }
+                    // Add new project at the beginning
+                    return {
+                        projects: [result.project, ...oldData.projects]
+                    };
+                }
+            );
+            
+            // Then invalidate to ensure we have the latest data (but form won't clear because of optimistic update)
             queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
         },
         onError: (error) => {
@@ -545,21 +569,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [name, pitch, topics, personas, painPoints, features, competitors, isLoadingProject, currentProjectId]);
 
-    // Auto-load most recent project on mount if projects exist
-    const hasAutoLoadedRef = useRef(false); // Track if we've already auto-loaded a project
-    useEffect(() => {
-        // Don't run if projects are still loading or we've already auto-loaded
-        if (!projectsData || hasAutoLoadedRef.current || isCreatingProjectRef.current) return;
-
-        // Only auto-load if we don't have a current project and projects exist
-        if (projectsData.projects.length > 0 && !currentProjectId && !isLoadingProject) {
-            // Load most recent project
-            hasAutoLoadedRef.current = true; // Mark as auto-loaded
-            const mostRecent = projectsData.projects[0];
-            loadProject(mostRecent);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectsData, currentProjectId, isLoadingProject]);
+    // Auto-load disabled - projects are only loaded when explicitly selected by the user
+    // Removed auto-load behavior to allow users to start with a blank form
 
     // Load project data into form
     const loadProject = async (project: CustomSearchProject) => {
