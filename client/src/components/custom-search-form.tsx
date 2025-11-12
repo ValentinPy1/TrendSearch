@@ -1618,9 +1618,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     previousPipelineStatusRef.current !== 'error';
 
                 if (wasRunning) {
+                    const keywordCount = data.report?.keywords?.length || data.report?.totalKeywords || 0;
                     toast({
                         title: "Success!",
-                        description: `Successfully found keywords from website with ${data.report?.totalKeywords || 0} keywords`,
+                        description: `Successfully found keywords from website with ${keywordCount} keywords`,
                     });
                 }
 
@@ -2046,9 +2047,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     }, 500);
                                 }
 
+                                const keywordCount = data.report?.keywords?.length || data.report?.totalKeywords || 0;
                                 toast({
                                     title: "Report Generated!",
-                                    description: `Successfully generated full report with ${data.report?.totalKeywords || 0} keywords`,
+                                    description: `Successfully generated full report with ${keywordCount} keywords`,
                                 });
 
                                 // Clear progress state after a short delay to allow report to render
@@ -2496,10 +2498,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                                                 }
                                                                             }
                                                                         }}
-                                                                        className="text-cyan-500 hover:text-cyan-400 transition-colors p-1 hover:bg-white/10 rounded"
+                                                                        className="text-cyan-500 hover:text-cyan-400 transition-colors px-2 py-1 hover:bg-white/10 rounded flex items-center gap-1.5"
                                                                         title="Use this URL for keyword search"
                                                                     >
                                                                         <Search className="h-3.5 w-3.5" />
+                                                                        <span className="text-xs">Get Keywords</span>
                                                                     </button>
                                                                 </>
                                                             )}
@@ -2607,7 +2610,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             savedProgress?.reportGenerated !== true &&
                             savedProgress?.currentStage !== 'complete' &&
                             keywordProgress?.stage !== 'complete' &&
-                            !(savedProgress?.currentStage === 'generating-report' && savedProgress?.reportGenerated === true) &&
+                            savedProgress?.currentStage !== 'generating-report' &&
                             !reportData && (() => {
                                 // Use savedProgress.currentStage as primary source, fallback to keywordProgress.stage
                                 const currentStage = savedProgress?.currentStage || keywordProgress?.stage || '';
@@ -2677,8 +2680,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     );
                                 }
 
-                                // Show current step with time
+                                // Show current step with time (but not if generating-report is done and we should show loading report instead)
                                 if (currentStage && currentStage !== 'complete' && currentStage !== 'idle' && !hasError) {
+                                    // Don't show generating-report step if reportGenerated is true (show loading report instead)
+                                    if (currentStage === 'generating-report' && savedProgress?.reportGenerated === true) {
+                                        return null;
+                                    }
                                     return (
                                         <div className="mt-4 flex items-center justify-center gap-2">
                                             <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />
@@ -2713,6 +2720,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                         {/* Loading Report - Show after generating-report step or when report is being loaded */}
                         {(() => {
+                            if (reportData) return null; // Don't show if report is already loaded
+
                             const currentStage = savedProgress?.currentStage || keywordProgress?.stage || '';
                             const isGeneratingReport = currentStage === 'generating-report' || savedProgress?.currentStage === 'generating-report';
                             const isProgressComplete = currentStage === 'complete' ||
@@ -2720,14 +2729,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 keywordProgress?.stage === 'complete';
 
                             // Show loading indicator if:
-                            // 1. We're in generating-report stage and reportGenerated is true (report generation done, waiting for load)
-                            // 2. Progress is complete and reportGenerated is true but reportData is not loaded yet
-                            // 3. isLoadingReport is true (actively loading)
-                            const shouldShowLoadingReport = !reportData && (
-                                (isGeneratingReport && savedProgress?.reportGenerated === true) ||
+                            // 1. isLoadingReport is true (actively loading) - highest priority
+                            // 2. We're in generating-report stage (report is being generated, will need to load after)
+                            // 3. Progress is complete and reportGenerated is true but reportData is not loaded yet
+                            // 4. savedProgress exists and reportGenerated is true (catch-all for when report is generated but not loaded)
+                            const shouldShowLoadingReport = isLoadingReport ||
+                                isGeneratingReport ||
                                 (isProgressComplete && savedProgress?.reportGenerated === true) ||
-                                isLoadingReport
-                            );
+                                (savedProgress?.reportGenerated === true && !reportData);
 
                             if (shouldShowLoadingReport) {
                                 return (
@@ -3013,7 +3022,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             onKeywordSelect={setSelectedKeyword}
                                             onLoadMore={hasMoreToShow ? handleLoadMore : undefined}
                                             reportId={currentProjectId || ""}
-                                            metricsPending={savedProgress?.metricsComputed === false}
+                                            metricsPending={savedProgress?.metricsComputed === false || savedProgress?.metricsComputed === undefined}
                                         />
                                     </div>
 
@@ -3241,7 +3250,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     onKeywordSelect={setSelectedKeyword}
                                     onLoadMore={hasMoreToShow ? handleLoadMore : undefined}
                                     reportId={currentProjectId || ""}
-                                    metricsPending={savedProgress?.metricsComputed === false}
+                                    metricsPending={savedProgress?.metricsComputed === false || savedProgress?.metricsComputed === undefined}
                                 />
                             </div>
 

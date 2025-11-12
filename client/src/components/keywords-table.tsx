@@ -568,7 +568,12 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Efficiency metric for bidding (higher = better value)",
                 format: (value) => {
-                    if (value === null || value === undefined || value === "") return "";
+                    if (value === null || value === undefined || value === "") {
+                        if (metricsPending) {
+                            return <Loader2 className="h-3 w-3 text-white/40 animate-spin inline-block" />;
+                        }
+                        return "";
+                    }
                     const efficiency = parseFloat(value || "0");
                     return (
                         <span className="font-medium" style={getTrendStrengthBidEfficiencyGradient(efficiency)}>
@@ -585,11 +590,26 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Total Acquisition Cost",
                 format: (value) => {
-                    if (value === null || value === undefined || value === "") return "";
+                    if (value === null || value === undefined || value === "") {
+                        if (metricsPending) {
+                            return <Loader2 className="h-3 w-3 text-white/40 animate-spin inline-block" />;
+                        }
+                        return "";
+                    }
                     const tac = parseFloat(value || "0");
-                    if (tac === 0 || isNaN(tac)) return "";
+                    if (tac === 0 || isNaN(tac)) {
+                        if (metricsPending) {
+                            return <Loader2 className="h-3 w-3 text-white/40 animate-spin inline-block" />;
+                        }
+                        return "";
+                    }
                     const displayValue = formatCurrencyTwoSignificantDigits(tac);
-                    if (!displayValue) return "";
+                    if (!displayValue) {
+                        if (metricsPending) {
+                            return <Loader2 className="h-3 w-3 text-white/40 animate-spin inline-block" />;
+                        }
+                        return "";
+                    }
                     return (
                         <span className="font-medium" style={getLogarithmicPurpleGradient(tac)}>
                             {displayValue}
@@ -605,11 +625,26 @@ export function KeywordsTable({
                 sortable: true,
                 tooltip: "Search Acquisition Cost",
                 format: (value) => {
-                    if (value === null || value === undefined || value === "") return "";
+                    if (value === null || value === undefined || value === "") {
+                        if (metricsPending) {
+                            return <Loader2 className="h-3 w-3 text-white/40 animate-spin inline-block" />;
+                        }
+                        return "";
+                    }
                     const sac = parseFloat(value || "0");
-                    if (sac === 0 || isNaN(sac)) return "";
+                    if (sac === 0 || isNaN(sac)) {
+                        if (metricsPending) {
+                            return <Loader2 className="h-3 w-3 text-white/40 animate-spin inline-block" />;
+                        }
+                        return "";
+                    }
                     const displayValue = formatCurrencyTwoSignificantDigits(sac);
-                    if (!displayValue) return "";
+                    if (!displayValue) {
+                        if (metricsPending) {
+                            return <Loader2 className="h-3 w-3 text-white/40 animate-spin inline-block" />;
+                        }
+                        return "";
+                    }
                     return (
                         <span className="font-medium" style={getLogarithmicPurpleGradient(sac)}>
                             {displayValue}
