@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, History, Loader2, Building2 } from "lucide-react";
+import { Sparkles, History, Loader2, Building2, Search } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { IdeaWithReport } from "@shared/schema";
 import { KeywordFilters, type KeywordFilter } from "@/components/keyword-filters";
@@ -34,6 +34,7 @@ export function IdeaGenerator({
     const { toast } = useToast();
     const [showSectorBrowser, setShowSectorBrowser] = useState(false);
     const [activeTab, setActiveTab] = useState("standard");
+    const [isSearchMode, setIsSearchMode] = useState(false);
 
     // Notify parent when tab changes
     useEffect(() => {
@@ -139,9 +140,6 @@ export function IdeaGenerator({
                     console.error("Error fetching idea name:", error);
                 }
             })();
-
-            // Automatically generate report
-            generateReportMutation.mutate({ ideaId: result.idea.id, filters });
         },
         onError: (error) => {
             toast({
@@ -199,45 +197,73 @@ export function IdeaGenerator({
     });
 
     // Notify parent when generating state changes
+    // Only notify when generating report, not when just generating idea
     useEffect(() => {
-        const isGenerating =
-            generateIdeaMutation.isPending || generateReportMutation.isPending;
+        // Only show loading components when generating report (search mode)
+        // Don't show them when just generating an idea
+        const isGenerating = generateReportMutation.isPending || 
+            (generateIdeaMutation.isPending && isSearchMode);
         onGeneratingChange?.(isGenerating);
     }, [
         generateIdeaMutation.isPending,
         generateReportMutation.isPending,
+        isSearchMode,
         onGeneratingChange,
     ]);
 
     const handleGenerateIdea = () => {
-        // Always generate new AI idea (pass null to force AI generation)
+        // Only generate new AI idea (pass null to force AI generation)
+        // Don't automatically generate report - let user search separately
+        setIsSearchMode(false);
         generateIdeaMutation.mutate({
             originalIdea: null,
         });
     };
 
-    const handleGenerateReport = () => {
+    const handleSearch = () => {
         const ideaText = form.getValues("idea");
 
         if (!ideaText || ideaText.trim().length === 0) {
             toast({
                 title: "Error",
-                description: "Please enter an idea to generate a report",
+                description: "Please enter an idea to search for keywords",
                 variant: "destructive",
             });
             return;
         }
 
+        // If we have a current idea with the same text, just regenerate report
+        if (currentIdea?.id && currentIdea.generatedIdea === ideaText.trim()) {
+            generateReportMutation.mutate({
+                ideaId: currentIdea.id,
+                filters
+            });
+            return;
+        }
+
         // Create idea with the current input, then generate report
+        setIsSearchMode(true);
         generateIdeaMutation.mutate({
             originalIdea: ideaText.trim(),
         });
     };
 
+    // Update generateIdeaMutation to trigger report generation when idea is created from search
+    useEffect(() => {
+        if (generateIdeaMutation.isSuccess && generateIdeaMutation.data && isSearchMode) {
+            // This was triggered by search, so generate report
+            generateReportMutation.mutate({ 
+                ideaId: generateIdeaMutation.data.idea.id, 
+                filters 
+            });
+            setIsSearchMode(false); // Reset flag
+        }
+    }, [generateIdeaMutation.isSuccess, generateIdeaMutation.data, isSearchMode, filters]);
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
             e.preventDefault();
-            handleGenerateReport();
+            handleSearch();
         }
     };
 
@@ -273,10 +299,20 @@ export function IdeaGenerator({
 
                     <TabsContent value="standard" className="space-y-6">
                         <div className="flex items-center gap-0">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setShowSectorBrowser(true)}
+                                className="h-14 px-4 bg-purple-600/20 border-purple-500/50 text-white hover:bg-purple-600/30 hover:border-purple-400 transition-colors whitespace-nowrap rounded-l-full rounded-r-none"
+                                data-testid="button-browse-sectors"
+                            >
+                                <Building2 className="h-5 w-5 stroke-[2.5] mr-2" />
+                                Browse Sectors
+                            </Button>
                             <div className="relative flex-1">
                                 <Input
                                     placeholder="Write a short pitch here and press enter to find semantically related keywords."
-                                    className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-32 rounded-l-full rounded-r-2xl border-r border-r-white/10"
+                                    className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-32 rounded-none border-l-0 border-r-0"
                                     data-testid="input-idea"
                                     onKeyDown={handleKeyDown}
                                     {...form.register("idea")}
@@ -285,16 +321,12 @@ export function IdeaGenerator({
                                     <Button
                                         type="button"
                                         onClick={handleGenerateIdea}
-                                        disabled={
-                                            generateIdeaMutation.isPending ||
-                                            generateReportMutation.isPending
-                                        }
+                                        disabled={generateIdeaMutation.isPending}
                                         variant="ghost"
                                         className="h-10 px-3 text-yellow-300 hover:bg-transparent whitespace-nowrap"
                                         data-testid="button-generate"
                                     >
-                                        {generateIdeaMutation.isPending ||
-                                            generateReportMutation.isPending ? (
+                                        {generateIdeaMutation.isPending ? (
                                             <>
                                                 <Loader2 className="h-4 w-4 animate-spin stroke-[2.5] mr-1.5" />
                                                 <span className="text-sm">Generate</span>
@@ -320,13 +352,19 @@ export function IdeaGenerator({
                             </div>
                             <Button
                                 type="button"
-                                variant="outline"
-                                onClick={() => setShowSectorBrowser(true)}
-                                className="h-14 px-4 bg-purple-600/20 border-purple-500/50 text-white hover:bg-purple-600/30 hover:border-purple-400 transition-colors whitespace-nowrap rounded-r-full rounded-l-none"
-                                data-testid="button-browse-sectors"
+                                onClick={handleSearch}
+                                disabled={
+                                    generateReportMutation.isPending ||
+                                    generateIdeaMutation.isPending
+                                }
+                                className="h-14 pl-6 pr-8 bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-r-full rounded-l-none border-l-0 flex items-center justify-center"
+                                data-testid="button-search"
                             >
-                                <Building2 className="h-5 w-5 stroke-[2.5] mr-2" />
-                                Browse Sectors
+                                {generateReportMutation.isPending || generateIdeaMutation.isPending ? (
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                ) : (
+                                    <Search className="h-5 w-5" />
+                                )}
                             </Button>
                         </div>
 

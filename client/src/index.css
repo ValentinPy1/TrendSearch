@@ -341,7 +341,44 @@
     inset: -1px;
   }
 
-  /* Custom scrollbar styling */
+  /* Global scrollbar styling for all scrollable elements */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  /* Dark mode scrollbar styling */
+  .dark * {
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  }
+
+  .dark *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  /* Custom scrollbar styling (for specific elements that need different styling) */
   .custom-scrollbar::-webkit-scrollbar {
     width: 8px;
     height: 8px;

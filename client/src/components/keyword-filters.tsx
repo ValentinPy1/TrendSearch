@@ -15,7 +15,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { X, Filter, ChevronDown, ChevronUp, Plus, Pencil, Check, HelpCircle } from "lucide-react";
+import { X, Filter, ChevronDown, ChevronUp, Plus, Pencil, Check, HelpCircle, Sparkles, Search, Building2, History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PaywallModal } from "./paywall-modal";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
@@ -445,15 +445,29 @@ export function KeywordFilters({
                     <div className="space-y-2">
                         <h3 className="text-lg font-semibold text-white">1. Enter Your Idea</h3>
                         <p className="text-sm text-white/80">
-                            Type a short pitch describing your business idea in the search field and press <strong>Enter</strong> 
-                            or click the <strong>Generate</strong> button. The system will find semantically related keywords based on your idea.
+                            Type a short pitch describing your business idea in the search field. You can use the{" "}
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-yellow-300/10 border border-yellow-300/20">
+                                <Sparkles className="h-3.5 w-3.5 text-yellow-300" />
+                                <strong className="text-yellow-300">Generate</strong>
+                            </span>{" "}
+                            button to get an AI-generated idea, or write your own. To find keywords, press <strong>Enter</strong> or click the{" "}
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-600/20 border border-blue-500/30">
+                                <Search className="h-3.5 w-3.5 text-blue-400" />
+                                <strong className="text-blue-400">Search</strong>
+                            </span>{" "}
+                            button on the right. The system will find semantically related keywords based on your idea.
                         </p>
                     </div>
 
                     <div className="space-y-2">
                         <h3 className="text-lg font-semibold text-white">2. Browse Sectors</h3>
                         <p className="text-sm text-white/80">
-                            Click <strong>Browse Sectors</strong> to explore keywords by industry or sector. 
+                            Click the{" "}
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600/20 border border-purple-500/30">
+                                <Building2 className="h-3.5 w-3.5 text-purple-400" />
+                                <strong className="text-purple-400">Browse Sectors</strong>
+                            </span>{" "}
+                            button to explore keywords by industry or sector. 
                             This helps you discover trending keywords in specific markets and compare opportunities across different sectors.
                         </p>
                     </div>
@@ -461,7 +475,12 @@ export function KeywordFilters({
                     <div className="space-y-2">
                         <h3 className="text-lg font-semibold text-white">3. Use Advanced Filters</h3>
                         <p className="text-sm text-white/80">
-                            Click <strong>Advanced Filters</strong> to refine your keyword results. You can filter by:
+                            Click{" "}
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 border border-white/20">
+                                <Filter className="h-3.5 w-3.5 text-white/80" />
+                                <strong>Advanced Filters</strong>
+                            </span>{" "}
+                            to refine your keyword results. You can filter by:
                         </p>
                         <ul className="text-sm text-white/80 space-y-1 list-disc list-inside ml-2">
                             <li><strong>Volume:</strong> Search volume (monthly searches)</li>
@@ -480,7 +499,12 @@ export function KeywordFilters({
                     <div className="space-y-2">
                         <h3 className="text-lg font-semibold text-white">4. View Your History</h3>
                         <p className="text-sm text-white/80">
-                            Click the <strong>History</strong> button to see your previous searches and reports. 
+                            Click the{" "}
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-600/20 border border-cyan-500/30">
+                                <History className="h-3.5 w-3.5 text-cyan-400" />
+                                <strong className="text-cyan-400">History</strong>
+                            </span>{" "}
+                            button to see your previous searches and reports. 
                             This allows you to quickly access past keyword research and compare results over time.
                         </p>
                     </div>
