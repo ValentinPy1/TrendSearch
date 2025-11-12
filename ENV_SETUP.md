@@ -106,6 +106,42 @@ DATA_FOR_SEO_CRED_B64=your_base64_encoded_credentials
    - Encode to Base64 (e.g., using `echo -n "login:password" | base64`)
    - Copy the result → `DATA_FOR_SEO_CRED_B64`
 
+### Google Custom Search API Configuration (Optional)
+- `GOOGLE_SEARCH_API_KEY` - Your Google API key for Custom Search
+- `GOOGLE_SEARCH_ENGINE_ID` - Your Custom Search Engine ID (cx parameter)
+
+These are optional. If not configured, the system will fall back to LLM-only competitor discovery.
+
+These can be set in your `.env` file:
+
+```env
+# Google Custom Search API (optional, for agentic competitor discovery)
+GOOGLE_SEARCH_API_KEY=your_api_key
+GOOGLE_SEARCH_ENGINE_ID=your_search_engine_id
+```
+
+## Getting Your Google Custom Search API Credentials
+
+1. Go to Google Cloud Console (https://console.cloud.google.com)
+2. Create a new project or select an existing one
+3. Enable the Custom Search API:
+   - Navigate to **APIs & Services > Library**
+   - Search for "Custom Search API"
+   - Click **Enable**
+4. Create API credentials:
+   - Navigate to **APIs & Services > Credentials**
+   - Click **Create Credentials > API Key**
+   - Copy the API key → `GOOGLE_SEARCH_API_KEY`
+   - (Optional) Restrict the API key to Custom Search API only for security
+5. Create a Custom Search Engine:
+   - Go to https://programmablesearchengine.google.com
+   - Click **Add** to create a new search engine
+   - Set **Sites to search** to "Search the entire web" or specific sites
+   - Click **Create**
+   - Go to **Setup > Basics** and copy the **Search engine ID** → `GOOGLE_SEARCH_ENGINE_ID`
+
+**Note:** Google Custom Search API has a free tier of 100 queries per day. Beyond that, it's a paid service.
+
 ## Security Notes
 
 - Never commit the `.env` file to version control
@@ -114,4 +150,5 @@ DATA_FOR_SEO_CRED_B64=your_base64_encoded_credentials
 - The `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` should only be used on the server side
 - The `STRIPE_PUBLISHABLE_KEY` can be used in client-side code (but not needed for this implementation)
 - The `DATA_FOR_SEO_LOGIN`, `DATA_FOR_SEO_PASSWORD`, and `DATA_FOR_SEO_CRED_B64` should only be used on the server side
+- The `GOOGLE_SEARCH_API_KEY` and `GOOGLE_SEARCH_ENGINE_ID` should only be used on the server side
 

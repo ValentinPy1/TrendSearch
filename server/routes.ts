@@ -16,6 +16,13 @@ import OpenAI from "openai";
 import * as fs from "fs";
 import * as path from "path";
 import { logger } from "./utils/logger";
+import { validateCompetitorUrl } from "./utils/url-validator";
+import {
+    isGoogleSearchConfigured,
+    generateSearchQueries,
+    searchGoogleMultiple,
+    extractCompetitorsFromSearchResults,
+} from "./search-service";
 import {
     SAVE_INTERVAL_MS,
     SAVE_KEYWORD_INTERVAL,
@@ -1471,18 +1478,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const userId = req.user.id; // Use authenticated user ID
 
             let generatedIdea: string;
-            let generatedName: string | null = null;
 
             // If expand is requested, expand the existing pitch
             if (expand && originalIdea && originalIdea.trim().length > 0) {
                 try {
                     generatedIdea = await microSaaSIdeaGenerator.expandIdea(originalIdea.trim());
-                    // Generate name from expanded idea
-                    try {
-                        generatedName = await microSaaSIdeaGenerator.generateProjectName(generatedIdea);
-                    } catch (error) {
-                        console.error("Error generating name from expanded idea:", error);
-                    }
                 } catch (error) {
                     console.error("Error expanding idea:", error);
                     return res.status(500).json({
@@ -1494,12 +1494,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // If user provided their own idea, use it directly
             else if (originalIdea && originalIdea.trim().length > 0) {
                 generatedIdea = originalIdea.trim();
-                // Generate name from provided idea
-                try {
-                    generatedName = await microSaaSIdeaGenerator.generateProjectName(generatedIdea);
-                } catch (error) {
-                    console.error("Error generating name from provided idea:", error);
-                }
             } else {
                 // If longerDescription is requested, generate a longer, more detailed idea
                 if (longerDescription) {
@@ -1508,24 +1502,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     // Otherwise, use GPT-4o-mini to generate standard microSaaS idea
                     generatedIdea = await microSaaSIdeaGenerator.generateIdea();
                 }
-                // Generate name from generated idea
-                try {
-                    generatedName = await microSaaSIdeaGenerator.generateProjectName(generatedIdea);
-                } catch (error) {
-                    console.error("Error generating name from generated idea:", error);
-                }
             }
 
+            // Create idea immediately and return it
             const idea = await storage.createIdea({
                 userId,
                 originalIdea: originalIdea || null,
                 generatedIdea,
             });
 
-            res.json({ idea: { ...idea, name: generatedName } });
+            // Return idea immediately without waiting for name generation
+            res.json({ idea: { ...idea, name: null } });
+
+            // Generate name in the background (fire and forget)
+            // This allows the user to proceed while the title is being generated
+            (async () => {
+                try {
+                    const generatedName = await microSaaSIdeaGenerator.generateProjectName(generatedIdea);
+                    // Name is generated but not stored in DB (ideas table doesn't have name field)
+                    // Frontend will fetch it via the /api/idea/:id/name endpoint
+                } catch (error) {
+                    console.error("Error generating name in background:", error);
+                }
+            })();
         } catch (error) {
             console.error("Error generating idea:", error);
             res.status(500).json({ message: "Failed to generate idea" });
+        }
+    });
+
+    // Get or generate idea name endpoint
+    app.get("/api/idea/:id/name", requireAuth, async (req, res) => {
+        try {
+            const ideaId = req.params.id;
+            const idea = await storage.getIdea(ideaId);
+
+            if (!idea) {
+                return res.status(404).json({ message: "Idea not found" });
+            }
+
+            // Verify the idea belongs to the user
+            if (idea.userId !== req.user.id) {
+                return res.status(403).json({ message: "Unauthorized" });
+            }
+
+            // Generate name from the idea
+            try {
+                const generatedName = await microSaaSIdeaGenerator.generateProjectName(idea.generatedIdea);
+                res.json({ name: generatedName });
+            } catch (error) {
+                console.error("Error generating name:", error);
+                res.status(500).json({ message: "Failed to generate name" });
+            }
+        } catch (error) {
+            console.error("Error getting idea name:", error);
+            res.status(500).json({ message: "Failed to get idea name" });
         }
     });
 
@@ -2243,9 +2274,81 @@ Generate 5-10 features as a JSON array of strings. Each feature should be concis
                 additionalContext.push(`Features: ${features.join(", ")}`);
             }
 
-            const systemMessage = "You are a competitive intelligence analyst. Analyze ideas and identify real competitors in the market.";
+            let competitors: Array<{ name: string; description: string; url?: string | null }> = [];
 
-            const prompt = `Based on this idea pitch, identify exactly 12 real competitors (existing products, services, or companies) that address similar problems or target similar audiences.
+            // Try agentic Google search approach if configured
+            const isSearchConfigured = isGoogleSearchConfigured();
+            if (!isSearchConfigured) {
+                logger.info("Google Search API not configured, will use LLM-only approach", {
+                    hasApiKey: !!process.env.GOOGLE_SEARCH_API_KEY,
+                    hasEngineId: !!process.env.GOOGLE_SEARCH_ENGINE_ID,
+                });
+            }
+            
+            if (isSearchConfigured) {
+                try {
+                    logger.info("Using Google search for competitor discovery");
+                    
+                    // Generate search queries
+                    const searchQueries = await generateSearchQueries(pitch, additionalContext);
+                    logger.info("Generated search queries", { count: searchQueries.length, queries: searchQueries });
+
+                    // Execute searches in parallel
+                    const searchResults = await searchGoogleMultiple(searchQueries);
+                    logger.info("Google search completed", { 
+                        queriesCount: searchQueries.length,
+                        resultsCount: searchResults.length 
+                    });
+
+                    if (searchResults.length > 0) {
+                        // Extract competitors from search results
+                        const extractedCompetitors = await extractCompetitorsFromSearchResults(
+                            searchResults,
+                            pitch,
+                            additionalContext
+                        );
+                        logger.info("Extracted competitors from search results", { 
+                            count: extractedCompetitors.length 
+                        });
+
+                        // Convert to expected format (url is required from search results)
+                        competitors = extractedCompetitors.map(comp => ({
+                            name: comp.name,
+                            description: comp.description,
+                            url: comp.url,
+                        }));
+                    } else {
+                        logger.warn("No search results found, falling back to LLM-only approach");
+                    }
+                } catch (searchError) {
+                    const errorMessage = searchError instanceof Error ? searchError.message : String(searchError);
+                    const errorStack = searchError instanceof Error ? searchError.stack : undefined;
+                    const isRateLimit = (searchError as any)?.isRateLimit === true;
+                    const isQuotaExceeded = (searchError as any)?.isQuotaExceeded === true;
+                    
+                    if (isRateLimit || isQuotaExceeded) {
+                        logger.warn("Google Search API rate limit/quota exceeded, falling back to LLM-only approach", {
+                            error: errorMessage,
+                            isRateLimit,
+                            isQuotaExceeded,
+                        });
+                    } else {
+                        logger.error("Google search failed, falling back to LLM-only approach", searchError, {
+                            error: errorMessage,
+                            stack: errorStack,
+                        });
+                    }
+                    // Fall through to LLM-only approach
+                }
+            }
+
+            // Fallback to LLM-only approach if search didn't produce results or failed
+            if (competitors.length === 0) {
+                logger.info("Using LLM-only approach for competitor discovery");
+                
+                const systemMessage = "You are a competitive intelligence analyst. Analyze ideas and identify real competitors in the market.";
+
+                const prompt = `Based on this idea pitch, identify exactly 12 real competitors (existing products, services, or companies) that address similar problems or target similar audiences.
 
 Idea Pitch:
 ${pitch}
@@ -2263,57 +2366,110 @@ Return ONLY the JSON array, no other text. Example format:
   {"name": "Competitor B", "description": "Brief description here", "url": null}
 ]`;
 
-            const response = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                messages: [
-                    {
-                        role: "system",
-                        content: systemMessage,
-                    },
-                    {
-                        role: "user",
-                        content: prompt,
-                    },
-                ],
-                max_tokens: 800,
-                temperature: 0.7,
-            });
+                const response = await openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        {
+                            role: "system",
+                            content: systemMessage,
+                        },
+                        {
+                            role: "user",
+                            content: prompt,
+                        },
+                    ],
+                    max_tokens: 800,
+                    temperature: 0.7,
+                });
 
-            let content = response.choices[0]?.message?.content?.trim();
-            if (!content) {
-                throw new Error("No content generated from OpenAI");
-            }
-
-            // Strip markdown code blocks (```json and ```) - handle various formats
-            content = content
-                .replace(/^```json\s*/i, "")  // Remove ```json at start
-                .replace(/^```\s*/i, "")      // Remove ``` at start (if no json)
-                .replace(/\s*```$/i, "")      // Remove ``` at end
-                .replace(/```json/gi, "")     // Remove any ```json in middle
-                .replace(/```/g, "")          // Remove any remaining ```
-                .trim();
-
-            // Parse JSON array from response
-            let competitors: Array<{ name: string; description: string; url?: string | null }> = [];
-            try {
-                const parsed = JSON.parse(content);
-                if (Array.isArray(parsed)) {
-                    competitors = parsed.map((comp: any) => ({
-                        name: comp.name || comp.title || "Unknown",
-                        description: comp.description || comp.desc || "",
-                        url: comp.url || null,
-                    })).filter((comp: any) => comp.name !== "Unknown" && comp.description.length > 0);
+                let content = response.choices[0]?.message?.content?.trim();
+                if (!content) {
+                    throw new Error("No content generated from OpenAI");
                 }
-            } catch (parseError) {
-                console.error("Error parsing competitors JSON:", parseError);
-                throw new Error("Failed to parse competitors response");
+
+                // Strip markdown code blocks (```json and ```) - handle various formats
+                content = content
+                    .replace(/^```json\s*/i, "")  // Remove ```json at start
+                    .replace(/^```\s*/i, "")      // Remove ``` at start (if no json)
+                    .replace(/\s*```$/i, "")      // Remove ``` at end
+                    .replace(/```json/gi, "")     // Remove any ```json in middle
+                    .replace(/```/g, "")          // Remove any remaining ```
+                    .trim();
+
+                // Parse JSON array from response
+                try {
+                    const parsed = JSON.parse(content);
+                    if (Array.isArray(parsed)) {
+                        competitors = parsed.map((comp: any) => ({
+                            name: comp.name || comp.title || "Unknown",
+                            description: comp.description || comp.desc || "",
+                            url: comp.url || null,
+                        })).filter((comp: any) => comp.name !== "Unknown" && comp.description.length > 0);
+                    }
+                } catch (parseError) {
+                    console.error("Error parsing competitors JSON:", parseError);
+                    throw new Error("Failed to parse competitors response");
+                }
             }
 
             if (competitors.length === 0) {
                 throw new Error("No competitors found");
             }
 
-            res.json({ competitors });
+            // Validate competitor URLs in parallel
+            logger.info("Validating competitor URLs", { count: competitors.length });
+            const validationResults = await Promise.allSettled(
+                competitors.map((competitor) => validateCompetitorUrl(competitor.url))
+            );
+
+            // Filter out competitors with invalid or inaccessible URLs
+            const validatedCompetitors = competitors.filter((competitor, index) => {
+                const result = validationResults[index];
+                
+                if (result.status === "rejected") {
+                    logger.warn("URL validation failed with rejection", {
+                        competitor: competitor.name,
+                        url: competitor.url,
+                        error: result.reason,
+                    });
+                    // If validation itself fails, keep competitors without URLs, filter out those with URLs
+                    return !competitor.url;
+                }
+
+                const validation = result.value;
+                
+                // Keep competitors without URLs (they're valid)
+                if (!competitor.url) {
+                    return true;
+                }
+
+                // Keep only if URL is valid and accessible
+                if (validation.isValid && validation.isAccessible) {
+                    return true;
+                }
+
+                // Log validation failure
+                logger.debug("Filtering out competitor with invalid/inaccessible URL", {
+                    competitor: competitor.name,
+                    url: competitor.url,
+                    error: validation.error,
+                    finalUrl: validation.finalUrl,
+                });
+
+                return false;
+            });
+
+            logger.info("URL validation complete", {
+                originalCount: competitors.length,
+                validatedCount: validatedCompetitors.length,
+                filteredCount: competitors.length - validatedCompetitors.length,
+            });
+
+            if (validatedCompetitors.length === 0) {
+                throw new Error("No valid competitors found after URL validation");
+            }
+
+            res.json({ competitors: validatedCompetitors });
         } catch (error) {
             console.error("Error finding competitors:", error);
             res.status(500).json({

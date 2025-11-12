@@ -109,6 +109,37 @@ export function IdeaGenerator({
             queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
             onIdeaGenerated(result.idea);
 
+            // Fetch the name in the background (it's being generated asynchronously)
+            // This allows the user to proceed while the title is being generated
+            (async () => {
+                try {
+                    // Wait a bit for the name to be generated, then fetch it
+                    // We'll retry a few times in case it's not ready yet
+                    let retries = 3;
+                    let name: string | null = null;
+
+                    while (retries > 0 && !name) {
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+                        try {
+                            const nameRes = await apiRequest("GET", `/api/idea/${result.idea.id}/name`);
+                            const nameData = await nameRes.json();
+                            name = nameData.name;
+                        } catch (error) {
+                            // Name might not be ready yet, retry
+                            retries--;
+                        }
+                    }
+
+                    // If we got the name, update the idea
+                    if (name) {
+                        onIdeaGenerated({ ...result.idea, name });
+                    }
+                } catch (error) {
+                    // Silently fail - name generation is not critical
+                    console.error("Error fetching idea name:", error);
+                }
+            })();
+
             // Automatically generate report
             generateReportMutation.mutate({ ideaId: result.idea.id, filters });
         },
@@ -157,7 +188,7 @@ export function IdeaGenerator({
                 });
                 return;
             }
-            
+
             toast({
                 title: "Error",
                 description:
@@ -226,14 +257,14 @@ export function IdeaGenerator({
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                     <TabsList className="flex gap-8 bg-transparent p-0 h-auto mb-8">
-                        <TabsTrigger 
-                            value="standard" 
+                        <TabsTrigger
+                            value="standard"
                             className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
                         >
                             Standard Search
                         </TabsTrigger>
-                        <TabsTrigger 
-                            value="custom" 
+                        <TabsTrigger
+                            value="custom"
                             className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
                         >
                             Custom Search
@@ -241,56 +272,62 @@ export function IdeaGenerator({
                     </TabsList>
 
                     <TabsContent value="standard" className="space-y-6">
-                        <div className="relative">
-                            <Input
-                                placeholder="Write your idea brief (short is better) / keyword here or let AI generate one for you clicking the sparkles icon"
-                                className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-24 rounded-full"
-                                data-testid="input-idea"
-                                onKeyDown={handleKeyDown}
-                                {...form.register("idea")}
-                            />
-                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => setShowSectorBrowser(true)}
-                                    className="h-10 w-10 text-primary hover:bg-transparent"
-                                    data-testid="button-browse-sectors"
-                                    title="Browse Sectors"
-                                >
-                                    <Building2 className="h-5 w-5 stroke-[2.5]" />
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={onShowHistory}
-                                    className="h-10 w-10 text-secondary hover:bg-transparent"
-                                    data-testid="button-history"
-                                >
-                                    <History className="h-5 w-5 stroke-[2.5]" />
-                                </Button>
-                                <Button
-                                    type="button"
-                                    onClick={handleGenerateIdea}
-                                    disabled={
-                                        generateIdeaMutation.isPending ||
-                                        generateReportMutation.isPending
-                                    }
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-10 w-10 text-yellow-300 hover:bg-transparent"
-                                    data-testid="button-generate"
-                                >
-                                    {generateIdeaMutation.isPending ||
-                                        generateReportMutation.isPending ? (
-                                        <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
-                                    ) : (
-                                        <Sparkles className="h-5 w-5 stroke-[2.5]" />
-                                    )}
-                                </Button>
+                        <div className="flex gap-3 items-center">
+                            <div className="relative flex-1">
+                                <Input
+                                    placeholder="Write a short pitch here and press enter to find semantically related keywords."
+                                    className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-32 rounded-full"
+                                    data-testid="input-idea"
+                                    onKeyDown={handleKeyDown}
+                                    {...form.register("idea")}
+                                />
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 items-center">
+                                    <Button
+                                        type="button"
+                                        onClick={handleGenerateIdea}
+                                        disabled={
+                                            generateIdeaMutation.isPending ||
+                                            generateReportMutation.isPending
+                                        }
+                                        variant="ghost"
+                                        className="h-10 px-3 text-yellow-300 hover:bg-transparent whitespace-nowrap"
+                                        data-testid="button-generate"
+                                    >
+                                        {generateIdeaMutation.isPending ||
+                                            generateReportMutation.isPending ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin stroke-[2.5] mr-1.5" />
+                                                <span className="text-sm">Generate</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles className="h-4 w-4 stroke-[2.5] mr-1.5" />
+                                                <span className="text-sm">Generate</span>
+                                            </>
+                                        )}
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={onShowHistory}
+                                        className="h-10 w-10 text-secondary hover:bg-transparent"
+                                        data-testid="button-history"
+                                    >
+                                        <History className="h-5 w-5 stroke-[2.5]" />
+                                    </Button>
+                                </div>
                             </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setShowSectorBrowser(true)}
+                                className="h-14 px-4 bg-white/5 border-white/10 text-white hover:bg-white/10 hover:border-primary/50 transition-colors whitespace-nowrap"
+                                data-testid="button-browse-sectors"
+                            >
+                                <Building2 className="h-5 w-5 stroke-[2.5] mr-2" />
+                                Browse Sectors
+                            </Button>
                         </div>
 
                         {/* Keyword Filters */}
@@ -324,9 +361,9 @@ export function IdeaGenerator({
                     // If there's a current idea, automatically generate report
                     // Otherwise, let user generate idea first
                     if (currentIdea?.id) {
-                        generateReportMutation.mutate({ 
-                            ideaId: currentIdea.id, 
-                            filters 
+                        generateReportMutation.mutate({
+                            ideaId: currentIdea.id,
+                            filters
                         });
                     }
                 }}

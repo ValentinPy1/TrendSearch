@@ -949,11 +949,40 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 title: wasExpanded ? "Idea Expanded!" : "Idea Generated!",
                 description: result.idea.generatedIdea,
             });
-            // Set the generated idea in the pitch field and name if provided
+            // Set the generated idea in the pitch field immediately
             form.setValue("pitch", result.idea.generatedIdea);
-            if (result.idea.name) {
-                form.setValue("name", result.idea.name);
-            }
+            
+            // Fetch the name in the background (it's being generated asynchronously)
+            // This allows the user to proceed while the title is being generated
+            (async () => {
+                try {
+                    // Wait a bit for the name to be generated, then fetch it
+                    // We'll retry a few times in case it's not ready yet
+                    let retries = 3;
+                    let name: string | null = null;
+                    
+                    while (retries > 0 && !name) {
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+                        try {
+                            const nameRes = await apiRequest("GET", `/api/idea/${result.idea.id}/name`);
+                            const nameData = await nameRes.json();
+                            name = nameData.name;
+                        } catch (error) {
+                            // Name might not be ready yet, retry
+                            retries--;
+                        }
+                    }
+                    
+                    // If we got the name, update the form field
+                    if (name) {
+                        form.setValue("name", name);
+                    }
+                } catch (error) {
+                    // Silently fail - name generation is not critical
+                    console.error("Error fetching idea name:", error);
+                }
+            })();
+            
             queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
         },
         onError: (error) => {
