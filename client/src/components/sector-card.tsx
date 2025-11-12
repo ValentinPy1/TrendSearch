@@ -16,6 +16,7 @@ interface SectorCardProps {
     url?: string;
     icon?: LucideIcon;
     batch?: string;
+    medianBatch?: string;
 }
 
 export function SectorCard({
@@ -30,6 +31,7 @@ export function SectorCard({
     url,
     icon: customIcon,
     batch,
+    medianBatch,
 }: SectorCardProps) {
     const getIcon = () => {
         if (customIcon) {
@@ -89,6 +91,12 @@ export function SectorCard({
                             {type === "sector" && userTypeCount !== undefined && (
                                 <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
                                     <span>{userTypeCount} {userTypeCount === 1 ? "startup" : "startups"}</span>
+                                    {medianBatch && (
+                                        <>
+                                            <span className="text-white/30">•</span>
+                                            <span>Median Batch: {medianBatch}</span>
+                                        </>
+                                    )}
                                 </div>
                             )}
                             {batch && type !== "sector" && (

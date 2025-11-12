@@ -53,6 +53,7 @@ export interface IndustryAggregateResult {
     companyCount: number;
     aggregatedMetrics: AggregatedMetrics;
     monthlyTrendData: Array<{ month: string; volume: number }>;
+    medianBatch?: string;
 }
 
 // Keep for backwards compatibility

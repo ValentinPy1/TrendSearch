@@ -71,6 +71,7 @@ interface IndustryAggregateResult {
     companyCount: number;
     aggregatedMetrics: AggregatedMetrics;
     monthlyTrendData: Array<{ month: string; volume: number }>;
+    medianBatch?: string;
 }
 
 interface OutputData {
@@ -282,6 +283,60 @@ function calculateVolumeAverage(keywords: ProcessedKeyword[]): number {
 
     const avgSqrt = weightedSumOfSqrts / totalWeight;
     return avgSqrt * avgSqrt;
+}
+
+// Convert batch string to numeric value for sorting
+// Format: "Summer 2025", "Winter 2024", "Fall 2024", "Spring 2025"
+function batchToNumeric(batch: string): number {
+    if (!batch || batch.trim() === '') return 0;
+    
+    const parts = batch.trim().split(' ');
+    if (parts.length < 2) return 0;
+    
+    const season = parts[0].toLowerCase();
+    const year = parseInt(parts[1], 10);
+    
+    if (isNaN(year)) return 0;
+    
+    // Assign season values: Winter=0, Spring=0.25, Summer=0.5, Fall=0.75
+    let seasonValue = 0;
+    if (season === 'winter') seasonValue = 0;
+    else if (season === 'spring') seasonValue = 0.25;
+    else if (season === 'summer') seasonValue = 0.5;
+    else if (season === 'fall' || season === 'autumn') seasonValue = 0.75;
+    
+    return year + seasonValue;
+}
+
+// Convert numeric value back to batch string
+function numericToBatch(value: number): string {
+    const year = Math.floor(value);
+    const seasonValue = value - year;
+    
+    let season = 'Winter';
+    if (seasonValue >= 0.75) season = 'Fall';
+    else if (seasonValue >= 0.5) season = 'Summer';
+    else if (seasonValue >= 0.25) season = 'Spring';
+    
+    return `${season} ${year}`;
+}
+
+// Calculate median batch from company results
+function calculateMedianBatch(companyResults: CompanyMetricResult[]): string | undefined {
+    const batches = companyResults
+        .map(r => r.batch)
+        .filter((batch): batch is string => !!batch && batch.trim() !== '');
+    
+    if (batches.length === 0) return undefined;
+    
+    // Convert to numeric, sort, and get median
+    const numericBatches = batches.map(batchToNumeric).sort((a, b) => a - b);
+    const mid = Math.floor(numericBatches.length / 2);
+    const medianNumeric = numericBatches.length % 2 === 0
+        ? (numericBatches[mid - 1] + numericBatches[mid]) / 2
+        : numericBatches[mid];
+    
+    return numericToBatch(medianNumeric);
 }
 
 function aggregateMonthlyTrend(keywords: ProcessedKeyword[]): Array<{ month: string; volume: number }> {
@@ -632,6 +687,7 @@ async function aggregateSectorMetricsMain() {
             // Aggregate metrics from all companies
             const aggregatedMetrics = aggregateMetricsFromResults(companyResults);
             const monthlyTrendData = aggregateMonthlyTrendFromResults(companyResults);
+            const medianBatch = calculateMedianBatch(companyResults);
 
             // Store in flattened industries structure
             output.industries[subIndustry] = {
@@ -640,6 +696,7 @@ async function aggregateSectorMetricsMain() {
                 companyCount: companiesInSubIndustry.length,
                 aggregatedMetrics,
                 monthlyTrendData,
+                medianBatch,
             };
         } catch (error) {
             console.error(`  Error aggregating sub-industry "${subIndustry}":`, error);
@@ -676,6 +733,7 @@ async function aggregateSectorMetricsMain() {
             // Aggregate metrics from all companies
             const aggregatedMetrics = aggregateMetricsFromResults(companyResults);
             const monthlyTrendData = aggregateMonthlyTrendFromResults(companyResults);
+            const medianBatch = calculateMedianBatch(companyResults);
 
             // Store in flattened industries structure (same level as sub-industries)
             // Use a prefix to distinguish main industries if there's a naming conflict
@@ -686,6 +744,7 @@ async function aggregateSectorMetricsMain() {
                 companyCount: companiesInMainIndustry.length,
                 aggregatedMetrics,
                 monthlyTrendData,
+                medianBatch,
             };
         } catch (error) {
             console.error(`  Error aggregating main-industry "${mainIndustry}":`, error);

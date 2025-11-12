@@ -18,7 +18,7 @@ import {
     Syringe, Truck, Scale, Target, MessageSquare,
     Package, Sparkles, HelpCircle, DollarSign,
     LayoutGrid, Table2, ArrowUp, ArrowDown, ExternalLink,
-    ChevronLeft, ChevronRight
+    ChevronLeft, ChevronRight, Calendar
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { PaywallModal } from "./paywall-modal";
@@ -555,6 +555,13 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                     <span className="text-sm text-white/60">Avg CPC:</span>
                                                     <span className="text-sm font-semibold text-white">${metrics.avgCpc.toFixed(2)}</span>
                                                 </div>
+                                                {industry.medianBatch && (
+                                                    <div className="flex items-center gap-2">
+                                                        <Calendar className="h-4 w-4 text-white/50" />
+                                                        <span className="text-sm text-white/60">Median Batch:</span>
+                                                        <span className="text-sm font-semibold text-white">{industry.medianBatch}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -725,6 +732,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                             userTypeCount={industry.companyCount}
                                             productFitCount={0}
                                             icon={getSectorIcon(industry.industry)}
+                                            medianBatch={industry.medianBatch}
                                         />
                                     ))}
                                 </div>
@@ -830,6 +838,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                 <SortIcon column="startups" />
                                                             </div>
                                                         </TableHead>
+                                                        <TableHead className="text-white/90">Median Batch</TableHead>
                                                         <TableHead
                                                             className="text-white/90 text-right cursor-pointer hover:text-white select-none"
                                                             onClick={() => handleColumnSort("volume")}
@@ -892,6 +901,13 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                 </TableCell>
                                                                 <TableCell className="text-right text-white/90">
                                                                     {industry.companyCount || 0}
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    {industry.medianBatch ? (
+                                                                        <span className="text-white/90">{industry.medianBatch}</span>
+                                                                    ) : (
+                                                                        <span className="text-white/50">-</span>
+                                                                    )}
                                                                 </TableCell>
                                                                 <TableCell className="text-right">
                                                                     <span style={getBlueGradientText(metrics.avgVolume)}>
