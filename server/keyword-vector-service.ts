@@ -1,8 +1,6 @@
 import { pipeline } from '@xenova/transformers';
 import * as fs from 'fs';
 import * as path from 'path';
-import { db } from './db';
-import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 
 interface KeywordData {
@@ -168,28 +166,33 @@ class KeywordVectorService {
                 prepare: false,
             });
 
-            // Load keywords from database
-            const keywordRows = await db.execute(sql`
-                SELECT 
-                    keyword,
-                    search_volume,
-                    competition,
-                    low_top_of_page_bid,
-                    high_top_of_page_bid,
-                    cpc,
-                    monthly_data,
-                    growth_3m,
-                    growth_yoy,
-                    volatility,
-                    trend_strength,
-                    avg_top_page_bid,
-                    bid_efficiency,
-                    tac,
-                    sac,
-                    opportunity_score
-                FROM keyword_embeddings
-                ORDER BY keyword
-            `);
+            // Load keywords from database with increased timeout
+            // Use pgClient directly for better timeout control
+            // Remove ORDER BY to speed up query (not needed for Set lookups)
+            // Use transaction to set statement_timeout for this query only
+            const keywordRows = await this.pgClient.begin(async (sql) => {
+                await sql`SET LOCAL statement_timeout = '5min'`;
+                return await sql`
+                    SELECT 
+                        keyword,
+                        search_volume,
+                        competition,
+                        low_top_of_page_bid,
+                        high_top_of_page_bid,
+                        cpc,
+                        monthly_data,
+                        growth_3m,
+                        growth_yoy,
+                        volatility,
+                        trend_strength,
+                        avg_top_page_bid,
+                        bid_efficiency,
+                        tac,
+                        sac,
+                        opportunity_score
+                    FROM keyword_embeddings
+                `;
+            });
 
             // Convert database rows to KeywordData format
             this.keywords = keywordRows.map((row: any) => {

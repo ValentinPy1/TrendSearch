@@ -107,9 +107,12 @@ export function SectorCard({
                                 )}
                             </div>
                             {description && (
-                                <p className="text-sm text-white/60 mt-1 line-clamp-2">
+                                <p className="text-sm text-white/60 mt-1 line-clamp-2 min-h-[2.5rem]">
                                     {description}
                                 </p>
+                            )}
+                            {!description && type !== "sector" && (
+                                <div className="min-h-[2.5rem]"></div>
                             )}
                             {type === "sector" && userTypeCount !== undefined && (
                                 <div className="flex items-center gap-3 mt-1 text-xs text-white/50 whitespace-nowrap">

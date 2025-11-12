@@ -128,13 +128,13 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
                 {displayMetrics.map((metric) => {
                     const Icon = metric.icon;
                     return (
-                        <div key={metric.label} className="flex items-center gap-2">
-                            <Icon className="h-3.5 w-3.5 text-white/40 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                                <div className="text-xs text-white/40 truncate">{metric.label}</div>
-                                <div className="text-sm font-semibold truncate" style={metric.style}>
-                                    {metric.value}
-                                </div>
+                        <div key={metric.label} className="flex flex-col items-center justify-center text-center">
+                            <div className="flex items-center gap-1 mb-0.5">
+                                <Icon className="h-3.5 w-3.5 text-white/40" />
+                                <div className="text-xs text-white/40">{metric.label}</div>
+                            </div>
+                            <div className="text-sm font-semibold" style={metric.style}>
+                                {metric.value}
                             </div>
                         </div>
                     );
@@ -148,13 +148,13 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
             {displayMetrics.map((metric) => {
                 const Icon = metric.icon;
                 return (
-                    <div key={metric.label} className="flex items-start gap-2">
-                        <Icon className="h-4 w-4 text-white/50 shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                            <div className="text-xs text-white/50 mb-0.5">{metric.label}</div>
-                            <div className="text-base font-bold truncate" style={metric.style}>
-                                {metric.value}
-                            </div>
+                    <div key={metric.label} className="flex flex-col items-center justify-center text-center">
+                        <div className="flex items-center gap-1 mb-0.5">
+                            <Icon className="h-4 w-4 text-white/50" />
+                            <div className="text-xs text-white/50">{metric.label}</div>
+                        </div>
+                        <div className="text-base font-bold" style={metric.style}>
+                            {metric.value}
                         </div>
                     </div>
                 );

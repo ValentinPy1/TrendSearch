@@ -1153,11 +1153,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
                         email: user.email || "",
                     });
                     console.log("Auto-created user profile for:", user.email);
-                } catch (createError) {
-                    console.error("Failed to auto-create user profile:", createError);
-                    return res.status(500).json({
-                        message: "Failed to create user profile. Database connection issue."
-                    });
+                } catch (createError: any) {
+                    // Handle duplicate key error (user already exists - race condition)
+                    if (createError?.code === '23505' || createError?.message?.includes('duplicate key')) {
+                        // User was created by another request, fetch it instead
+                        console.log("User already exists (race condition), fetching existing user:", user.email);
+                        localUser = await storage.getUserBySupabaseUserId(user.id);
+                        if (!localUser) {
+                            return res.status(500).json({
+                                message: "Failed to retrieve user profile after creation conflict."
+                            });
+                        }
+                    } else {
+                        console.error("Failed to auto-create user profile:", createError);
+                        return res.status(500).json({
+                            message: "Failed to create user profile. Database connection issue."
+                        });
+                    }
                 }
             }
 

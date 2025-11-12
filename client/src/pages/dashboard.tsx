@@ -62,7 +62,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         ideaText: string;
     } | null>(null);
     const [activeTab, setActiveTab] = useState("standard");
-    
+
     // Track manually loaded keywords to prevent them from being overwritten
     const manuallyLoadedKeywordsRef = useRef<Map<string, Set<string>>>(new Map());
     // Track if filters are currently applied to prevent overwriting filtered keywords
@@ -134,22 +134,22 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     ...kw,
                     id: kw.id || `temp-${Date.now()}-${Math.random()}`, // Generate temp ID if not present
                 }));
-                
+
                 // Merge with existing keywords, avoiding duplicates
                 const existingKeywordSet = new Set(selectedIdea.report.keywords.map(k => k.keyword));
                 const uniqueNewKeywords = newKeywords.filter((kw: any) => !existingKeywordSet.has(kw.keyword));
-                
+
                 // Only update state if we got new keywords
                 if (uniqueNewKeywords.length > 0) {
                     const updatedKeywords = [...selectedIdea.report.keywords, ...uniqueNewKeywords];
-                    
+
                     // Track manually loaded keywords for this report
                     if (!manuallyLoadedKeywordsRef.current.has(selectedIdea.report.id)) {
                         manuallyLoadedKeywordsRef.current.set(selectedIdea.report.id, new Set());
                     }
                     const loadedSet = manuallyLoadedKeywordsRef.current.get(selectedIdea.report.id)!;
                     uniqueNewKeywords.forEach(kw => loadedSet.add(kw.keyword));
-                    
+
                     setSelectedIdea({
                         ...selectedIdea,
                         report: {
@@ -157,7 +157,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                             keywords: updatedKeywords,
                         },
                     });
-                    
+
                     // Update displayed count AFTER successfully merging keywords
                     setDisplayedKeywordCount(prev => prev + uniqueNewKeywords.length);
                 }
@@ -191,17 +191,17 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     ...kw,
                     id: kw.id || `temp-${Date.now()}-${Math.random()}`,
                 }));
-                
+
                 // Merge with existing keywords, avoiding duplicates
                 const existingKeywordSet = new Set(selectedIdea.report.keywords.map(k => k.keyword));
                 const uniqueNewKeywords = newKeywords.filter((kw: any) => !existingKeywordSet.has(kw.keyword));
-                
+
                 if (uniqueNewKeywords.length > 0) {
                     // Clear filter flag since we're loading without filters
                     if (selectedIdea.report.id) {
                         hasActiveFiltersRef.current.delete(selectedIdea.report.id);
                     }
-                    
+
                     // Merge unfiltered keywords with existing keywords
                     setSelectedIdea({
                         ...selectedIdea,
@@ -210,7 +210,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                             keywords: [...selectedIdea.report.keywords, ...uniqueNewKeywords],
                         },
                     });
-                    
+
                     // Update displayed count
                     setDisplayedKeywordCount(prev => prev + uniqueNewKeywords.length);
                 }
@@ -293,15 +293,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 const hasActiveFilters = hasActiveFiltersRef.current.get(selectedIdea.report?.id || '');
                 const currentKeywords = selectedIdea.report?.keywords || [];
                 const updatedKeywords = updated.report?.keywords || [];
-                
+
                 // Check if current keywords are different from updated keywords (might be filtered)
                 // If they're different, we should preserve the current ones
                 const currentKeywordSet = new Set(currentKeywords.map(k => k.keyword));
                 const updatedKeywordSet = new Set(updatedKeywords.map(k => k.keyword));
-                const keywordsAreDifferent = currentKeywords.length !== updatedKeywords.length || 
+                const keywordsAreDifferent = currentKeywords.length !== updatedKeywords.length ||
                     currentKeywords.some(k => !updatedKeywordSet.has(k.keyword)) ||
                     updatedKeywords.some(k => !currentKeywordSet.has(k.keyword));
-                
+
                 // If filters are active, NEVER merge unfiltered keywords - only preserve current filtered keywords
                 if (hasActiveFilters) {
                     // Filters are active - preserve ONLY the current filtered keywords
@@ -321,7 +321,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                         ...currentKeywords, // Preserve all current keywords (including manually loaded)
                         ...updatedKeywords.filter(k => !currentKeywordSet.has(k.keyword))
                     ];
-                    
+
                     setSelectedIdea({
                         ...updated,
                         report: updated.report ? {
@@ -333,7 +333,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     // No manually loaded keywords, no filters, and keywords match - safe to update
                     setSelectedIdea(updated);
                 }
-                
+
                 // Set first keyword if not already set
                 if (
                     updated?.report?.keywords &&
@@ -646,11 +646,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
             {/* History Sidebar */}
             <Sheet open={showHistory} onOpenChange={setShowHistory}>
-                <SheetContent className="w-full sm:w-[500px] bg-background/95 backdrop-blur-xl border-white/10">
+                <SheetContent className="!w-full sm:!w-[400px] sm:!max-w-[500px] bg-background/95 backdrop-blur-xl border-white/10">
                     <SheetHeader>
                         <SheetTitle className="text-white">Idea History</SheetTitle>
                     </SheetHeader>
-                    <div className="mt-6 overflow-y-auto h-[calc(100vh-100px)]">
+                    <div className="mt-6 overflow-y-auto h-[calc(100vh-100px)] custom-scrollbar pr-4">
                         {isLoading ? (
                             <div className="flex flex-col items-center justify-center gap-4 py-12">
                                 <Loader2 className="h-12 w-12 text-primary animate-spin" />
