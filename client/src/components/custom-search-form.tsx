@@ -53,6 +53,13 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [isGeneratingQueryKeywords, setIsGeneratingQueryKeywords] = useState(false);
     const [isFindingCompetitors, setIsFindingCompetitors] = useState(false);
     const [competitors, setCompetitors] = useState<Competitor[]>([]);
+    const [competitorProgress, setCompetitorProgress] = useState<{
+        stage: string;
+        completedCount?: number;
+        totalCount?: number;
+    } | null>(null);
+    const [competitorStepStartTime, setCompetitorStepStartTime] = useState<number | null>(null);
+    const [competitorElapsedTime, setCompetitorElapsedTime] = useState<number>(0);
     const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
     const [showProjectBrowser, setShowProjectBrowser] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -295,6 +302,56 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     }, [projectsData, currentProjectId, isLoadingProjects, isFetchingProjects]);
 
+    // Poll for computed metrics while they're being computed
+    useEffect(() => {
+        if (!currentProjectId || !reportData || savedProgress?.metricsComputed !== false) {
+            return;
+        }
+
+        const pollInterval = setInterval(async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                const headers: Record<string, string> = {};
+                if (session?.access_token) {
+                    headers["Authorization"] = `Bearer ${session.access_token}`;
+                }
+
+                const response = await fetch(`/api/custom-search/projects/${currentProjectId}/computed-metrics`, {
+                    headers,
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.metrics && Object.keys(data.metrics).length > 0 && reportData?.keywords) {
+                        // Merge computed metrics into report data
+                        const updatedKeywords = reportData.keywords.map((kw: any) => {
+                            const computedMetrics = data.metrics[kw.id];
+                            if (computedMetrics) {
+                                return {
+                                    ...kw,
+                                    volatility: computedMetrics.volatility || kw.volatility,
+                                    trendStrength: computedMetrics.trendStrength || kw.trendStrength,
+                                    growth3m: computedMetrics.growth3m || kw.growth3m,
+                                    growthYoy: computedMetrics.growthYoy || kw.growthYoy,
+                                };
+                            }
+                            return kw;
+                        });
+
+                        setReportData({
+                            ...reportData,
+                            keywords: updatedKeywords,
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error("Error fetching computed metrics:", error);
+            }
+        }, 2000); // Poll every 2 seconds
+
+        return () => clearInterval(pollInterval);
+    }, [currentProjectId, reportData, savedProgress?.metricsComputed]);
+
     // Auto-resume incomplete pipelines on page load
     useEffect(() => {
         if (currentProjectId && projectsData?.projects && !isInitialLoadRef.current) {
@@ -396,6 +453,20 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     useEffect(() => {
         stepStartTimesRef.current = stepStartTimes;
     }, [stepStartTimes]);
+
+    // Update elapsed time for competitor progress
+    useEffect(() => {
+        if (!competitorStepStartTime || !isFindingCompetitors) {
+            setCompetitorElapsedTime(0);
+            return;
+        }
+
+        const interval = setInterval(() => {
+            setCompetitorElapsedTime(Math.floor((Date.now() - competitorStepStartTime) / 1000));
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [competitorStepStartTime, isFindingCompetitors]);
 
     // Update elapsed times every second for active steps
     useEffect(() => {
@@ -1109,10 +1180,30 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         try {
                             const eventData = JSON.parse(line.slice(6));
 
-                            if (eventData.type === "competitor" && eventData.competitor) {
+                            if (eventData.type === "progress" && eventData.stage) {
+                                // Update progress stage
+                                const previousStage = competitorProgress?.stage;
+                                setCompetitorProgress({
+                                    stage: eventData.stage,
+                                    completedCount: eventData.completedCount,
+                                    totalCount: eventData.totalCount,
+                                });
+                                // Reset timer when stage changes
+                                if (previousStage !== eventData.stage) {
+                                    setCompetitorStepStartTime(Date.now());
+                                    setCompetitorElapsedTime(0);
+                                }
+                            } else if (eventData.type === "competitor" && eventData.competitor) {
                                 // Add competitor to list and update UI immediately
                                 competitorsList.push(eventData.competitor);
                                 setCompetitors([...competitorsList]);
+                                // Update progress with completed count
+                                if (competitorProgress) {
+                                    setCompetitorProgress({
+                                        ...competitorProgress,
+                                        completedCount: competitorsList.length,
+                                    });
+                                }
                             } else if (eventData.type === "complete") {
                                 // Final completion - all competitors validated
                                 if (eventData.competitors && Array.isArray(eventData.competitors)) {
@@ -1365,6 +1456,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
         // Clear existing competitors so they appear progressively
         setCompetitors([]);
+        setCompetitorProgress(null);
+        setCompetitorStepStartTime(null);
+        setCompetitorElapsedTime(0);
         setIsFindingCompetitors(true);
         try {
             await findCompetitorsMutation.mutateAsync({
@@ -1376,6 +1470,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             });
         } finally {
             setIsFindingCompetitors(false);
+            setCompetitorProgress(null);
+            setCompetitorStepStartTime(null);
         }
     };
 
@@ -2308,6 +2404,27 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                 {/* Competitors Section */}
                 <div className="space-y-6 mt-6">
+                    {/* Progress Steps for Find Competitors */}
+                    {isFindingCompetitors && competitorProgress && (
+                        <div className="mt-4 flex items-center justify-center gap-2">
+                            <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />
+                            <div className="text-sm font-medium text-blue-400 whitespace-nowrap">
+                                {competitorProgress.stage === 'generating-queries' && 'Generating search queries...'}
+                                {competitorProgress.stage === 'searching' && 'Searching for competitors...'}
+                                {competitorProgress.stage === 'extracting' && 'Extracting competitors from results...'}
+                                {competitorProgress.stage === 'validating' && `Validating competitors (${competitorProgress.completedCount || 0}/${competitorProgress.totalCount || 0})...`}
+                                {competitorProgress.stage === 'llm-generating' && 'Generating competitors with AI...'}
+                                {!['generating-queries', 'searching', 'extracting', 'validating', 'llm-generating'].includes(competitorProgress.stage) &&
+                                    competitorProgress.stage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                            </div>
+                            {competitorElapsedTime > 0 && (
+                                <div className="text-xs text-white/60 flex-shrink-0">
+                                    {competitorElapsedTime}s
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Competitors List */}
                     {competitors.length > 0 && (
                         <div className="pt-4 border-t border-white/10">
@@ -2514,7 +2631,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     },
                                     {
                                         key: 'fetching-dataforseo',
-                                        label: 'Fetching keyword metrics',
+                                        label: 'Fetching keywords metrics',
                                         description: 'Retrieving search volume, competition, and CPC data...',
                                         estimate: 5,
                                     },
@@ -2562,12 +2679,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 // Show current step with time
                                 if (currentStage && currentStage !== 'complete' && currentStage !== 'idle' && !hasError) {
                                     return (
-                                        <div className="mt-4 flex items-center gap-3">
+                                        <div className="mt-4 flex items-center justify-center gap-2">
                                             <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-medium text-blue-400">
-                                                    {activeStage?.label || currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                                                </div>
+                                            <div className="text-sm font-medium text-blue-400 whitespace-nowrap">
+                                                {activeStage?.label || currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                                             </div>
                                             {elapsed > 0 && (
                                                 <div className="text-xs text-white/60 flex-shrink-0">
@@ -2581,14 +2696,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 // Show error state
                                 if (hasError && currentStage) {
                                     return (
-                                        <div className="mt-4 flex items-center gap-3">
+                                        <div className="mt-4 flex items-center justify-center gap-2">
                                             <div className="h-4 w-4 rounded-full border-2 border-red-500 flex items-center justify-center flex-shrink-0">
                                                 <span className="text-red-500 text-xs">✕</span>
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-medium text-red-400">
-                                                    {activeStage?.label || currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')} - Failed
-                                                </div>
+                                            <div className="text-sm font-medium text-red-400 whitespace-nowrap">
+                                                {activeStage?.label || currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')} - Failed
                                             </div>
                                         </div>
                                     );
@@ -2596,6 +2709,29 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                                 return null;
                             })()}
+
+                        {/* Loading Report - Show after progress completes but before report is loaded */}
+                        {(() => {
+                            const currentStage = savedProgress?.currentStage || keywordProgress?.stage || '';
+                            const isProgressComplete = currentStage === 'complete' ||
+                                savedProgress?.currentStage === 'complete' ||
+                                keywordProgress?.stage === 'complete';
+                            const shouldShowLoadingReport = isProgressComplete &&
+                                !reportData &&
+                                (isLoadingReport || savedProgress?.reportGenerated === true);
+
+                            if (shouldShowLoadingReport) {
+                                return (
+                                    <div className="mt-4 flex items-center justify-center gap-2">
+                                        <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />
+                                        <div className="text-sm font-medium text-blue-400 whitespace-nowrap">
+                                            Loading report...
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()}
                     </div>
                 </div>
             </form>

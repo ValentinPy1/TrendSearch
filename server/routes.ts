@@ -42,6 +42,15 @@ interface KeywordFilter {
 // Constants for optimization
 const SIMILARITY_CANDIDATE_POOL_SIZE = 2000; // Number of similar keywords to fetch before filtering
 
+// In-memory cache for computed metrics (keyed by projectId -> keywordId -> metrics)
+// This allows clients to fetch metrics immediately after computation, before they're saved to DB
+const computedMetricsCache = new Map<string, Map<string, {
+    volatility: string | null;
+    trendStrength: string | null;
+    growth3m: string | null;
+    growthYoy: string | null;
+}>>();
+
 /**
  * Parse month string in "Jan 2024" format to a sortable number
  * @param monthStr - Month string in format "Jan 2024"
@@ -2288,6 +2297,34 @@ Generate 5-10 features as a JSON array of strings. Each feature should be concis
 
             let competitors: Array<{ name: string; description: string; url?: string | null }> = [];
 
+            // Set up Server-Sent Events for progressive competitor display
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+            res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+            // Flush headers immediately to establish SSE connection
+            if (typeof res.flushHeaders === 'function') {
+                res.flushHeaders();
+            }
+
+            // Helper function to send SSE messages
+            const sendSSE = (type: string, data: any) => {
+                try {
+                    const message = `data: ${JSON.stringify({ type, ...data })}\n\n`;
+                    res.write(message);
+                    // Try to flush if available (Node.js streams)
+                    if (typeof (res as any).flush === 'function') {
+                        (res as any).flush();
+                    }
+                } catch (error) {
+                    logger.error("Error sending SSE message", {
+                        error: error instanceof Error ? error.message : String(error),
+                        type,
+                    });
+                }
+            };
+
             // Try agentic Google search approach if configured
             const isSearchConfigured = isGoogleSearchConfigured();
             if (!isSearchConfigured) {
@@ -2301,11 +2338,13 @@ Generate 5-10 features as a JSON array of strings. Each feature should be concis
                 try {
                     logger.info("Using Google search for competitor discovery");
 
-                    // Generate search queries
+                    // Stage 1: Generate search queries
+                    sendSSE("progress", { stage: "generating-queries" });
                     const searchQueries = await generateSearchQueries(pitch, additionalContext);
                     logger.info("Generated search queries", { count: searchQueries.length, queries: searchQueries });
 
-                    // Execute searches in parallel
+                    // Stage 2: Execute searches
+                    sendSSE("progress", { stage: "searching" });
                     const searchResults = await searchGoogleMultiple(searchQueries);
                     logger.info("Google search completed", {
                         queriesCount: searchQueries.length,
@@ -2313,7 +2352,8 @@ Generate 5-10 features as a JSON array of strings. Each feature should be concis
                     });
 
                     if (searchResults.length > 0) {
-                        // Extract competitors from search results
+                        // Stage 3: Extract competitors from search results
+                        sendSSE("progress", { stage: "extracting" });
                         const extractedCompetitors = await extractCompetitorsFromSearchResults(
                             searchResults,
                             pitch,
@@ -2357,6 +2397,7 @@ Generate 5-10 features as a JSON array of strings. Each feature should be concis
             // Fallback to LLM-only approach if search didn't produce results or failed
             if (competitors.length === 0) {
                 logger.info("Using LLM-only approach for competitor discovery");
+                sendSSE("progress", { stage: "llm-generating" });
 
                 const systemMessage = "You are a competitive intelligence analyst. Analyze ideas and identify real competitors in the market.";
 
@@ -2428,35 +2469,12 @@ Return ONLY the JSON array, no other text. Example format:
                 throw new Error("No competitors found");
             }
 
-            // Set up Server-Sent Events for progressive competitor display
-            res.setHeader('Content-Type', 'text/event-stream');
-            res.setHeader('Cache-Control', 'no-cache');
-            res.setHeader('Connection', 'keep-alive');
-            res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
-
-            // Flush headers immediately to establish SSE connection
-            if (typeof res.flushHeaders === 'function') {
-                res.flushHeaders();
-            }
-
-            // Helper function to send SSE messages
-            const sendSSE = (type: string, data: any) => {
-                try {
-                    const message = `data: ${JSON.stringify({ type, ...data })}\n\n`;
-                    res.write(message);
-                    // Try to flush if available (Node.js streams)
-                    if (typeof (res as any).flush === 'function') {
-                        (res as any).flush();
-                    }
-                } catch (error) {
-                    logger.error("Error sending SSE message", {
-                        error: error instanceof Error ? error.message : String(error),
-                        type,
-                    });
-                }
-            };
-
-            // Validate competitor URLs in parallel but send each as it validates
+            // Stage 4: Validate competitor URLs
+            sendSSE("progress", { 
+                stage: "validating", 
+                completedCount: 0, 
+                totalCount: competitors.length 
+            });
             logger.info("Validating competitor URLs", { count: competitors.length });
 
             // Start all validations in parallel and send results as they complete
@@ -2471,6 +2489,12 @@ Return ONLY the JSON array, no other text. Example format:
                     validatedCompetitors.push(competitor);
                     logger.debug("Sending competitor via SSE (no URL)", { competitor: competitor.name });
                     sendSSE("competitor", { competitor });
+                    // Update progress
+                    sendSSE("progress", { 
+                        stage: "validating", 
+                        completedCount: validatedCompetitors.length, 
+                        totalCount: competitors.length 
+                    });
                     completedCount++;
                     return Promise.resolve({ competitor, isValid: true });
                 }
@@ -2483,6 +2507,12 @@ Return ONLY the JSON array, no other text. Example format:
                             validatedCompetitors.push(competitor);
                             logger.debug("Sending competitor via SSE (validated)", { competitor: competitor.name });
                             sendSSE("competitor", { competitor });
+                            // Update progress
+                            sendSSE("progress", { 
+                                stage: "validating", 
+                                completedCount: validatedCompetitors.length, 
+                                totalCount: competitors.length 
+                            });
                             return { competitor, isValid: true };
                         } else {
                             // Log validation failure
@@ -3308,13 +3338,37 @@ Return ONLY the JSON array, no other text. Example format:
 
                             const batchResults = await Promise.all(batchPromises);
 
-                            // Bulk update all successful metrics in a single database call
+                            // Store metrics in cache immediately (before saving to DB)
+                            // This allows clients to fetch metrics right away
+                            let projectMetricsCache = computedMetricsCache.get(projectId);
+                            if (!projectMetricsCache) {
+                                projectMetricsCache = new Map();
+                                computedMetricsCache.set(projectId, projectMetricsCache);
+                            }
+
                             const updatesToApply = batchResults
                                 .filter(r => r.success && r.metrics)
-                                .map(r => ({ keywordId: r.keywordId, metrics: r.metrics! }));
+                                .map(r => {
+                                    // Store in cache immediately
+                                    projectMetricsCache.set(r.keywordId, {
+                                        volatility: r.metrics!.volatility,
+                                        trendStrength: r.metrics!.trendStrength,
+                                        growth3m: r.metrics!.growth3m,
+                                        growthYoy: r.metrics!.growthYoy,
+                                    });
+                                    return { keywordId: r.keywordId, metrics: r.metrics! };
+                                });
 
+                            // Save to database asynchronously (non-blocking)
+                            // This allows the client to get metrics immediately while DB operations happen in background
                             if (updatesToApply.length > 0) {
-                                await storage.bulkUpdateKeywordMetrics(updatesToApply);
+                                // Don't await - let it run in background
+                                storage.bulkUpdateKeywordMetrics(updatesToApply).catch((error) => {
+                                    logger.error("Error saving metrics to database (background)", error, {
+                                        projectId,
+                                        updateCount: updatesToApply.length,
+                                    });
+                                });
                             }
                             const successful = batchResults.filter(r => r.success).length;
                             const failed = batchResults.filter(r => !r.success);
@@ -5454,6 +5508,42 @@ Return ONLY the JSON array, no other text. Example format:
             res.status(500).json({
                 message: error instanceof Error ? error.message : "Failed to compute metrics",
                 error: error instanceof Error ? error.stack : String(error)
+            });
+        }
+    });
+
+    // Get computed metrics from cache (before they're saved to DB)
+    app.get("/api/custom-search/projects/:projectId/computed-metrics", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { projectId } = req.params;
+            const userId = req.user.id;
+
+            // Verify project ownership
+            const project = await storage.getCustomSearchProject(projectId);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (project.userId !== userId) {
+                return res.status(403).json({ message: "Unauthorized" });
+            }
+
+            // Get metrics from cache
+            const projectMetrics = computedMetricsCache.get(projectId);
+            if (!projectMetrics) {
+                return res.json({ metrics: {} });
+            }
+
+            // Convert Map to object for JSON response
+            const metrics: Record<string, any> = {};
+            projectMetrics.forEach((value, key) => {
+                metrics[key] = value;
+            });
+
+            return res.json({ metrics });
+        } catch (error) {
+            console.error("Error fetching computed metrics:", error);
+            res.status(500).json({
+                message: error instanceof Error ? error.message : "Failed to fetch computed metrics",
             });
         }
     });
