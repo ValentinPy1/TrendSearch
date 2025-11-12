@@ -4,6 +4,26 @@ import { Building2, Users, Package, ChevronRight, ExternalLink, LucideIcon } fro
 import type { AggregatedMetrics } from "@/hooks/use-sector-data";
 import { Button } from "./ui/button";
 
+// Convert batch string from "Winter 2025" format to "Q1 2025" format
+function formatBatchToQuarter(batch: string | undefined): string {
+    if (!batch || batch.trim() === '') return '';
+    
+    const parts = batch.trim().split(' ');
+    if (parts.length < 2) return batch;
+    
+    const season = parts[0].toLowerCase();
+    const year = parts.slice(1).join(' '); // Handle multi-word years if any
+    
+    let quarter = '';
+    if (season === 'winter') quarter = 'Q1';
+    else if (season === 'spring') quarter = 'Q2';
+    else if (season === 'summer') quarter = 'Q3';
+    else if (season === 'fall' || season === 'autumn') quarter = 'Q4';
+    else return batch; // Return original if season not recognized
+    
+    return `${quarter} ${year}`;
+}
+
 interface SectorCardProps {
     name: string;
     metrics: AggregatedMetrics;
@@ -67,10 +87,13 @@ export function SectorCard({
                     <div className="flex items-start gap-3 flex-1 min-w-0">
                         <Icon className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-semibold text-white/90 truncate text-base">
                                     {name}
                                 </h3>
+                                {batch && type !== "sector" && (
+                                    <span className="px-2 py-0.5 rounded bg-white/10 text-white/70 text-xs whitespace-nowrap shrink-0">{formatBatchToQuarter(batch)}</span>
+                                )}
                                 {url && (
                                     <Button
                                         variant="ghost"
@@ -89,19 +112,14 @@ export function SectorCard({
                                 </p>
                             )}
                             {type === "sector" && userTypeCount !== undefined && (
-                                <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
+                                <div className="flex items-center gap-3 mt-1 text-xs text-white/50 whitespace-nowrap">
                                     <span>{userTypeCount} {userTypeCount === 1 ? "startup" : "startups"}</span>
                                     {medianBatch && (
                                         <>
                                             <span className="text-white/30">•</span>
-                                            <span>Median Batch: {medianBatch}</span>
+                                            <span className="px-2 py-0.5 rounded bg-white/10 text-white/70 whitespace-nowrap">{formatBatchToQuarter(medianBatch)}</span>
                                         </>
                                     )}
-                                </div>
-                            )}
-                            {batch && type !== "sector" && (
-                                <div className="flex items-center gap-3 mt-1 text-xs text-white/50">
-                                    <span className="px-2 py-0.5 rounded bg-white/10 text-white/70">{batch}</span>
                                 </div>
                             )}
                         </div>

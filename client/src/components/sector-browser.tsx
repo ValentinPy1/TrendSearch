@@ -31,7 +31,7 @@ import {
     TableRow,
 } from "./ui/table";
 
-type SortOption = "name" | "volume" | "opportunityScore" | "growthYoy" | "cpc" | "startups";
+type SortOption = "name" | "volume" | "opportunityScore" | "growthYoy" | "cpc" | "startups" | "batch";
 
 interface SectorBrowserProps {
     open: boolean;
@@ -194,6 +194,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
     const [companySortDirection, setCompanySortDirection] = useState<"asc" | "desc">("desc");
     const [companyCurrentPage, setCompanyCurrentPage] = useState(1);
     const companiesPerPage = 100;
+    const [showHelp, setShowHelp] = useState(false);
 
     // Check if payment is required
     const hasPaid = paymentStatus?.hasPaid ?? false;
@@ -239,6 +240,49 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
         setFilterQuery("");
     };
 
+    // Convert batch string to numeric value for sorting
+    // Format: "Summer 2025", "Winter 2024", "Fall 2024", "Spring 2025"
+    const batchToNumeric = (batch: string | undefined): number => {
+        if (!batch || batch.trim() === '') return 0;
+
+        const parts = batch.trim().split(' ');
+        if (parts.length < 2) return 0;
+
+        const season = parts[0].toLowerCase();
+        const year = parseInt(parts[1], 10);
+
+        if (isNaN(year)) return 0;
+
+        // Assign season values: Winter=0, Spring=0.25, Summer=0.5, Fall=0.75
+        let seasonValue = 0;
+        if (season === 'winter') seasonValue = 0;
+        else if (season === 'spring') seasonValue = 0.25;
+        else if (season === 'summer') seasonValue = 0.5;
+        else if (season === 'fall' || season === 'autumn') seasonValue = 0.75;
+
+        return year + seasonValue;
+    };
+
+    // Convert batch string from "Winter 2025" format to "Q1 2025" format
+    const formatBatchToQuarter = (batch: string | undefined): string => {
+        if (!batch || batch.trim() === '') return '';
+
+        const parts = batch.trim().split(' ');
+        if (parts.length < 2) return batch;
+
+        const season = parts[0].toLowerCase();
+        const year = parts.slice(1).join(' '); // Handle multi-word years if any
+
+        let quarter = '';
+        if (season === 'winter') quarter = 'Q1';
+        else if (season === 'spring') quarter = 'Q2';
+        else if (season === 'summer') quarter = 'Q3';
+        else if (season === 'fall' || season === 'autumn') quarter = 'Q4';
+        else return batch; // Return original if season not recognized
+
+        return `${quarter} ${year}`;
+    };
+
     const industriesList = useMemo(() => {
         // Check if data exists and has industries (flattened: both main and sub)
         if (!data || !data.industries || Object.keys(data.industries).length === 0) {
@@ -250,6 +294,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                     companyCount: s.companyCount,
                     aggregatedMetrics: s.aggregatedMetrics,
                     monthlyTrendData: s.monthlyTrendData,
+                    medianBatch: (s as any).medianBatch,
                 }));
             }
             return [];
@@ -286,6 +331,11 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                     break;
                 case "startups":
                     comparison = (b.companyCount || 0) - (a.companyCount || 0);
+                    break;
+                case "batch":
+                    const batchA = batchToNumeric(a.medianBatch);
+                    const batchB = batchToNumeric(b.medianBatch);
+                    comparison = batchB - batchA; // Newer batches first (descending by default)
                     break;
                 default:
                     return 0;
@@ -375,6 +425,11 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                     break;
                 case "cpc":
                     comparison = b.aggregatedMetrics.avgCpc - a.aggregatedMetrics.avgCpc;
+                    break;
+                case "batch":
+                    const batchA = batchToNumeric(a.batch);
+                    const batchB = batchToNumeric(b.batch);
+                    comparison = batchB - batchA; // Newer batches first (descending by default)
                     break;
                 default:
                     return 0;
@@ -512,24 +567,35 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
 
                                 return (
                                     <div className="flex flex-col gap-3 w-full">
-                                        <div className="flex items-center gap-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={handleBack}
+                                                    className="h-8 w-8"
+                                                >
+                                                    <ArrowLeft className="h-4 w-4" />
+                                                </Button>
+                                                <SectorIcon className="h-6 w-6 text-primary shrink-0" />
+                                                <DialogTitle className="text-xl">
+                                                    {industryName}
+                                                    {companyCount > 0 && (
+                                                        <span className="ml-2 text-base font-normal text-white/60">
+                                                            ({companyCount})
+                                                        </span>
+                                                    )}
+                                                </DialogTitle>
+                                            </div>
                                             <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={handleBack}
-                                                className="h-8 w-8"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setShowHelp(true)}
+                                                className="text-white/90 hover:text-white border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10"
                                             >
-                                                <ArrowLeft className="h-4 w-4" />
+                                                <HelpCircle className="h-4 w-4 mr-2" />
+                                                Help
                                             </Button>
-                                            <SectorIcon className="h-6 w-6 text-primary shrink-0" />
-                                            <DialogTitle className="text-xl">
-                                                {industryName}
-                                                {companyCount > 0 && (
-                                                    <span className="ml-2 text-base font-normal text-white/60">
-                                                        ({companyCount})
-                                                    </span>
-                                                )}
-                                            </DialogTitle>
                                         </div>
                                         {metrics && (
                                             <div className="flex items-center gap-6 flex-wrap">
@@ -556,10 +622,10 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                     <span className="text-sm font-semibold text-white">${metrics.avgCpc.toFixed(2)}</span>
                                                 </div>
                                                 {industry.medianBatch && (
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 whitespace-nowrap">
                                                         <Calendar className="h-4 w-4 text-white/50" />
                                                         <span className="text-sm text-white/60">Median Batch:</span>
-                                                        <span className="text-sm font-semibold text-white">{industry.medianBatch}</span>
+                                                        <span className="text-sm font-semibold text-white whitespace-nowrap">{formatBatchToQuarter(industry.medianBatch)}</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -569,7 +635,18 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                             })()
                         ) : (
                             <div className="flex flex-col gap-3 w-full">
-                                <DialogTitle className="text-xl">Explore YC Startups by Sectors</DialogTitle>
+                                <div className="flex items-center justify-between">
+                                    <DialogTitle className="text-xl">Explore YC Startups by Sectors</DialogTitle>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setShowHelp(true)}
+                                        className="text-white/90 hover:text-white border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10"
+                                    >
+                                        <HelpCircle className="h-4 w-4 mr-2" />
+                                        Help
+                                    </Button>
+                                </div>
                                 <p className="text-sm text-white/60">
                                     The metrics shown are aggregated from keywords related to startups in each sector, not actual industry performance data.
                                 </p>
@@ -692,6 +769,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                 >
                                     <option value="name" className="bg-background">Sort by Name</option>
                                     <option value="startups" className="bg-background">Sort by Number of Startups</option>
+                                    <option value="batch" className="bg-background">Sort by Batch Recency</option>
                                     <option value="opportunityScore" className="bg-background">Sort by Avg Opportunity Score</option>
                                     <option value="volume" className="bg-background">Sort by Avg Volume</option>
                                     <option value="growthYoy" className="bg-background">Sort by Avg Growth YoY</option>
@@ -838,7 +916,15 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                 <SortIcon column="startups" />
                                                             </div>
                                                         </TableHead>
-                                                        <TableHead className="text-white/90">Median Batch</TableHead>
+                                                        <TableHead
+                                                            className="text-white/90 cursor-pointer hover:text-white select-none"
+                                                            onClick={() => handleColumnSort("batch")}
+                                                        >
+                                                            <div className="flex items-center">
+                                                                Median Batch
+                                                                <SortIcon column="batch" />
+                                                            </div>
+                                                        </TableHead>
                                                         <TableHead
                                                             className="text-white/90 text-right cursor-pointer hover:text-white select-none"
                                                             onClick={() => handleColumnSort("volume")}
@@ -904,7 +990,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                 </TableCell>
                                                                 <TableCell>
                                                                     {industry.medianBatch ? (
-                                                                        <span className="text-white/90">{industry.medianBatch}</span>
+                                                                        <span className="text-white/90 whitespace-nowrap">{formatBatchToQuarter(industry.medianBatch)}</span>
                                                                     ) : (
                                                                         <span className="text-white/50">-</span>
                                                                     )}
@@ -995,6 +1081,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                         <option value="volume" className="bg-background">Sort by Avg Volume</option>
                                         <option value="growthYoy" className="bg-background">Sort by Avg Growth YoY</option>
                                         <option value="cpc" className="bg-background">Sort by Avg CPC</option>
+                                        <option value="batch" className="bg-background">Sort by Batch Recency</option>
                                         <option value="name" className="bg-background">Sort by Name</option>
                                     </select>
                                     <div className="flex gap-2 border border-white/10 rounded-lg p-1 bg-white/5">
@@ -1142,7 +1229,15 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                                     <CompanySortIcon column="name" />
                                                                                 </div>
                                                                             </TableHead>
-                                                                            <TableHead className="text-white/90">Batch</TableHead>
+                                                                            <TableHead
+                                                                                className="text-white/90 cursor-pointer hover:text-white select-none"
+                                                                                onClick={() => handleCompanyColumnSort("batch")}
+                                                                            >
+                                                                                <div className="flex items-center">
+                                                                                    Batch
+                                                                                    <CompanySortIcon column="batch" />
+                                                                                </div>
+                                                                            </TableHead>
                                                                             <TableHead className="text-white/90">Description</TableHead>
                                                                             <TableHead
                                                                                 className="text-white/90 text-right cursor-pointer hover:text-white select-none"
@@ -1217,8 +1312,8 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                                     </TableCell>
                                                                                     <TableCell>
                                                                                         {company.batch ? (
-                                                                                            <span className="px-2 py-0.5 rounded bg-white/10 text-white/70 text-sm">
-                                                                                                {company.batch}
+                                                                                            <span className="px-2 py-0.5 rounded bg-white/10 text-white/70 text-sm whitespace-nowrap">
+                                                                                                {formatBatchToQuarter(company.batch)}
                                                                                             </span>
                                                                                         ) : (
                                                                                             <span className="text-white/50 text-sm">-</span>
@@ -1333,6 +1428,157 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                     )}
                 </div>
             </DialogContent>
+
+            {/* Help Dialog */}
+            <Dialog open={showHelp} onOpenChange={setShowHelp}>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col bg-background/95 backdrop-blur-xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-2xl">Sector Browser Help</DialogTitle>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                        {/* How to Use */}
+                        <section>
+                            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                                <BookOpen className="h-5 w-5 text-primary" />
+                                How to Use
+                            </h3>
+                            <div className="space-y-3 text-white/80 text-sm">
+                                <div>
+                                    <p className="font-semibold text-white mb-1">Browsing Sectors:</p>
+                                    <ul className="list-disc list-inside space-y-1 ml-2">
+                                        <li>View all sectors in card or table view using the toggle buttons</li>
+                                        <li>Search sectors by name using the search bar</li>
+                                        <li>Sort by name, number of startups, or any metric by clicking column headers (table view) or using the dropdown (card view)</li>
+                                        <li>Click on any sector card or table row to view companies within that sector</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-white mb-1">Viewing Companies:</p>
+                                    <ul className="list-disc list-inside space-y-1 ml-2">
+                                        <li>Browse companies in card or table view</li>
+                                        <li>Search companies by name or description</li>
+                                        <li>Sort companies by clicking column headers or using the dropdown</li>
+                                        <li>Companies are paginated (100 per page) for better performance</li>
+                                        <li>Click on a company to use its description as a search query</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-white mb-1">Understanding Metrics:</p>
+                                    <ul className="list-disc list-inside space-y-1 ml-2">
+                                        <li>Metrics are aggregated from keywords related to each startup</li>
+                                        <li>Color coding helps distinguish different metric types</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Data Sources */}
+                        <section>
+                            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                                <Globe className="h-5 w-5 text-primary" />
+                                Where is the Data Coming From?
+                            </h3>
+                            <div className="space-y-3 text-white/80 text-sm">
+                                <div>
+                                    <p className="mb-2">
+                                        The sector browser aggregates data from <strong className="text-white">Y Combinator (YC) startups</strong> and their associated keyword metrics:
+                                    </p>
+                                    <ul className="list-disc list-inside space-y-1 ml-2">
+                                        <li><strong className="text-white">Company Data:</strong> Sourced from YC's public company database, including company names, descriptions, industries, batches, and URLs</li>
+                                        <li><strong className="text-white">Keyword Metrics:</strong> Each startup is associated with relevant keywords based on semantic similarity to their description</li>
+                                        <li><strong className="text-white">Search Volume Data:</strong> Keyword metrics come from search engine data including volume, competition, CPC, and growth trends</li>
+                                        <li><strong className="text-white">Aggregation:</strong> Sector-level metrics are calculated by aggregating metrics from all companies within each sector</li>
+                                    </ul>
+                                </div>
+                                <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                                    <p className="text-white/90 font-semibold mb-1">⚠️ Important Note:</p>
+                                    <p className="text-white/70">
+                                        The metrics shown are aggregated from keywords related to startups in each sector, <strong>not actual industry performance data</strong>. They represent search interest and market signals around the keywords associated with companies in each sector.
+                                    </p>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Metric Calculations */}
+                        <section>
+                            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                                <BarChart3 className="h-5 w-5 text-primary" />
+                                How are Metrics Calculated?
+                            </h3>
+                            <div className="space-y-4 text-white/80 text-sm">
+                                <div>
+                                    <p className="font-semibold text-white mb-2">Company-Level Metrics:</p>
+                                    <ul className="list-disc list-inside space-y-2 ml-2">
+                                        <li>
+                                            <strong className="text-white">Keyword Matching:</strong> For each company, keywords are found using semantic similarity to the company's description
+                                        </li>
+                                        <li>
+                                            <strong className="text-white">Weighted Averages:</strong> Metrics are calculated using weighted averages, where weights are based on keyword match quality (similarity score squared) and search volume (square root of volume)
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-white mb-2">Sector-Level Metrics:</p>
+                                    <ul className="list-disc list-inside space-y-2 ml-2">
+                                        <li>
+                                            <strong className="text-white">Aggregation Method:</strong> Sector metrics aggregate all company metrics within that sector using weighted averages in the same way as company-level metrics
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-white mb-2">Specific Metrics:</p>
+                                    <ul className="list-disc list-inside space-y-1 ml-2">
+                                        <li><strong className="text-white">Avg Volume:</strong> Average monthly search volume for keywords (in thousands)</li>
+                                        <li><strong className="text-white">Avg Opportunity Score:</strong> Calculated from volume, competition, CPC, and growth trends (higher = better opportunity)</li>
+                                        <li><strong className="text-white">Avg YoY Growth:</strong> Year-over-year percentage change in search volume</li>
+                                        <li><strong className="text-white">Avg CPC:</strong> Average cost-per-click for keywords in that sector</li>
+                                        <li><strong className="text-white">Median Batch:</strong> The median YC batch year/season of startups in the sector</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* How to Interpret */}
+                        <section>
+                            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                                <Target className="h-5 w-5 text-primary" />
+                                How to Interpret the Metrics
+                            </h3>
+                            <div className="space-y-4 text-white/80 text-sm">
+                                <div>
+                                    <p className="font-semibold text-white mb-2">What High/Low Values Mean:</p>
+                                    <ul className="list-disc list-inside space-y-2 ml-2">
+                                        <li>
+                                            <strong className="text-white">High Volume:</strong> Indicates strong search interest in keywords related to this sector. Could mean high market demand or awareness.
+                                        </li>
+                                        <li>
+                                            <strong className="text-white">High Opportunity Score:</strong> Suggests good market conditions - high volume, manageable competition, reasonable CPC, and positive growth trends.
+                                        </li>
+                                        <li>
+                                            <strong className="text-white">Positive Growth:</strong> Growing search interest over time, indicating increasing market awareness or demand.
+                                        </li>
+                                        <li>
+                                            <strong className="text-white">High CPC:</strong> Competitive market with advertisers willing to pay more for clicks, often indicating higher-value keywords.
+                                        </li>
+                                        <li>
+                                            <strong className="text-white">Recent Median Batch:</strong> Sectors with more recent batches may indicate emerging trends or growing interest from YC.
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div className="bg-primary/10 p-3 rounded-lg border border-primary/20">
+                                    <p className="text-white/90 font-semibold mb-1">💡 Interpretation Tips:</p>
+                                    <ul className="list-disc list-inside space-y-1 ml-2 text-white/70">
+                                        <li>Compare metrics across sectors to identify opportunities</li>
+                                        <li>Look for sectors with high opportunity scores and positive growth</li>
+                                        <li>Consider the median batch to understand sector maturity</li>
+                                        <li>Remember: these are keyword-based signals, not direct market data</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </Dialog>
     );
 }
