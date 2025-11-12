@@ -1620,6 +1620,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 if (data.report && projectId === currentProjectId) {
                     setReportData(data.report);
                     reportProjectIdRef.current = projectId;
+                    setSelectedSourceWebsites([]); // Reset source website filter when loading new report
+                } else if (data.progress?.reportGenerated && projectId === currentProjectId) {
+                    // If report was regenerated but not included in response, reload it
+                    loadReportForProject(projectId);
                 }
 
                 // Only show success toast if we transitioned from a non-complete status to complete
@@ -2476,54 +2480,58 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         return (
                                             <div
                                                 key={index}
-                                                className={`bg-white/5 hover:bg-white/10 border rounded-lg p-3 transition-colors ${hasKeywordsGenerated ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-white/10'
+                                                className={`bg-white/5 hover:bg-white/10 border rounded-lg p-3 transition-colors relative ${hasKeywordsGenerated ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-white/10'
                                                     }`}
                                             >
-                                                <div className="flex items-start justify-between gap-3">
+                                                {/* Get Keywords button - top right */}
+                                                {competitor.url && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (competitor.url) {
+                                                                // Extract domain from URL
+                                                                try {
+                                                                    const url = new URL(competitor.url.startsWith('http') ? competitor.url : `https://${competitor.url}`);
+                                                                    setWebsiteUrl(url.hostname.replace('www.', ''));
+                                                                } catch {
+                                                                    // If URL parsing fails, use the URL as-is
+                                                                    setWebsiteUrl(competitor.url.replace(/^https?:\/\//, '').replace(/^www\./, ''));
+                                                                }
+                                                            }
+                                                        }}
+                                                        className="absolute top-3 right-3 text-cyan-500 hover:text-cyan-400 transition-colors px-2 py-1 hover:bg-white/10 rounded flex items-center gap-1.5"
+                                                        title="Use this URL for keyword search"
+                                                    >
+                                                        <Search className="h-3.5 w-3.5" />
+                                                        <span className="text-xs">Get Keywords</span>
+                                                    </button>
+                                                )}
+
+                                                {/* Keywords Generated tag - bottom right */}
+                                                {hasKeywordsGenerated && (
+                                                    <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded">
+                                                        <Sparkles className="h-3 w-3" />
+                                                        Generated
+                                                    </span>
+                                                )}
+
+                                                <div className="flex items-start justify-between gap-3 pr-20">
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                             <h4 className="text-sm font-medium text-white">
                                                                 {competitor.name}
                                                             </h4>
                                                             {competitor.url && (
-                                                                <>
-                                                                    <a
-                                                                        href={competitor.url}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        className="text-primary hover:text-primary/80 transition-colors"
-                                                                        onClick={(e) => e.stopPropagation()}
-                                                                    >
-                                                                        <ExternalLink className="h-3.5 w-3.5" />
-                                                                    </a>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            if (competitor.url) {
-                                                                                // Extract domain from URL
-                                                                                try {
-                                                                                    const url = new URL(competitor.url.startsWith('http') ? competitor.url : `https://${competitor.url}`);
-                                                                                    setWebsiteUrl(url.hostname.replace('www.', ''));
-                                                                                } catch {
-                                                                                    // If URL parsing fails, use the URL as-is
-                                                                                    setWebsiteUrl(competitor.url.replace(/^https?:\/\//, '').replace(/^www\./, ''));
-                                                                                }
-                                                                            }
-                                                                        }}
-                                                                        className="text-cyan-500 hover:text-cyan-400 transition-colors px-2 py-1 hover:bg-white/10 rounded flex items-center gap-1.5"
-                                                                        title="Use this URL for keyword search"
-                                                                    >
-                                                                        <Search className="h-3.5 w-3.5" />
-                                                                        <span className="text-xs">Get Keywords</span>
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                            {hasKeywordsGenerated && (
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded">
-                                                                    <Sparkles className="h-3 w-3" />
-                                                                    Keywords Generated
-                                                                </span>
+                                                                <a
+                                                                    href={competitor.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-primary hover:text-primary/80 transition-colors"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <ExternalLink className="h-3.5 w-3.5" />
+                                                                </a>
                                                             )}
                                                         </div>
                                                         <p className="text-xs text-white/60 line-clamp-2">
@@ -2620,10 +2628,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                         {/* Progress Steps - Always display when pipeline is running or has progress, but hide if report is completed or generating-report is done */}
                         {(isFindingKeywordsFromWebsite || (keywordProgress && keywordProgress.stage && keywordProgress.stage !== 'idle' && keywordProgress.stage !== 'complete')) &&
-                            savedProgress?.reportGenerated !== true &&
-                            savedProgress?.currentStage !== 'complete' &&
-                            keywordProgress?.stage !== 'complete' &&
-                            savedProgress?.currentStage !== 'generating-report' &&
+                            (isFindingKeywordsFromWebsite || savedProgress?.currentStage !== 'complete') &&
+                            (isFindingKeywordsFromWebsite || keywordProgress?.stage !== 'complete') &&
+                            (isFindingKeywordsFromWebsite || savedProgress?.currentStage !== 'generating-report') &&
                             !reportData && (() => {
                                 // Use savedProgress.currentStage as primary source, fallback to keywordProgress.stage
                                 const currentStage = savedProgress?.currentStage || keywordProgress?.stage || '';
@@ -2730,6 +2737,42 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                                 return null;
                             })()}
+
+                        {/* Loading Report - Show after generating-report step completes until report is loaded */}
+                        {(() => {
+                            if (reportData) return null; // Don't show if report is already loaded
+
+                            const currentStage = savedProgress?.currentStage || keywordProgress?.stage || '';
+                            const isGeneratingReport = currentStage === 'generating-report' || savedProgress?.currentStage === 'generating-report';
+                            const isReportGenerated = savedProgress?.reportGenerated === true;
+
+                            // Show loading component if:
+                            // 1. generating-report step is done (reportGenerated === true) but reportData is not loaded yet
+                            // 2. OR we're in generating-report stage and reportGenerated is true
+                            // 3. OR isLoadingReport is true (actively loading)
+                            const shouldShowLoadingReport = (isReportGenerated && !reportData) ||
+                                (isGeneratingReport && isReportGenerated) ||
+                                isLoadingReport;
+
+                            if (shouldShowLoadingReport) {
+                                return (
+                                    <div className="mt-8 space-y-4">
+                                        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                                            <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
+                                            <div className="text-center">
+                                                <h3 className="text-lg font-semibold text-white/90 mb-2">
+                                                    Loading Report
+                                                </h3>
+                                                <p className="text-sm text-white/60">
+                                                    Fetching report data...
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()}
 
                     </div>
                 </div>
@@ -2894,22 +2937,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             </div>
                         )}
 
-                        {/* Loading Report */}
-                        {isLoadingReport && !reportData && (
-                            <div className="pt-8 border-t border-white/10 space-y-4">
-                                <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                                    <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
-                                    <div className="text-center">
-                                        <h3 className="text-lg font-semibold text-white/90 mb-2">
-                                            Loading Report
-                                        </h3>
-                                        <p className="text-sm text-white/60">
-                                            Fetching report data...
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
 
                         {/* Report Display in Competitors Tab */}
                         {reportData && reportData.keywords && reportData.keywords.length > 0 && (() => {
@@ -3205,22 +3232,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 </DialogContent>
             </Dialog>
 
-            {/* Report Display - Moved to Competitors Tab */}
-            {isLoadingReport && !reportData && (
-                <div className="space-y-4 mt-8">
-                    <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                        <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
-                        <div className="text-center">
-                            <h3 className="text-lg font-semibold text-white/90 mb-2">
-                                Loading Report
-                            </h3>
-                            <p className="text-sm text-white/60">
-                                Fetching report data...
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
             {
                 reportData && reportData.keywords && reportData.keywords.length > 0 && (() => {
                     // Count total keywords with data (volume, competition, cpc, or topPageBid)

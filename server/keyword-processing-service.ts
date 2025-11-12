@@ -7,6 +7,15 @@
 
 import type { KeywordsForSiteKeywordResult, KeywordsForKeywordsKeywordResult } from "./dataforseo-service";
 
+// Simple logger for debugging - use console methods
+const logger = {
+    debug: (message: string, data?: any) => {
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`[KeywordProcessingService] ${message}`, data || '');
+        }
+    }
+};
+
 // Union type for DataForSEO keyword results (both types have identical structure)
 export type DataForSEOKeywordResult = KeywordsForSiteKeywordResult | KeywordsForKeywordsKeywordResult;
 
@@ -213,9 +222,19 @@ export async function saveKeywordsToProject(
         
         if (existingLink) {
             // Keyword already linked - update sourceWebsites if needed
-            if (normalizedSourceWebsite && !existingLink.sourceWebsites.includes(normalizedSourceWebsite)) {
-                const updatedSourceWebsites = [...existingLink.sourceWebsites, normalizedSourceWebsite];
-                keywordsToUpdate.push({ keywordId, sourceWebsites: updatedSourceWebsites });
+            if (normalizedSourceWebsite) {
+                const currentSourceWebsites = existingLink.sourceWebsites || [];
+                if (!currentSourceWebsites.includes(normalizedSourceWebsite)) {
+                    const updatedSourceWebsites = [...currentSourceWebsites, normalizedSourceWebsite];
+                    keywordsToUpdate.push({ keywordId, sourceWebsites: updatedSourceWebsites });
+                    logger.debug("Updating sourceWebsites for existing keyword link", {
+                        keywordId,
+                        keyword: keywordText,
+                        currentSourceWebsites,
+                        newSourceWebsite: normalizedSourceWebsite,
+                        updatedSourceWebsites
+                    });
+                }
             }
         } else {
             // New keyword link
@@ -234,6 +253,11 @@ export async function saveKeywordsToProject(
 
     // Create new links with sourceWebsite
     if (keywordIdsToLink.length > 0) {
+        logger.debug("Linking new keywords to project", {
+            projectId,
+            keywordsCount: keywordIdsToLink.length,
+            sourceWebsite: normalizedSourceWebsite
+        });
         await storage.linkKeywordsToProject(
             projectId, 
             keywordIdsToLink, 
@@ -243,8 +267,14 @@ export async function saveKeywordsToProject(
     }
 
     // Update existing links with new sourceWebsite
-    for (const update of keywordsToUpdate) {
-        await storage.updateKeywordLinkSourceWebsites(projectId, update.keywordId, update.sourceWebsites);
+    if (keywordsToUpdate.length > 0) {
+        logger.debug("Updating sourceWebsites for existing keyword links", {
+            projectId,
+            updatesCount: keywordsToUpdate.length
+        });
+        for (const update of keywordsToUpdate) {
+            await storage.updateKeywordLinkSourceWebsites(projectId, update.keywordId, update.sourceWebsites);
+        }
     }
 
     // Calculate and return keywords with data count

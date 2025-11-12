@@ -43,7 +43,7 @@ try {
 
 // Create postgres client with better timeout settings
 const sql = postgres(databaseUrl, {
-    max: 1, // Use a single connection for simplicity
+    max: 10, // Allow multiple connections for parallel queries
     idle_timeout: 20,
     connect_timeout: 30, // Increased from 10 to 30 seconds
     max_lifetime: 60 * 30, // 30 minutes

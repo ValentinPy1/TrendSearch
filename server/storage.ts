@@ -225,13 +225,13 @@ export class DatabaseStorage implements IStorage {
         // 2. Fast SELECT query with LIMIT (only fetches what we need)
         // This is faster than window function which scans all rows
         
+        // Run queries in parallel for better performance
+        const queryStartTime = Date.now();
         const [totalResult, projects] = await Promise.all([
-            // COUNT query - fast with index on userId
             db
                 .select({ count: sql<number>`count(*)::int` })
                 .from(customSearchProjects)
                 .where(eq(customSearchProjects.userId, userId)),
-            // SELECT query with LIMIT - fast with composite index
             db
                 .select()
                 .from(customSearchProjects)
@@ -240,6 +240,9 @@ export class DatabaseStorage implements IStorage {
                 .limit(limit)
                 .offset(offset)
         ]);
+        const queryTime = Date.now() - queryStartTime;
+        
+        console.log(`[Storage] Both queries completed in parallel: ${queryTime}ms`);
         
         const total = Number(totalResult[0]?.count || 0);
         

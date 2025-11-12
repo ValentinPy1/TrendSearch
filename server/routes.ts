@@ -1026,7 +1026,7 @@ async function generateReportData(
             sac: sac ? sac.toString() : null,
             opportunityScore: opportunityScore ? opportunityScore.toString() : null,
             monthlyData: formattedMonthlyData,
-            sourceWebsites: kw.sourceWebsites || []
+            sourceWebsites: kw.sourceWebsites || keywordIdToSourceWebsitesMap.get(kw.id) || []
         };
     });
 
@@ -3632,6 +3632,23 @@ Return ONLY the JSON array, no other text. Example format:
             // If resuming and no target provided, try to get it from saved progress or use empty string
             const targetToUse = target?.trim() || savedProgress?.target || '';
 
+            // If starting a new pipeline (not resuming), reset reportGenerated flag to allow progress display
+            if (!isResuming && savedProgress?.reportGenerated === true) {
+                logger.info("Starting new pipeline on project with existing report, resetting reportGenerated flag", {
+                    projectId,
+                    target: targetToUse
+                });
+                // Reset reportGenerated to false so progress steps can be shown
+                // We'll set it back to true after new report is generated
+                await saveProgress({
+                    reportGenerated: false,
+                    currentStage: 'creating-task'
+                });
+                // Refresh savedProgress after reset
+                const refreshedProject = await storage.getCustomSearchProject(projectId);
+                savedProgress = refreshedProject?.keywordGenerationProgress;
+            }
+
             // Helper function to normalize website URL for consistent comparison
             const normalizeWebsite = (website: string): string => {
                 if (!website) return '';
@@ -3763,9 +3780,14 @@ Return ONLY the JSON array, no other text. Example format:
                 }
 
                 logger.info("Fetching keywords from website using live API", { projectId, target: targetToUse });
+                // Set initial stage and ensure reportGenerated is false for new pipeline
                 await saveProgress({
                     currentStage: 'creating-task', // Keep same stage name for UI consistency
+                    reportGenerated: false // Ensure flag is reset for new pipeline
                 });
+                // Refresh savedProgress after save
+                const refreshedProject = await storage.getCustomSearchProject(projectId);
+                savedProgress = refreshedProject?.keywordGenerationProgress;
 
                 const { getKeywordsForSiteLive } = await import("./dataforseo-service");
                 const locationCode = location_code || 2840; // Default to US if not provided
@@ -4142,8 +4164,45 @@ Return ONLY the JSON array, no other text. Example format:
                     newKeywords: finalKeywords
                 });
             } else {
-                logger.info("Report already generated", { projectId });
-                // Ensure stage is set to complete when report already exists
+                logger.info("Report already generated, but new keywords may have been added - regenerating report", { projectId });
+                
+                // Regenerate report with all keywords (including newly added ones) to ensure sourceWebsites are included
+                const allKeywords = await storage.getProjectKeywords(projectId);
+                const keywordsWithData = allKeywords.filter(kw =>
+                    (kw.volume !== null && kw.volume !== undefined) ||
+                    (kw.competition !== null && kw.competition !== undefined) ||
+                    (kw.cpc !== null && kw.cpc !== undefined && kw.cpc !== '') ||
+                    (kw.topPageBid !== null && kw.topPageBid !== undefined && kw.topPageBid !== '')
+                );
+
+                if (keywordsWithData.length > 0) {
+                    logger.info("Regenerating report with all keywords including new ones", {
+                        projectId,
+                        totalKeywords: allKeywords.length,
+                        keywordsWithData: keywordsWithData.length
+                    });
+
+                    await saveProgress({
+                        currentStage: 'generating-report',
+                    });
+
+                    const reportData = await generateReportData(
+                        projectId,
+                        project,
+                        keywordsWithData,
+                        keywordVectorService,
+                        db,
+                        customSearchProjectKeywords
+                    );
+
+                    logger.info("Report regenerated successfully with all keywords", {
+                        projectId,
+                        reportKeywordsCount: reportData.keywords?.length || 0,
+                        totalKeywords: reportData.totalKeywords,
+                    });
+                }
+
+                // Ensure stage is set to complete after regenerating report
                 await saveProgress({
                     currentStage: 'complete',
                     reportGenerated: true,
