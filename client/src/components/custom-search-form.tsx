@@ -1061,55 +1061,101 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             painPoints?: string[];
             features?: string[];
         }) => {
-            const res = await apiRequest(
-                "POST",
-                "/api/custom-search/find-competitors",
-                data
-            );
-            return res.json();
-        },
-        onSuccess: (result) => {
-            if (result.competitors && Array.isArray(result.competitors)) {
-                const competitorsList = result.competitors;
-                const competitorsCount = competitorsList.length;
-                setCompetitors(competitorsList);
+            // Get Supabase session token
+            const { data: { session } } = await supabase.auth.getSession();
 
-                // Explicitly save competitors immediately after finding them
-                if (currentProjectId) {
-                    updateProjectMutation.mutate(
-                        {
-                            id: currentProjectId,
-                            competitors: competitorsList,
-                        },
-                        {
-                            onSuccess: () => {
-                                toast({
-                                    title: "Competitors Found!",
-                                    description: `Found and saved ${competitorsCount} competitors.`,
-                                });
-                            },
-                            onError: () => {
-                                // Still show success toast even if save fails (auto-save will retry)
-                                toast({
-                                    title: "Competitors Found!",
-                                    description: `Found ${competitorsCount} competitors.`,
-                                });
-                            },
-                        }
-                    );
-                } else {
-                    toast({
-                        title: "Competitors Found!",
-                        description: `Found ${competitorsCount} competitors.`,
-                    });
-                }
-            } else {
-                toast({
-                    title: "Competitors Found!",
-                    description: "No competitors data returned.",
-                    variant: "destructive",
-                });
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (session?.access_token) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
             }
+
+            const response = await fetch("/api/custom-search/find-competitors", {
+                method: "POST",
+                headers,
+                body: JSON.stringify(data),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            // Handle Server-Sent Events
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+
+            if (!reader) {
+                throw new Error("No response body");
+            }
+
+            const competitorsList: Competitor[] = [];
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const eventData = JSON.parse(line.slice(6));
+
+                            if (eventData.type === "competitor" && eventData.competitor) {
+                                // Add competitor to list and update UI immediately
+                                competitorsList.push(eventData.competitor);
+                                setCompetitors([...competitorsList]);
+                            } else if (eventData.type === "complete") {
+                                // Final completion - all competitors validated
+                                if (eventData.competitors && Array.isArray(eventData.competitors)) {
+                                    setCompetitors(eventData.competitors);
+
+                                    // Save competitors after all are validated
+                                    if (currentProjectId) {
+                                        updateProjectMutation.mutate(
+                                            {
+                                                id: currentProjectId,
+                                                competitors: eventData.competitors,
+                                            },
+                                            {
+                                                onSuccess: () => {
+                                                    toast({
+                                                        title: "Competitors Found!",
+                                                        description: `Found and saved ${eventData.competitors.length} competitors.`,
+                                                    });
+                                                },
+                                                onError: () => {
+                                                    // Still show success toast even if save fails (auto-save will retry)
+                                                    toast({
+                                                        title: "Competitors Found!",
+                                                        description: `Found ${eventData.competitors.length} competitors.`,
+                                                    });
+                                                },
+                                            }
+                                        );
+                                    } else {
+                                        toast({
+                                            title: "Competitors Found!",
+                                            description: `Found ${eventData.competitors.length} competitors.`,
+                                        });
+                                    }
+                                }
+                            } else if (eventData.type === "error") {
+                                throw new Error(eventData.error || "Unknown error");
+                            }
+                        } catch (e) {
+                            console.error("Error parsing SSE data:", e);
+                            if (e instanceof Error && e.message !== "Unknown error") {
+                                throw e;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return { competitors: competitorsList };
         },
         onError: (error) => {
             toast({
@@ -1311,6 +1357,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             return;
         }
 
+        // Clear existing competitors so they appear progressively
+        setCompetitors([]);
         setIsFindingCompetitors(true);
         try {
             await findCompetitorsMutation.mutateAsync({
