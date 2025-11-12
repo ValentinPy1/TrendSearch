@@ -99,6 +99,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
     const [displayedKeywordCount, setDisplayedKeywordCount] = useState(10);
     const [showOnlyFullData, setShowOnlyFullData] = useState(false);
+    const [selectedSourceWebsites, setSelectedSourceWebsites] = useState<string[]>([]);
     const [websiteUrl, setWebsiteUrl] = useState<string>("");
     const [isFindingKeywordsFromWebsite, setIsFindingKeywordsFromWebsite] = useState(false);
     const [activeSubTab, setActiveSubTab] = useState<string>("competitors");
@@ -143,7 +144,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const { data: projectsData, isLoading: isLoadingProjects, isFetching: isFetchingProjects } = useQuery<{ projects: CustomSearchProject[] }>({
         queryKey: ["/api/custom-search/projects"],
         queryFn: async () => {
-            const res = await apiRequest("GET", "/api/custom-search/projects");
+            // Use pagination to limit results - only fetch first page with limit of 100
+            const res = await apiRequest("GET", "/api/custom-search/projects?page=1&limit=100");
             return res.json();
         },
     });
@@ -160,6 +162,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             reportProjectIdRef.current = null;
             setGeneratedKeywords([]);
             setSelectedKeyword(null);
+            setSelectedSourceWebsites([]);
             setDisplayedKeywordCount(10);
             setShowOnlyFullData(false);
         }
@@ -191,6 +194,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 setReportData(null);
                 setGeneratedKeywords([]);
                 setSavedProgress(null);
+                setSelectedSourceWebsites([]);
                 return;
             }
 
@@ -299,6 +303,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             // If no project selected, clear report data
             setReportData(null);
             reportProjectIdRef.current = null;
+            setSelectedSourceWebsites([]);
         }
     }, [projectsData, currentProjectId, isLoadingProjects, isFetchingProjects]);
 
@@ -432,6 +437,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 if (data.report && projectId === currentProjectId) {
                     setReportData(data.report);
                     reportProjectIdRef.current = projectId;
+                    setSelectedSourceWebsites([]); // Reset source website filter when loading report
                     if (data.report.keywords && Array.isArray(data.report.keywords)) {
                         // Extract keywords from report if needed
                         const keywords = data.report.keywords.map((k: any) => k.keyword || k).filter(Boolean);
@@ -842,6 +848,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             reportProjectIdRef.current = project.id;
                             setDisplayedKeywordCount(10); // Reset to 10 when loading report
                             setShowOnlyFullData(false); // Reset filter when loading report
+                            setSelectedSourceWebsites([]); // Reset source website filter when loading report
                         }
                     } catch (reportError) {
                         console.error("Error generating report:", reportError);
@@ -1598,6 +1605,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             if (data.report && projectId === currentProjectId) {
                 setReportData(data.report);
                 reportProjectIdRef.current = projectId;
+                setIsLoadingReport(false); // Stop loading when report is available
+                // Reset source website filter when loading new report
+                setSelectedSourceWebsites([]);
                 if (data.report.newKeywords && Array.isArray(data.report.newKeywords)) {
                     setGeneratedKeywords(data.report.newKeywords);
                 }
@@ -1605,6 +1615,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             // If pipeline is complete, stop polling
             if (data.status === 'complete') {
+                setIsLoadingReport(false); // Ensure loading is stopped
                 // Only set report data if it's for the current project
                 if (data.report && projectId === currentProjectId) {
                     setReportData(data.report);
@@ -2034,6 +2045,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     reportProjectIdRef.current = currentProjectId;
                                     setDisplayedKeywordCount(10);
                                     setShowOnlyFullData(false);
+                                    // Reset source website filter when loading new report
+                                    setSelectedSourceWebsites([]);
                                 }
                                 if (data.newKeywords && Array.isArray(data.newKeywords)) {
                                     setGeneratedKeywords(data.newKeywords);
@@ -2718,38 +2731,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 return null;
                             })()}
 
-                        {/* Loading Report - Show after generating-report step or when report is being loaded */}
-                        {(() => {
-                            if (reportData) return null; // Don't show if report is already loaded
-
-                            const currentStage = savedProgress?.currentStage || keywordProgress?.stage || '';
-                            const isGeneratingReport = currentStage === 'generating-report' || savedProgress?.currentStage === 'generating-report';
-                            const isProgressComplete = currentStage === 'complete' ||
-                                savedProgress?.currentStage === 'complete' ||
-                                keywordProgress?.stage === 'complete';
-
-                            // Show loading indicator if:
-                            // 1. isLoadingReport is true (actively loading) - highest priority
-                            // 2. We're in generating-report stage (report is being generated, will need to load after)
-                            // 3. Progress is complete and reportGenerated is true but reportData is not loaded yet
-                            // 4. savedProgress exists and reportGenerated is true (catch-all for when report is generated but not loaded)
-                            const shouldShowLoadingReport = isLoadingReport ||
-                                isGeneratingReport ||
-                                (isProgressComplete && savedProgress?.reportGenerated === true) ||
-                                (savedProgress?.reportGenerated === true && !reportData);
-
-                            if (shouldShowLoadingReport) {
-                                return (
-                                    <div className="mt-4 flex items-center justify-center gap-2">
-                                        <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />
-                                        <div className="text-sm font-medium text-blue-400 whitespace-nowrap">
-                                            Loading report...
-                                        </div>
-                                    </div>
-                                );
-                            }
-                            return null;
-                        })()}
                     </div>
                 </div>
             </form>
@@ -2984,8 +2965,39 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 })
                                 : reportData.keywords;
 
-                            const displayedKeywords = filteredKeywords.slice(0, displayedKeywordCount);
-                            const hasMoreToShow = displayedKeywordCount < filteredKeywords.length;
+                            // Extract unique source websites from all keywords
+                            const allSourceWebsitesSet = new Set<string>();
+                            reportData.keywords.forEach((k: any) => {
+                                if (k.sourceWebsites && Array.isArray(k.sourceWebsites)) {
+                                    k.sourceWebsites.forEach((site: string) => allSourceWebsitesSet.add(site));
+                                }
+                            });
+                            const allSourceWebsites = Array.from(allSourceWebsitesSet).sort();
+
+                            // Initialize selectedSourceWebsites to all websites if empty
+                            const effectiveSelectedSourceWebsites = selectedSourceWebsites.length === 0 && allSourceWebsites.length > 0
+                                ? allSourceWebsites
+                                : selectedSourceWebsites;
+
+                            // Apply sourceWebsite filter before slicing
+                            const sourceWebsiteFilteredKeywords = effectiveSelectedSourceWebsites.length === 0
+                                ? filteredKeywords // Show all if none selected (shouldn't happen, but handle gracefully)
+                                : filteredKeywords.filter((k: any) => {
+                                    const kwSourceWebsites = k.sourceWebsites || [];
+                                    return kwSourceWebsites.some((site: string) => effectiveSelectedSourceWebsites.includes(site));
+                                });
+
+                            // Count keywords per source website (from original reportData, not filtered)
+                            const keywordCountsByWebsite = new Map<string, number>();
+                            allSourceWebsites.forEach(site => {
+                                const count = reportData.keywords.filter((k: any) =>
+                                    k.sourceWebsites && Array.isArray(k.sourceWebsites) && k.sourceWebsites.includes(site)
+                                ).length;
+                                keywordCountsByWebsite.set(site, count);
+                            });
+
+                            const displayedKeywords = sourceWebsiteFilteredKeywords.slice(0, displayedKeywordCount);
+                            const hasMoreToShow = displayedKeywordCount < sourceWebsiteFilteredKeywords.length;
 
                             return (
                                 <div className="pt-8 border-t border-white/10 space-y-4">
@@ -3016,13 +3028,71 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                 </label>
                                             </div>
                                         </div>
+
+                                        {/* Source Website Filter */}
+                                        {allSourceWebsites.length > 0 && (
+                                            <div className="flex flex-wrap items-center gap-2 p-3 bg-white/5 rounded-lg border border-white/10">
+                                                <span className="text-sm font-medium text-white/80 mr-2">Source websites:</span>
+                                                {allSourceWebsites.map((site) => {
+                                                    const isSelected = effectiveSelectedSourceWebsites.includes(site);
+                                                    const keywordCount = keywordCountsByWebsite.get(site) || 0;
+                                                    return (
+                                                        <button
+                                                            key={site}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (isSelected) {
+                                                                    const newSelected = effectiveSelectedSourceWebsites.filter(s => s !== site);
+                                                                    setSelectedSourceWebsites(newSelected.length === 0 ? allSourceWebsites : newSelected);
+                                                                } else {
+                                                                    setSelectedSourceWebsites([...effectiveSelectedSourceWebsites, site]);
+                                                                }
+                                                                setDisplayedKeywordCount(10);
+                                                            }}
+                                                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${isSelected
+                                                                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                                                : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white/80'
+                                                                }`}
+                                                        >
+                                                            {site} ({keywordCount})
+                                                        </button>
+                                                    );
+                                                })}
+                                                {allSourceWebsites.length > 1 && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSelectedSourceWebsites(allSourceWebsites);
+                                                                setDisplayedKeywordCount(10);
+                                                            }}
+                                                            className="px-2 py-1.5 text-xs font-medium text-white/60 hover:text-white/80 transition-colors"
+                                                        >
+                                                            Select All
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSelectedSourceWebsites([]);
+                                                                setDisplayedKeywordCount(10);
+                                                            }}
+                                                            className="px-2 py-1.5 text-xs font-medium text-white/60 hover:text-white/80 transition-colors"
+                                                        >
+                                                            Deselect All
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+
                                         <KeywordsTable
-                                            keywords={displayedKeywords as Keyword[]}
+                                            keywords={displayedKeywords as (Keyword & { sourceWebsites?: string[] })[]}
                                             selectedKeyword={selectedKeyword}
                                             onKeywordSelect={setSelectedKeyword}
                                             onLoadMore={hasMoreToShow ? handleLoadMore : undefined}
                                             reportId={currentProjectId || ""}
                                             metricsPending={savedProgress?.metricsComputed === false || savedProgress?.metricsComputed === undefined}
+                                            selectedSourceWebsites={effectiveSelectedSourceWebsites}
                                         />
                                     </div>
 
@@ -3211,9 +3281,40 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         })
                         : reportData.keywords;
 
+                    // Extract unique source websites from all keywords
+                    const allSourceWebsitesSet = new Set<string>();
+                    reportData.keywords.forEach((k: any) => {
+                        if (k.sourceWebsites && Array.isArray(k.sourceWebsites)) {
+                            k.sourceWebsites.forEach((site: string) => allSourceWebsitesSet.add(site));
+                        }
+                    });
+                    const allSourceWebsites = Array.from(allSourceWebsitesSet).sort();
+
+                    // Initialize selectedSourceWebsites to all websites if empty
+                    const effectiveSelectedSourceWebsites = selectedSourceWebsites.length === 0 && allSourceWebsites.length > 0
+                        ? allSourceWebsites
+                        : selectedSourceWebsites;
+
+                    // Apply sourceWebsite filter before slicing
+                    const sourceWebsiteFilteredKeywords = effectiveSelectedSourceWebsites.length === 0
+                        ? filteredKeywords // Show all if none selected (shouldn't happen, but handle gracefully)
+                        : filteredKeywords.filter((k: any) => {
+                            const kwSourceWebsites = k.sourceWebsites || [];
+                            return kwSourceWebsites.some((site: string) => effectiveSelectedSourceWebsites.includes(site));
+                        });
+
+                    // Count keywords per source website (from original reportData, not filtered)
+                    const keywordCountsByWebsite = new Map<string, number>();
+                    allSourceWebsites.forEach(site => {
+                        const count = reportData.keywords.filter((k: any) =>
+                            k.sourceWebsites && Array.isArray(k.sourceWebsites) && k.sourceWebsites.includes(site)
+                        ).length;
+                        keywordCountsByWebsite.set(site, count);
+                    });
+
                     // Slice keywords based on displayedKeywordCount (same logic as standard search)
-                    const displayedKeywords = filteredKeywords.slice(0, displayedKeywordCount);
-                    const hasMoreToShow = displayedKeywordCount < filteredKeywords.length;
+                    const displayedKeywords = sourceWebsiteFilteredKeywords.slice(0, displayedKeywordCount);
+                    const hasMoreToShow = displayedKeywordCount < sourceWebsiteFilteredKeywords.length;
 
                     return (
                         <div className="space-y-4 mt-8">
@@ -3244,13 +3345,71 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         </label>
                                     </div>
                                 </div>
+
+                                {/* Source Website Filter */}
+                                {allSourceWebsites.length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-2 p-3 bg-white/5 rounded-lg border border-white/10">
+                                        <span className="text-sm font-medium text-white/80 mr-2">Source websites:</span>
+                                        {allSourceWebsites.map((site) => {
+                                            const isSelected = effectiveSelectedSourceWebsites.includes(site);
+                                            const keywordCount = keywordCountsByWebsite.get(site) || 0;
+                                            return (
+                                                <button
+                                                    key={site}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (isSelected) {
+                                                            const newSelected = effectiveSelectedSourceWebsites.filter(s => s !== site);
+                                                            setSelectedSourceWebsites(newSelected.length === 0 ? allSourceWebsites : newSelected);
+                                                        } else {
+                                                            setSelectedSourceWebsites([...effectiveSelectedSourceWebsites, site]);
+                                                        }
+                                                        setDisplayedKeywordCount(10);
+                                                    }}
+                                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${isSelected
+                                                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                                        : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white/80'
+                                                        }`}
+                                                >
+                                                    {site} ({keywordCount})
+                                                </button>
+                                            );
+                                        })}
+                                        {allSourceWebsites.length > 1 && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedSourceWebsites(allSourceWebsites);
+                                                        setDisplayedKeywordCount(10);
+                                                    }}
+                                                    className="px-2 py-1.5 text-xs font-medium text-white/60 hover:text-white/80 transition-colors"
+                                                >
+                                                    Select All
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedSourceWebsites([]);
+                                                        setDisplayedKeywordCount(10);
+                                                    }}
+                                                    className="px-2 py-1.5 text-xs font-medium text-white/60 hover:text-white/80 transition-colors"
+                                                >
+                                                    Deselect All
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
                                 <KeywordsTable
-                                    keywords={displayedKeywords as Keyword[]}
+                                    keywords={displayedKeywords as (Keyword & { sourceWebsites?: string[] })[]}
                                     selectedKeyword={selectedKeyword}
                                     onKeywordSelect={setSelectedKeyword}
                                     onLoadMore={hasMoreToShow ? handleLoadMore : undefined}
                                     reportId={currentProjectId || ""}
                                     metricsPending={savedProgress?.metricsComputed === false || savedProgress?.metricsComputed === undefined}
+                                    selectedSourceWebsites={effectiveSelectedSourceWebsites}
                                 />
                             </div>
 

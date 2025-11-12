@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { GradientOrbs } from "@/components/gradient-orbs";
 import { supabase } from "./lib/supabase";
+import { Loader2 } from "lucide-react";
 import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
@@ -87,7 +88,10 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <GradientOrbs />
-        <div className="text-white text-xl">Loading...</div>
+        <div className="relative z-10 flex items-center gap-3">
+          <Loader2 className="h-5 w-5 text-white/60 animate-spin" />
+          <div className="text-white/60 text-sm">Loading...</div>
+        </div>
       </div>
     );
   }

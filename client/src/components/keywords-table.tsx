@@ -59,7 +59,7 @@ const DEFAULT_VISIBLE_COLUMNS = [
 ];
 
 interface KeywordsTableProps {
-    keywords: Keyword[];
+    keywords: (Keyword & { sourceWebsites?: string[] })[];
     selectedKeyword: string | null;
     onKeywordSelect: (keyword: string) => void;
     onSearchKeyword?: (keyword: string) => void;
@@ -68,6 +68,7 @@ interface KeywordsTableProps {
     isLoadingMore?: boolean;
     reportId?: string;
     metricsPending?: boolean; // Indicates if secondary metrics are still being computed
+    selectedSourceWebsites?: string[]; // Filter keywords by source websites
 }
 
 export function KeywordsTable({
@@ -80,6 +81,7 @@ export function KeywordsTable({
     isLoadingMore = false,
     reportId,
     metricsPending = false,
+    selectedSourceWebsites,
 }: KeywordsTableProps) {
     const { toast } = useToast();
     const [sortField, setSortField] = useState<SortField | null>(null);
@@ -730,14 +732,26 @@ export function KeywordsTable({
         }
     };
 
+    // Filter keywords by selected source websites
+    const filteredKeywords = useMemo(() => {
+        if (!selectedSourceWebsites || selectedSourceWebsites.length === 0) {
+            return keywords; // Show all if no filter selected
+        }
+        return keywords.filter(kw => {
+            const kwSourceWebsites = kw.sourceWebsites || [];
+            // Show keyword if any of its sourceWebsites matches any selected sourceWebsite
+            return kwSourceWebsites.some(site => selectedSourceWebsites.includes(site));
+        });
+    }, [keywords, selectedSourceWebsites]);
+
     const sortedKeywords = useMemo(() => {
         if (!sortField || !sortDirection) {
-            return keywords;
+            return filteredKeywords;
         }
 
         // Separate keywords into those present at sort time and new ones
-        const keywordsAtSort = keywords.filter(k => keywordIdsAtSort.has(k.id));
-        const newKeywords = keywords.filter(k => !keywordIdsAtSort.has(k.id));
+        const keywordsAtSort = filteredKeywords.filter(k => keywordIdsAtSort.has(k.id));
+        const newKeywords = filteredKeywords.filter(k => !keywordIdsAtSort.has(k.id));
 
         // Sort only the keywords that were present when sort was applied
         const sorted = [...keywordsAtSort].sort((a, b) => {

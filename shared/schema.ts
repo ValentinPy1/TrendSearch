@@ -185,6 +185,7 @@ export const customSearchProjectKeywords = pgTable("custom_search_project_keywor
   customSearchProjectId: varchar("custom_search_project_id").notNull().references(() => customSearchProjects.id, { onDelete: 'cascade' }),
   globalKeywordId: varchar("global_keyword_id").notNull().references(() => globalKeywords.id, { onDelete: 'cascade' }),
   similarityScore: decimal("similarity_score", { precision: 5, scale: 4 }),
+  sourceWebsites: jsonb("source_websites").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -40,6 +40,7 @@ export interface IStorage {
 
     // Custom Search Project methods
     getCustomSearchProjects(userId: string): Promise<CustomSearchProject[]>;
+    getCustomSearchProjectsPaginated(userId: string, page: number, limit: number): Promise<{ projects: CustomSearchProject[]; total: number }>;
     getCustomSearchProject(id: string): Promise<CustomSearchProject | undefined>;
     createCustomSearchProject(project: InsertCustomSearchProject): Promise<CustomSearchProject>;
     updateCustomSearchProject(id: string, project: Partial<InsertCustomSearchProject>): Promise<CustomSearchProject>;
@@ -49,8 +50,10 @@ export interface IStorage {
     getGlobalKeywordByText(keyword: string): Promise<GlobalKeyword | undefined>;
     getGlobalKeywordsByTexts(keywords: string[]): Promise<GlobalKeyword[]>;
     createGlobalKeywords(keywords: InsertGlobalKeyword[]): Promise<GlobalKeyword[]>;
-    linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[]): Promise<void>;
-    getProjectKeywords(projectId: string): Promise<GlobalKeyword[]>;
+    linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[], sourceWebsites?: string[]): Promise<void>;
+    getProjectKeywords(projectId: string): Promise<Array<GlobalKeyword & { sourceWebsites: string[] }>>;
+    getProjectKeywordCounts(projectIds: string[]): Promise<Map<string, number>>;
+    updateKeywordLinkSourceWebsites(projectId: string, keywordId: string, sourceWebsites: string[]): Promise<void>;
     updateKeywordMetrics(keywordId: string, metrics: Partial<GlobalKeyword>): Promise<void>;
     bulkUpdateKeywordMetrics(updates: Array<{ keywordId: string; metrics: Partial<GlobalKeyword> }>): Promise<void>;
 
@@ -214,6 +217,35 @@ export class DatabaseStorage implements IStorage {
         return result;
     }
 
+    async getCustomSearchProjectsPaginated(userId: string, page: number, limit: number): Promise<{ projects: CustomSearchProject[]; total: number }> {
+        const offset = (page - 1) * limit;
+        
+        // Split into two queries for better performance:
+        // 1. Fast COUNT query (uses index, doesn't need to fetch data)
+        // 2. Fast SELECT query with LIMIT (only fetches what we need)
+        // This is faster than window function which scans all rows
+        
+        const [totalResult, projects] = await Promise.all([
+            // COUNT query - fast with index on userId
+            db
+                .select({ count: sql<number>`count(*)::int` })
+                .from(customSearchProjects)
+                .where(eq(customSearchProjects.userId, userId)),
+            // SELECT query with LIMIT - fast with composite index
+            db
+                .select()
+                .from(customSearchProjects)
+                .where(eq(customSearchProjects.userId, userId))
+                .orderBy(desc(customSearchProjects.updatedAt))
+                .limit(limit)
+                .offset(offset)
+        ]);
+        
+        const total = Number(totalResult[0]?.count || 0);
+        
+        return { projects, total };
+    }
+
     async getCustomSearchProject(id: string): Promise<CustomSearchProject | undefined> {
         const result = await db
             .select()
@@ -291,32 +323,73 @@ export class DatabaseStorage implements IStorage {
         return result;
     }
 
-    async linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[]): Promise<void> {
+    async linkKeywordsToProject(projectId: string, keywordIds: string[], similarityScores: number[], sourceWebsites?: string[]): Promise<void> {
         if (keywordIds.length === 0) return;
         if (keywordIds.length !== similarityScores.length) {
             throw new Error("keywordIds and similarityScores arrays must have the same length");
         }
 
+        const defaultSourceWebsites = sourceWebsites || [];
         const links: InsertCustomSearchProjectKeyword[] = keywordIds.map((keywordId, index) => ({
             customSearchProjectId: projectId,
             globalKeywordId: keywordId,
             similarityScore: similarityScores[index] ? similarityScores[index].toString() : null,
+            sourceWebsites: defaultSourceWebsites.length > 0 ? defaultSourceWebsites : [],
         }));
 
         await db.insert(customSearchProjectKeywords).values(links as any);
     }
 
-    async getProjectKeywords(projectId: string): Promise<GlobalKeyword[]> {
+    async getProjectKeywords(projectId: string): Promise<Array<GlobalKeyword & { sourceWebsites: string[] }>> {
         // Join customSearchProjectKeywords with globalKeywords to get all keywords for a project
         const result = await db
             .select({
                 keyword: globalKeywords,
+                sourceWebsites: customSearchProjectKeywords.sourceWebsites,
             })
             .from(customSearchProjectKeywords)
             .innerJoin(globalKeywords, eq(customSearchProjectKeywords.globalKeywordId, globalKeywords.id))
             .where(eq(customSearchProjectKeywords.customSearchProjectId, projectId));
         
-        return result.map(r => r.keyword);
+        return result.map(r => ({
+            ...r.keyword,
+            sourceWebsites: (r.sourceWebsites as string[]) || [],
+        }));
+    }
+
+    async getProjectKeywordCounts(projectIds: string[]): Promise<Map<string, number>> {
+        if (projectIds.length === 0) {
+            return new Map();
+        }
+
+        // Batch query to get keyword counts for multiple projects at once
+        const counts = await db
+            .select({
+                projectId: customSearchProjectKeywords.customSearchProjectId,
+                count: sql<number>`count(*)::int`,
+            })
+            .from(customSearchProjectKeywords)
+            .where(inArray(customSearchProjectKeywords.customSearchProjectId, projectIds))
+            .groupBy(customSearchProjectKeywords.customSearchProjectId);
+
+        const countMap = new Map<string, number>();
+        // Initialize all project IDs with 0
+        projectIds.forEach(id => countMap.set(id, 0));
+        // Update with actual counts
+        counts.forEach(row => {
+            countMap.set(row.projectId, Number(row.count));
+        });
+
+        return countMap;
+    }
+
+    async updateKeywordLinkSourceWebsites(projectId: string, keywordId: string, sourceWebsites: string[]): Promise<void> {
+        await db
+            .update(customSearchProjectKeywords)
+            .set({ sourceWebsites: sourceWebsites })
+            .where(
+                sql`${customSearchProjectKeywords.customSearchProjectId} = ${projectId} AND ${customSearchProjectKeywords.globalKeywordId} = ${keywordId}`
+            );
     }
 
     async updateKeywordMetrics(keywordId: string, metrics: Partial<GlobalKeyword>): Promise<void> {

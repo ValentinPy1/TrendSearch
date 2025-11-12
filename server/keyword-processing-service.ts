@@ -122,6 +122,23 @@ export function processDataForSEOResults(
 }
 
 /**
+ * Normalize website URL for consistent storage and comparison
+ */
+function normalizeWebsite(website: string): string {
+    if (!website) return '';
+    try {
+        // Add protocol if missing
+        const urlWithProtocol = website.startsWith('http') ? website : `https://${website}`;
+        const urlObj = new URL(urlWithProtocol);
+        // Get hostname and remove www.
+        return urlObj.hostname.replace(/^www\./, '').toLowerCase();
+    } catch {
+        // If URL parsing fails, just clean it up
+        return website.replace(/^https?:\/\//, '').replace(/^www\./, '').toLowerCase().split('/')[0];
+    }
+}
+
+/**
  * Save keywords to database and link them to a project with similarity scores
  * 
  * @param keywordsToInsert - Array of keyword data objects from processDataForSEOResults
@@ -130,6 +147,7 @@ export function processDataForSEOResults(
  * @param projectPitch - Project pitch for similarity calculation
  * @param storage - Storage service instance
  * @param keywordVectorService - Keyword vector service for similarity calculation
+ * @param sourceWebsite - Source website URL (will be normalized)
  * @returns Promise resolving to count of keywords with data
  */
 export async function saveKeywordsToProject(
@@ -146,8 +164,12 @@ export async function saveKeywordsToProject(
     projectId: string,
     projectPitch: string,
     storage: any,
-    keywordVectorService: any
+    keywordVectorService: any,
+    sourceWebsite?: string
 ): Promise<number> {
+    // Normalize source website
+    const normalizedSourceWebsite = sourceWebsite ? normalizeWebsite(sourceWebsite) : '';
+
     // Save all keywords to globalKeywords table
     const savedKeywords = await storage.createGlobalKeywords(keywordsToInsert);
 
@@ -170,15 +192,33 @@ export async function saveKeywordsToProject(
     });
 
     const existingLinks = await storage.getProjectKeywords(projectId);
-    const existingLinkIds = new Set(existingLinks.map((kw: any) => kw.id));
+    const existingLinkMap = new Map<string, { id: string; sourceWebsites: string[] }>();
+    existingLinks.forEach((kw: any) => {
+        existingLinkMap.set(kw.id, {
+            id: kw.id,
+            sourceWebsites: kw.sourceWebsites || [],
+        });
+    });
 
     const pitch = projectPitch || "";
     const keywordIdsToLink: string[] = [];
     const similarityScoresToLink: number[] = [];
+    const keywordsToUpdate: Array<{ keywordId: string; sourceWebsites: string[] }> = [];
 
     for (const keywordText of allKeywordsToLink) {
         const keywordId = keywordTextToIdMap.get(keywordText.toLowerCase());
-        if (keywordId && !existingLinkIds.has(keywordId)) {
+        if (!keywordId) continue;
+
+        const existingLink = existingLinkMap.get(keywordId);
+        
+        if (existingLink) {
+            // Keyword already linked - update sourceWebsites if needed
+            if (normalizedSourceWebsite && !existingLink.sourceWebsites.includes(normalizedSourceWebsite)) {
+                const updatedSourceWebsites = [...existingLink.sourceWebsites, normalizedSourceWebsite];
+                keywordsToUpdate.push({ keywordId, sourceWebsites: updatedSourceWebsites });
+            }
+        } else {
+            // New keyword link
             keywordIdsToLink.push(keywordId);
             let similarity = 0.5;
             if (pitch.trim()) {
@@ -192,8 +232,19 @@ export async function saveKeywordsToProject(
         }
     }
 
+    // Create new links with sourceWebsite
     if (keywordIdsToLink.length > 0) {
-        await storage.linkKeywordsToProject(projectId, keywordIdsToLink, similarityScoresToLink);
+        await storage.linkKeywordsToProject(
+            projectId, 
+            keywordIdsToLink, 
+            similarityScoresToLink,
+            normalizedSourceWebsite ? [normalizedSourceWebsite] : []
+        );
+    }
+
+    // Update existing links with new sourceWebsite
+    for (const update of keywordsToUpdate) {
+        await storage.updateKeywordLinkSourceWebsites(projectId, update.keywordId, update.sourceWebsites);
     }
 
     // Calculate and return keywords with data count

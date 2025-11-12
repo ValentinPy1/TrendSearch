@@ -1,9 +1,10 @@
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { Loader2, Trash2, FileText, Calendar, Search, TrendingUp } from "lucide-react";
+import { Loader2, Trash2, FileText, Calendar, Search, TrendingUp, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { CustomSearchProject } from "@shared/schema";
 
@@ -22,6 +23,8 @@ export function CustomSearchProjectBrowser({
 }: CustomSearchProjectBrowserProps) {
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    const [currentPage, setCurrentPage] = useState(1);
+    const projectsPerPage = 10;
 
     interface ProjectWithStats extends CustomSearchProject {
         keywordCount?: number;
@@ -35,14 +38,29 @@ export function CustomSearchProjectBrowser({
         } | null;
     }
 
-    const { data, isLoading, error } = useQuery<{ projects: ProjectWithStats[] }>({
-        queryKey: ["/api/custom-search/projects"],
+    interface ProjectsResponse {
+        projects: ProjectWithStats[];
+        total?: number;
+        page?: number;
+        limit?: number;
+        totalPages?: number;
+    }
+
+    const { data, isLoading, error } = useQuery<ProjectsResponse>({
+        queryKey: ["/api/custom-search/projects", currentPage, projectsPerPage],
         queryFn: async () => {
-            const res = await apiRequest("GET", "/api/custom-search/projects");
+            const res = await apiRequest("GET", `/api/custom-search/projects?page=${currentPage}&limit=${projectsPerPage}`);
             return res.json();
         },
         enabled: open,
     });
+
+    // Reset to page 1 when dialog opens
+    useEffect(() => {
+        if (open) {
+            setCurrentPage(1);
+        }
+    }, [open]);
 
     const deleteMutation = useMutation({
         mutationFn: async (projectId: string) => {
@@ -54,30 +72,42 @@ export function CustomSearchProjectBrowser({
             await queryClient.cancelQueries({ queryKey: ["/api/custom-search/projects"] });
 
             // Snapshot the previous value
-            const previousProjects = queryClient.getQueryData<{ projects: ProjectWithStats[] }>(["/api/custom-search/projects"]);
+            const previousData = queryClient.getQueryData<ProjectsResponse>(["/api/custom-search/projects", currentPage, projectsPerPage]);
 
             // Optimistically update to the new value
-            if (previousProjects) {
-                queryClient.setQueryData<{ projects: ProjectWithStats[] }>(["/api/custom-search/projects"], {
-                    projects: previousProjects.projects.filter(p => p.id !== projectId),
+            if (previousData) {
+                const updatedProjects = previousData.projects.filter(p => p.id !== projectId);
+                const updatedTotal = previousData.total !== undefined ? previousData.total - 1 : undefined;
+                const updatedTotalPages = updatedTotal !== undefined ? Math.ceil(updatedTotal / projectsPerPage) : undefined;
+                
+                queryClient.setQueryData<ProjectsResponse>(["/api/custom-search/projects", currentPage, projectsPerPage], {
+                    ...previousData,
+                    projects: updatedProjects,
+                    total: updatedTotal,
+                    totalPages: updatedTotalPages,
                 });
             }
 
             // Return a context object with the snapshotted value
-            return { previousProjects };
+            return { previousData };
         },
         onSuccess: () => {
-            // Invalidate to ensure we have the latest data
+            // Invalidate all paginated queries to ensure we have the latest data
             queryClient.invalidateQueries({ queryKey: ["/api/custom-search/projects"] });
             toast({
                 title: "Project Deleted",
                 description: "Project has been deleted successfully.",
             });
+            
+            // If current page becomes empty and not on page 1, go to previous page
+            if (data && data.projects.length === 1 && currentPage > 1) {
+                setCurrentPage(currentPage - 1);
+            }
         },
         onError: (error, projectId, context) => {
             // If the mutation fails, use the context returned from onMutate to roll back
-            if (context?.previousProjects) {
-                queryClient.setQueryData(["/api/custom-search/projects"], context.previousProjects);
+            if (context?.previousData) {
+                queryClient.setQueryData(["/api/custom-search/projects", currentPage, projectsPerPage], context.previousData);
             }
             toast({
                 title: "Error",
@@ -234,6 +264,35 @@ export function CustomSearchProjectBrowser({
                                     </div>
                                 </GlassmorphicCard>
                             ))}
+                            
+                            {/* Pagination Controls - inside scroll section */}
+                            {data && data.totalPages && data.totalPages > 1 && (
+                                <div className="flex items-center justify-between pt-4 mt-4 border-t border-white/10">
+                                    <div className="text-sm text-white/60">
+                                        Page {data.page || currentPage} of {data.totalPages} ({data.total} total)
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                        >
+                                            <ChevronLeft className="h-4 w-4" />
+                                            Previous
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPage(p => Math.min(data.totalPages || 1, p + 1))}
+                                            disabled={currentPage >= (data.totalPages || 1)}
+                                        >
+                                            Next
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
                         </>
                     )}
                 </div>

@@ -818,12 +818,23 @@ async function generateReportData(
     const keywordIds = keywordsWithData.map(kw => kw.id);
     const projectLinks = keywordIds.length > 0
         ? await db
-            .select()
+            .select({
+                id: customSearchProjectKeywords.id,
+                globalKeywordId: customSearchProjectKeywords.globalKeywordId,
+                similarityScore: customSearchProjectKeywords.similarityScore,
+                sourceWebsites: customSearchProjectKeywords.sourceWebsites,
+            })
             .from(customSearchProjectKeywords)
             .where(
                 eq(customSearchProjectKeywords.customSearchProjectId, projectId)
             )
         : [];
+
+    // Create a map of keyword ID to sourceWebsites for easy lookup
+    const keywordIdToSourceWebsitesMap = new Map<string, string[]>();
+    projectLinks.forEach((link: any) => {
+        keywordIdToSourceWebsitesMap.set(link.globalKeywordId, (link.sourceWebsites as string[]) || []);
+    });
 
     logger.debug("Calculating similarity scores for keywords", {
         projectLinksCount: projectLinks.length,
@@ -840,6 +851,10 @@ async function generateReportData(
     const keywordIdToTextMap = new Map<string, string>();
     keywordsWithData.forEach(kw => {
         keywordIdToTextMap.set(kw.id, kw.keyword);
+        // If sourceWebsites not already set, get from map
+        if (!kw.sourceWebsites) {
+            kw.sourceWebsites = keywordIdToSourceWebsitesMap.get(kw.id) || [];
+        }
     });
 
     // If we have project links (keywords already saved to database), use them
@@ -1010,7 +1025,8 @@ async function generateReportData(
             tac: tac ? tac.toString() : null,
             sac: sac ? sac.toString() : null,
             opportunityScore: opportunityScore ? opportunityScore.toString() : null,
-            monthlyData: formattedMonthlyData
+            monthlyData: formattedMonthlyData,
+            sourceWebsites: kw.sourceWebsites || []
         };
     });
 
@@ -2580,17 +2596,31 @@ Return ONLY the JSON array, no other text. Example format:
     });
 
     // Custom Search Projects API
-    // Get all projects for user
+    // Get all projects for user (with pagination support)
     app.get("/api/custom-search/projects", requireAuth, async (req, res) => {
         try {
-            const projects = await storage.getCustomSearchProjects(req.user.id);
+            const startTime = Date.now();
+            // Always use pagination - default to page 1, limit 10 if not specified
+            const page = req.query.page ? parseInt(req.query.page as string) : 1;
+            const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+            
+            const projectsStartTime = Date.now();
+            // Always use paginated method for better performance
+            const result = await storage.getCustomSearchProjectsPaginated(req.user.id, page, limit);
+            const projects = result.projects;
+            const total = result.total;
+            console.log(`[Projects API] Fetched ${projects.length} projects (page ${page}, limit ${limit}) in ${Date.now() - projectsStartTime}ms`);
+
+            // Batch get keyword counts for all projects at once (much faster than N queries)
+            const countsStartTime = Date.now();
+            const projectIds = projects.map(p => p.id);
+            const keywordCounts = await storage.getProjectKeywordCounts(projectIds);
+            console.log(`[Projects API] Got keyword counts for ${projectIds.length} projects in ${Date.now() - countsStartTime}ms`);
 
             // Enrich projects with keyword counts and progress
-            const projectsWithStats = await Promise.all(
-                projects.map(async (project) => {
-                    // Get keyword count
-                    const keywords = await storage.getProjectKeywords(project.id);
-                    const keywordCount = keywords.length;
+            const projectsWithStats = projects.map((project) => {
+                    // Get keyword count from batch result
+                    const keywordCount = keywordCounts.get(project.id) || 0;
 
                     // Extract progress information
                     const progress = project.keywordGenerationProgress;
@@ -2652,10 +2682,18 @@ Return ONLY the JSON array, no other text. Example format:
                         keywordCount,
                         progress: progressInfo,
                     };
-                })
-            );
+                });
 
-            res.json({ projects: projectsWithStats });
+            const response: any = { projects: projectsWithStats };
+            if (total !== undefined) {
+                response.total = total;
+                response.page = page;
+                response.limit = limit;
+                response.totalPages = Math.ceil(total / limit);
+            }
+
+            console.log(`[Projects API] Total request time: ${Date.now() - startTime}ms`);
+            res.json(response);
         } catch (error) {
             console.error("Error fetching projects:", error);
             res.status(500).json({
@@ -2693,6 +2731,15 @@ Return ONLY the JSON array, no other text. Example format:
                 (kw.growthYoy !== null || kw.growth3m !== null)
             );
 
+            // Get unique source websites from all keywords
+            const sourceWebsitesSet = new Set<string>();
+            keywords.forEach((kw: any) => {
+                if (kw.sourceWebsites && Array.isArray(kw.sourceWebsites)) {
+                    kw.sourceWebsites.forEach((site: string) => sourceWebsitesSet.add(site));
+                }
+            });
+            const sourceWebsites = Array.from(sourceWebsitesSet);
+
             // Get keywords from saved progress (for display)
             const savedProgress = project.keywordGenerationProgress;
             let keywordList = savedProgress?.newKeywords || [];
@@ -2709,6 +2756,7 @@ Return ONLY the JSON array, no other text. Example format:
                 keywordList: keywordList,
                 hasDataForSEO: keywordsWithData.length > 0,
                 hasMetrics: keywordsWithMetrics.length > 0,
+                sourceWebsites: sourceWebsites,
             });
         } catch (error) {
             console.error("Error fetching project keywords status:", error);
@@ -3080,7 +3128,10 @@ Return ONLY the JSON array, no other text. Example format:
                 // Process DataForSEO results using shared function
                 const { processDataForSEOResults, saveKeywordsToProject } = await import("./keyword-processing-service");
                 const { keywordsToInsert, keywordMap, keywordsWithData } = processDataForSEOResults(dataForSEOResults, finalKeywords);
-                const savedKeywordsCount = await saveKeywordsToProject(keywordsToInsert, finalKeywords, projectId, project.pitch, storage, keywordVectorService);
+                // Get target from saved progress for sourceWebsite tracking
+                const savedProgressForTarget = project.keywordGenerationProgress;
+                const targetForSource = savedProgressForTarget?.target || '';
+                const savedKeywordsCount = await saveKeywordsToProject(keywordsToInsert, finalKeywords, projectId, project.pitch, storage, keywordVectorService, targetForSource);
 
                 // Save progress
                 await saveProgress({
@@ -3581,6 +3632,23 @@ Return ONLY the JSON array, no other text. Example format:
             // If resuming and no target provided, try to get it from saved progress or use empty string
             const targetToUse = target?.trim() || savedProgress?.target || '';
 
+            // Helper function to normalize website URL for consistent comparison
+            const normalizeWebsite = (website: string): string => {
+                if (!website) return '';
+                try {
+                    // Add protocol if missing
+                    const urlWithProtocol = website.startsWith('http') ? website : `https://${website}`;
+                    const urlObj = new URL(urlWithProtocol);
+                    // Get hostname and remove www.
+                    return urlObj.hostname.replace(/^www\./, '').toLowerCase();
+                } catch {
+                    // If URL parsing fails, just clean it up
+                    return website.replace(/^https?:\/\//, '').replace(/^www\./, '').toLowerCase().split('/')[0];
+                }
+            };
+
+            const normalizedTarget = normalizeWebsite(targetToUse);
+
             // Helper function to save progress
             const saveProgress = async (progressData: any) => {
                 try {
@@ -3635,11 +3703,35 @@ Return ONLY the JSON array, no other text. Example format:
             let hasDataForSEOMetrics = savedProgress?.dataForSEOFetched === true;
             let hasReport = savedProgress?.reportGenerated === true;
 
-            // Check if everything is already done - if so, skip all API calls
-            if (hasKeywords && hasDataForSEOResults && hasDataForSEOMetrics && hasReport && savedProgress) {
-                logger.info("All API calls already completed, pipeline is complete", {
+            // Check if the target website is different from existing ones
+            let isDifferentWebsite = true;
+            if (normalizedTarget && hasKeywords) {
+                // Get existing keywords with their source websites
+                const existingKeywords = await storage.getProjectKeywords(projectId);
+                const existingSourceWebsites = new Set<string>();
+                existingKeywords.forEach((kw: any) => {
+                    if (kw.sourceWebsites && Array.isArray(kw.sourceWebsites)) {
+                        kw.sourceWebsites.forEach((site: string) => existingSourceWebsites.add(site));
+                    }
+                });
+                
+                // Check if this website was already processed
+                isDifferentWebsite = !existingSourceWebsites.has(normalizedTarget);
+                
+                logger.info("Checking if website is different", {
+                    projectId,
+                    normalizedTarget,
+                    existingSourceWebsites: Array.from(existingSourceWebsites),
+                    isDifferentWebsite
+                });
+            }
+
+            // Check if everything is already done for this specific website - if so, skip all API calls
+            if (hasKeywords && hasDataForSEOResults && hasDataForSEOMetrics && hasReport && savedProgress && !isDifferentWebsite) {
+                logger.info("All API calls already completed for this website, pipeline is complete", {
                     projectId,
                     target: targetToUse,
+                    normalizedTarget,
                     keywordsCount: savedProgress.newKeywords?.length || 0,
                     dataForSEOResultsCount: savedProgress.dataForSEOSiteResults?.length || 0,
                 });
@@ -3655,11 +3747,11 @@ Return ONLY the JSON array, no other text. Example format:
                     newKeywords: finalKeywords
                 });
 
-                return; // Pipeline already complete
+                return; // Pipeline already complete for this website
             }
 
-            // STEP 1: Fetch keywords from website using live API (skip if keywords already found)
-            if (!hasKeywords) {
+            // STEP 1: Fetch keywords from website using live API (skip if keywords already found for this website)
+            if (!hasKeywords || isDifferentWebsite) {
                 // Only fetch if we have a target (not resuming without target)
                 if (!targetToUse || targetToUse.trim().length === 0) {
                     const errorMessage = "Cannot fetch keywords: website URL is required. Please provide a website URL or resume from existing progress.";
@@ -3976,6 +4068,17 @@ Return ONLY the JSON array, no other text. Example format:
                 // If we just processed keywords in memory, use those
                 if (processedKeywordsToInsert && processedKeywordsToInsert.length > 0) {
                     keywordsForReport = convertProcessedKeywordsToReportFormat(processedKeywordsToInsert, projectId);
+                    // Get sourceWebsites from database for these keywords
+                    const allKeywordsFromDb = await storage.getProjectKeywords(projectId);
+                    const keywordToSourceWebsitesMap = new Map<string, string[]>();
+                    allKeywordsFromDb.forEach((kw: any) => {
+                        keywordToSourceWebsitesMap.set(kw.keyword.toLowerCase(), kw.sourceWebsites || []);
+                    });
+                    // Add sourceWebsites to keywordsForReport
+                    keywordsForReport = keywordsForReport.map(kw => ({
+                        ...kw,
+                        sourceWebsites: keywordToSourceWebsitesMap.get(kw.keyword.toLowerCase()) || []
+                    }));
                     logger.debug("Using in-memory processed keywords for report generation", {
                         totalKeywords: processedKeywordsToInsert.length,
                         keywordsWithData: keywordsForReport.length,
@@ -4040,6 +4143,11 @@ Return ONLY the JSON array, no other text. Example format:
                 });
             } else {
                 logger.info("Report already generated", { projectId });
+                // Ensure stage is set to complete when report already exists
+                await saveProgress({
+                    currentStage: 'complete',
+                    reportGenerated: true,
+                });
             }
 
             // STEP 5: Save DataForSEO metrics to database in background (after report generation)
@@ -4060,7 +4168,8 @@ Return ONLY the JSON array, no other text. Example format:
                             projectId,
                             project.pitch || '',
                             storage,
-                            keywordVectorService
+                            keywordVectorService,
+                            targetToUse // Pass sourceWebsite
                         );
 
                         // Update progress after save completes
