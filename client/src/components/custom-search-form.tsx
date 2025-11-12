@@ -2015,7 +2015,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         <div className="space-y-2">
                             <h3 className="text-lg font-semibold text-white">4. Refine Your Search (Optional)</h3>
                             <p className="text-sm text-white/80">
-                                Use the <strong>Topics</strong>, <strong>Personas</strong>, <strong>Pain Points</strong>, and <strong>Features</strong> sections 
+                                Use the <strong>Topics</strong>, <strong>Personas</strong>, <strong>Pain Points</strong>, and <strong>Features</strong> sections
                                 to add more context. These help generate more targeted keywords and improve search relevance.
                             </p>
                         </div>
@@ -2055,9 +2055,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         <Textarea
                             {...form.register("pitch")}
                             placeholder="Write a one or two sentence pitch for your idea"
-                            className="min-h-[100px] bg-white/5 border-white/10 text-white placeholder:text-white/40 pr-56 pb-10"
+                            className="min-h-[100px] bg-white/5 border-white/10 text-white placeholder:text-white/40 pl-56 pr-56 pb-10"
                         />
-                        <div className="absolute right-2 bottom-2 flex items-center gap-2">
+                        <div className="absolute left-2 bottom-2 flex items-center gap-1">
                             <Button
                                 type="button"
                                 variant="ghost"
@@ -2098,6 +2098,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     </>
                                 )}
                             </Button>
+                        </div>
+                        <div className="absolute right-2 bottom-2 flex items-center">
                             <Button
                                 type="button"
                                 variant="ghost"
@@ -2107,7 +2109,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     pitch.trim().length === 0 ||
                                     isFindingCompetitors
                                 }
-                                className="h-8 gap-1.5 px-4 text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="h-8 gap-1.5 px-4 text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-full"
                                 title="Find competitors"
                             >
                                 {isFindingCompetitors ? (

@@ -303,7 +303,7 @@ export function IdeaGenerator({
                                 type="button"
                                 variant="outline"
                                 onClick={() => setShowSectorBrowser(true)}
-                                className="h-14 px-4 bg-purple-600/20 border-purple-500/50 text-white hover:bg-purple-600/30 hover:border-purple-400 transition-colors whitespace-nowrap rounded-l-full rounded-r-none"
+                                className="h-14 pl-6 pr-4 bg-purple-600/20 border-purple-500/50 text-white hover:bg-purple-600/30 hover:border-purple-400 transition-colors whitespace-nowrap rounded-l-full rounded-r-none"
                                 data-testid="button-browse-sectors"
                             >
                                 <Building2 className="h-5 w-5 stroke-[2.5] mr-2" />
