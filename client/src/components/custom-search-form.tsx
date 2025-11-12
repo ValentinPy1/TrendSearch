@@ -1460,7 +1460,64 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     };
 
+    // URL validation function
+    const validateAndNormalizeUrl = (url: string): { isValid: boolean; normalizedUrl?: string; error?: string } => {
+        if (!url || url.trim().length === 0) {
+            return { isValid: false, error: "Please enter a website URL" };
+        }
+
+        const trimmedUrl = url.trim();
+
+        // Remove any leading/trailing whitespace and common prefixes
+        let normalizedUrl = trimmedUrl
+            .replace(/^https?:\/\//i, '') // Remove http:// or https://
+            .replace(/^www\./i, '') // Remove www.
+            .replace(/\/$/, ''); // Remove trailing slash
+
+        // Basic domain validation
+        // Check if it looks like a valid domain (contains at least one dot and valid characters)
+        const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
+
+        if (!domainPattern.test(normalizedUrl)) {
+            return {
+                isValid: false,
+                error: "Please enter a valid website URL (e.g., example.com or www.example.com)"
+            };
+        }
+
+        // Try to construct a valid URL
+        try {
+            // If it doesn't have a protocol, add https://
+            const urlWithProtocol = normalizedUrl.includes('://')
+                ? normalizedUrl
+                : `https://${normalizedUrl}`;
+
+            const urlObj = new URL(urlWithProtocol);
+
+            // Validate it's http or https
+            if (!['http:', 'https:'].includes(urlObj.protocol)) {
+                return {
+                    isValid: false,
+                    error: "URL must use http:// or https:// protocol"
+                };
+            }
+
+            // Return the normalized domain (without protocol for consistency)
+            return {
+                isValid: true,
+                normalizedUrl: urlObj.hostname.replace(/^www\./i, '')
+            };
+        } catch (error) {
+            return {
+                isValid: false,
+                error: "Please enter a valid website URL (e.g., example.com)"
+            };
+        }
+    };
+
     const handleFindKeywordsFromWebsite = async (resume: boolean = false) => {
+        let normalizedUrl: string | undefined;
+
         // When resuming, skip URL validation (API may have already been called)
         if (!resume) {
             if (!websiteUrl || websiteUrl.trim().length === 0) {
@@ -1470,6 +1527,25 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     variant: "destructive",
                 });
                 return;
+            }
+
+            // Validate and normalize the URL
+            const validation = validateAndNormalizeUrl(websiteUrl);
+            if (!validation.isValid) {
+                toast({
+                    title: "Invalid URL",
+                    description: validation.error || "Please enter a valid website URL",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            // Store the normalized URL for use in the API call
+            normalizedUrl = validation.normalizedUrl;
+
+            // Update the websiteUrl with the normalized version if it changed
+            if (normalizedUrl && normalizedUrl !== websiteUrl.trim()) {
+                setWebsiteUrl(normalizedUrl);
             }
         }
 
@@ -1533,9 +1609,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             // When resuming, target is optional (API may have already been called)
             // Use savedProgress target if available, otherwise use websiteUrl
+            // For new requests, use the normalized URL from validation
             const targetToSend = resume && savedProgress?.dataForSEOSiteResults
                 ? (savedProgress.target || websiteUrl?.trim() || '')
-                : websiteUrl?.trim() || '';
+                : (normalizedUrl || websiteUrl?.trim() || '');
 
             // Ensure all values are serializable (primitives only)
             const requestBody = {
@@ -2055,7 +2132,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         <Textarea
                             {...form.register("pitch")}
                             placeholder="Write a one or two sentence pitch for your idea"
-                            className="min-h-[100px] bg-white/5 border-white/10 text-white placeholder:text-white/40 pl-56 pr-56 pb-10"
+                            className="min-h-[100px] bg-white/5 border-white/10 text-white placeholder:text-white/40 pr-56 pb-10"
                         />
                         <div className="absolute left-2 bottom-2 flex items-center gap-1">
                             <Button
@@ -2350,10 +2427,26 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                 description: 'Creating final keyword report with insights...',
                                                 estimate: 3,
                                             },
+                                            {
+                                                key: 'computing-metrics',
+                                                label: 'Computing metrics',
+                                                description: 'Calculating growth, volatility, and opportunity scores...',
+                                                estimate: 10,
+                                            },
                                         ];
 
                                         const hasError = currentStage === 'error';
                                         const errorMessage = savedProgress?.error || '';
+
+                                        // Find the current active stage, or create a fallback for unknown stages
+                                        const activeStage = stages.find(s => s.key === currentStage) ||
+                                            (currentStage ? {
+                                                key: currentStage,
+                                                label: currentStage.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+                                                description: '',
+                                                estimate: 0,
+                                            } : null);
+                                        const elapsed = activeStage ? (elapsedTimes[activeStage.key] || 0) : 0;
 
                                         return (
                                             <div className="space-y-2">
@@ -2369,59 +2462,36 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                     </div>
                                                 )}
 
-                                                {stages.map((stage, index) => {
-                                                    const isActive = currentStage === stage.key && !hasError;
-                                                    const isCompleted = hasError ? false : stages.findIndex(s => s.key === currentStage) > index;
-                                                    const isPending = stages.findIndex(s => s.key === currentStage) < index;
-                                                    // Show error on the current stage if error occurred
-                                                    const isError = hasError && currentStage === stage.key;
-                                                    const elapsed = elapsedTimes[stage.key] || 0;
-
-                                                    return (
-                                                        <div key={stage.key} className="flex items-start gap-3">
-                                                            <div className="mt-0.5">
-                                                                {isError ? (
-                                                                    <div className="h-5 w-5 rounded-full border-2 border-red-500 flex items-center justify-center">
-                                                                        <span className="text-red-500 text-xs">✕</span>
-                                                                    </div>
-                                                                ) : isCompleted ? (
-                                                                    <CheckCircle2 className="h-5 w-5 text-green-500" />
-                                                                ) : isActive ? (
-                                                                    <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
-                                                                ) : (
-                                                                    <div className="h-5 w-5 rounded-full border-2 border-white/30 flex items-center justify-center">
-                                                                        {isPending && (
-                                                                            <div className="h-2 w-2 rounded-full bg-white/30" />
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className={`text-sm font-medium ${isError ? 'text-red-400' :
-                                                                    isCompleted ? 'text-green-400' :
-                                                                        isActive ? 'text-blue-400' :
-                                                                            'text-white/60'
-                                                                    }`}>
-                                                                    {stage.label}
-                                                                </div>
-                                                                <div className={`text-xs mt-0.5 ${isError ? 'text-red-300' :
-                                                                    isActive ? 'text-white/80' : 'text-white/50'
-                                                                    }`}>
-                                                                    {isError ? 'Failed' : (
-                                                                        isActive ? stage.description : (
-                                                                            isCompleted ? 'Completed' : 'Pending'
-                                                                        )
-                                                                    )}
-                                                                </div>
-                                                                {isActive && elapsed > 0 && !isError && (
-                                                                    <div className="text-xs text-white/60 mt-1">
-                                                                        {elapsed}s elapsed
-                                                                    </div>
-                                                                )}
+                                                {/* Single line progress display - only show current active stage */}
+                                                {activeStage && !hasError && (
+                                                    <div className="flex items-center gap-3">
+                                                        <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-sm font-medium text-blue-400">
+                                                                {activeStage.label}
                                                             </div>
                                                         </div>
-                                                    );
-                                                })}
+                                                        {elapsed > 0 && (
+                                                            <div className="text-xs text-white/60 flex-shrink-0">
+                                                                {elapsed}s
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Error state - show current stage with error */}
+                                                {hasError && activeStage && (
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="h-4 w-4 rounded-full border-2 border-red-500 flex items-center justify-center flex-shrink-0">
+                                                            <span className="text-red-500 text-xs">✕</span>
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-sm font-medium text-red-400">
+                                                                {activeStage.label} - Failed
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })()}

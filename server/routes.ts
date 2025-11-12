@@ -3961,6 +3961,259 @@ Return ONLY the JSON array, no other text. Example format:
                             dataForSEOFetched: true,
                             keywordsFetchedCount: savedKeywordsCount
                         });
+
+                        // Re-fetch project to get updated progress state
+                        const updatedProject = await storage.getCustomSearchProject(projectId);
+                        const currentProgress = updatedProject?.keywordGenerationProgress;
+
+                        // STEP 6: Compute metrics in the background AFTER keywords are saved
+                        // This ensures keywords exist in the database before metrics computation starts
+                        if (!currentProgress || !currentProgress.metricsComputed) {
+                            // Start metrics computation asynchronously (fire and forget, but with error handling)
+                            (async () => {
+                                let metricsError: Error | null = null;
+                                let failedBatches: Array<{ batchNumber: number; error: string }> = [];
+                                const MAX_BATCH_RETRIES = 2; // Retry failed batches up to 2 times
+
+                                try {
+                                    const metricsStartTime = Date.now();
+                                    logger.info("=== COMPUTE METRICS PIPELINE START (BACKGROUND) ===", {
+                                        projectId,
+                                        timestamp: new Date().toISOString(),
+                                    });
+
+                                    const keywords = await storage.getProjectKeywords(projectId);
+                                    const { calculateVolatility, calculateTrendStrength } = await import("./opportunity-score");
+
+                                    const BATCH_SIZE = 50; // Process 50 keywords concurrently
+                                    let processedCount = 0;
+                                    let skippedCount = 0;
+                                    let errorCount = 0;
+                                    const totalKeywords = keywords.filter(kw => kw.monthlyData && Array.isArray(kw.monthlyData) && kw.monthlyData.length > 0 && kw.volume !== null).length;
+                                    const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);
+
+                                    logger.info("Starting background metrics computation", {
+                                        totalKeywords: keywords.length,
+                                        keywordsWithData: totalKeywords,
+                                        batchSize: BATCH_SIZE,
+                                        totalBatches,
+                                    });
+
+                                    // Helper function to process a batch with retry
+                                    const processBatchWithRetry = async (
+                                        batch: any[],
+                                        batchNumber: number,
+                                        retryCount: number = 0
+                                    ): Promise<{ successful: number; skipped: number; errors: number; validUpdates: any[] }> => {
+                                        const batchStartTime = Date.now();
+
+                                        try {
+                                            logger.debug(`[Batch ${batchNumber}/${totalBatches}] Processing batch (background)${retryCount > 0 ? ` [Retry ${retryCount}]` : ''}`, {
+                                                batchNumber,
+                                                totalBatches,
+                                                batchSize: batch.length,
+                                                retryCount,
+                                            });
+
+                                            const batchUpdates = await Promise.allSettled(
+                                                batch.map(async (keyword) => {
+                                                    if (!keyword.monthlyData || !Array.isArray(keyword.monthlyData) || keyword.monthlyData.length === 0 || keyword.volume === null) {
+                                                        return { keywordId: keyword.id, metrics: null, skipped: true };
+                                                    }
+
+                                                    try {
+                                                        const monthlyData = keyword.monthlyData;
+                                                        const sortedMonthlyData = [...monthlyData].sort((a: any, b: any) => {
+                                                            return parseMonthString(a.month) - parseMonthString(b.month);
+                                                        });
+
+                                                        const lastMonth = sortedMonthlyData[sortedMonthlyData.length - 1];
+                                                        let yoyGrowth: number | null = null;
+                                                        if (sortedMonthlyData.length >= 12) {
+                                                            const sameMonthLastYear = sortedMonthlyData[sortedMonthlyData.length - 12];
+                                                            yoyGrowth = ((lastMonth.volume - sameMonthLastYear.volume) / (sameMonthLastYear.volume + 1)) * 100;
+                                                        }
+
+                                                        let threeMonthGrowth: number | null = null;
+                                                        if (sortedMonthlyData.length >= 3) {
+                                                            const threeMonthsAgo = sortedMonthlyData[sortedMonthlyData.length - 3];
+                                                            if (threeMonthsAgo.volume > 0) {
+                                                                threeMonthGrowth = ((lastMonth.volume - threeMonthsAgo.volume) / threeMonthsAgo.volume) * 100;
+                                                            }
+                                                        }
+
+                                                        const volatility = calculateVolatility(sortedMonthlyData);
+                                                        const growthYoyValue = yoyGrowth !== null ? yoyGrowth : 0;
+                                                        const trendStrength = calculateTrendStrength(growthYoyValue, volatility);
+                                                        const opportunityScore = (volatility + trendStrength) / 2;
+
+                                                        return {
+                                                            keywordId: keyword.id,
+                                                            metrics: {
+                                                                growthYoy: yoyGrowth !== null ? yoyGrowth.toString() : null,
+                                                                growth3m: threeMonthGrowth !== null ? threeMonthGrowth.toString() : null,
+                                                                volatility: volatility.toFixed(2),
+                                                                trendStrength: trendStrength.toFixed(2),
+                                                                opportunityScore: opportunityScore.toFixed(2)
+                                                            },
+                                                            skipped: false
+                                                        };
+                                                    } catch (error) {
+                                                        logger.warn("Error computing metrics for keyword", {
+                                                            keywordId: keyword.id,
+                                                            keyword: keyword.keyword,
+                                                            error: error instanceof Error ? error.message : String(error),
+                                                            stack: error instanceof Error ? error.stack : undefined,
+                                                        });
+                                                        return { keywordId: keyword.id, metrics: null, skipped: false, error: true, errorMessage: error instanceof Error ? error.message : String(error) };
+                                                    }
+                                                })
+                                            );
+
+                                            const successful = batchUpdates.filter(r => r.status === 'fulfilled' && !r.value.skipped && !r.value.error).length;
+                                            const skipped = batchUpdates.filter(r => r.status === 'fulfilled' && r.value.skipped).length;
+                                            const errors = batchUpdates.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value.error)).length;
+
+                                            const validUpdates = batchUpdates
+                                                .filter(r => r.status === 'fulfilled' && r.value.metrics !== null)
+                                                .map(r => (r as PromiseFulfilledResult<any>).value);
+
+                                            // Save valid updates
+                                            if (validUpdates.length > 0) {
+                                                try {
+                                                    await storage.bulkUpdateKeywordMetrics(validUpdates);
+                                                } catch (saveError) {
+                                                    logger.error(`[Batch ${batchNumber}] Error saving batch metrics`, saveError, {
+                                                        batchNumber,
+                                                        validUpdatesCount: validUpdates.length,
+                                                        error: saveError instanceof Error ? saveError.message : String(saveError),
+                                                    });
+                                                    // Retry the batch if save failed
+                                                    if (retryCount < MAX_BATCH_RETRIES) {
+                                                        logger.info(`[Batch ${batchNumber}] Retrying batch after save error`, {
+                                                            batchNumber,
+                                                            retryCount: retryCount + 1,
+                                                        });
+                                                        return await processBatchWithRetry(batch, batchNumber, retryCount + 1);
+                                                    }
+                                                    throw saveError;
+                                                }
+                                            }
+
+                                            const batchDuration = Date.now() - batchStartTime;
+                                            logger.info(`[Batch ${batchNumber}/${totalBatches}] Batch completed (background)${retryCount > 0 ? ` [Retry ${retryCount}]` : ''}`, {
+                                                batchNumber,
+                                                totalBatches,
+                                                duration: `${batchDuration}ms`,
+                                                successful,
+                                                skipped,
+                                                errors,
+                                                retryCount,
+                                            });
+
+                                            return { successful, skipped, errors, validUpdates };
+                                        } catch (error) {
+                                            const errorMessage = error instanceof Error ? error.message : String(error);
+                                            logger.error(`[Batch ${batchNumber}] Batch processing failed`, error, {
+                                                batchNumber,
+                                                batchSize: batch.length,
+                                                retryCount,
+                                                error: errorMessage,
+                                                stack: error instanceof Error ? error.stack : undefined,
+                                            });
+
+                                            // Retry the batch if we haven't exceeded max retries
+                                            if (retryCount < MAX_BATCH_RETRIES) {
+                                                logger.info(`[Batch ${batchNumber}] Retrying batch after error`, {
+                                                    batchNumber,
+                                                    retryCount: retryCount + 1,
+                                                    error: errorMessage,
+                                                });
+                                                // Wait a bit before retrying
+                                                await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+                                                return await processBatchWithRetry(batch, batchNumber, retryCount + 1);
+                                            }
+
+                                            // Track failed batch
+                                            failedBatches.push({ batchNumber, error: errorMessage });
+                                            throw error;
+                                        }
+                                    };
+
+                                    // Process keywords in batches
+                                    for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
+                                        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+                                        const batch = keywords.slice(i, i + BATCH_SIZE);
+
+                                        try {
+                                            const batchResult = await processBatchWithRetry(batch, batchNumber);
+                                            processedCount += batchResult.successful;
+                                            skippedCount += batchResult.skipped;
+                                            errorCount += batchResult.errors;
+                                        } catch (error) {
+                                            // Batch failed after retries, continue with next batch
+                                            errorCount += batch.length;
+                                            logger.error(`[Batch ${batchNumber}] Batch failed after retries, continuing with next batch`, error, {
+                                                batchNumber,
+                                                batchSize: batch.length,
+                                            });
+                                        }
+                                    }
+
+                                    const metricsDuration = Date.now() - metricsStartTime;
+                                    const successRate = totalKeywords > 0 ? ((processedCount / totalKeywords) * 100).toFixed(1) : '0';
+
+                                    logger.info("=== COMPUTE METRICS PIPELINE COMPLETE (BACKGROUND) ===", {
+                                        projectId,
+                                        duration: `${metricsDuration}ms (${(metricsDuration / 1000).toFixed(2)}s)`,
+                                        processed: processedCount,
+                                        skipped: skippedCount,
+                                        errors: errorCount,
+                                        total: totalKeywords,
+                                        successRate: `${successRate}%`,
+                                        failedBatches: failedBatches.length > 0 ? failedBatches : undefined,
+                                    });
+
+                                    // Save progress with success state
+                                    await saveProgress({
+                                        currentStage: 'complete',
+                                        metricsComputed: true,
+                                        metricsProcessedCount: processedCount,
+                                        metricsErrorCount: errorCount,
+                                        metricsFailedBatches: failedBatches.length > 0 ? failedBatches : undefined,
+                                        newKeywords: finalKeywords
+                                    });
+                                } catch (error) {
+                                    metricsError = error instanceof Error ? error : new Error(String(error));
+                                    logger.error("Error in background metrics computation", error, {
+                                        projectId,
+                                        error: metricsError.message,
+                                        stack: metricsError.stack,
+                                        failedBatches: failedBatches.length > 0 ? failedBatches : undefined,
+                                    });
+
+                                    // Save error state in progress
+                                    try {
+                                        await saveProgress({
+                                            currentStage: 'complete',
+                                            metricsComputed: false,
+                                            metricsError: {
+                                                message: metricsError.message,
+                                                stack: metricsError.stack,
+                                                timestamp: new Date().toISOString(),
+                                                failedBatches: failedBatches.length > 0 ? failedBatches : undefined,
+                                            },
+                                            newKeywords: finalKeywords
+                                        });
+                                    } catch (saveError) {
+                                        logger.error("Failed to save metrics error state", saveError, {
+                                            projectId,
+                                            originalError: metricsError.message,
+                                        });
+                                    }
+                                }
+                            })();
+                        }
                     } catch (error) {
                         logger.error("Error saving DataForSEO metrics to database (background)", error, {
                             projectId,
@@ -3968,10 +4221,10 @@ Return ONLY the JSON array, no other text. Example format:
                         // Don't throw - this is background operation, report is already generated
                     }
                 })();
-            }
-
-            // STEP 6: Compute metrics in the background (asynchronously, after sending report)
-            if (!savedProgress || !savedProgress.metricsComputed) {
+            } else {
+                // STEP 6: Compute metrics in the background (asynchronously, after sending report)
+                // Only start metrics computation if keywords were already saved (hasDataForSEOMetrics is true)
+                if (!savedProgress || !savedProgress.metricsComputed) {
                 // Start metrics computation asynchronously (fire and forget, but with error handling)
                 (async () => {
                     let metricsError: Error | null = null;
@@ -4216,6 +4469,7 @@ Return ONLY the JSON array, no other text. Example format:
                         }
                     }
                 })();
+                }
             }
         } catch (error) {
             logger.error("Error in background pipeline execution", error, {
