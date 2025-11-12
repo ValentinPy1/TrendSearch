@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { PaywallModal } from "./paywall-modal";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
 
-export type FilterOperator = ">" | ">=" | "<" | "<=" | "=";
+export type FilterOperator = ">" | "<";
 
 export interface KeywordFilter {
     id: string;
@@ -54,10 +54,7 @@ const FILTERABLE_METRICS = [
 
 const OPERATORS: { value: FilterOperator; label: string }[] = [
     { value: ">", label: "Greater than" },
-    { value: ">=", label: "Greater than or equal" },
     { value: "<", label: "Less than" },
-    { value: "<=", label: "Less than or equal" },
-    { value: "=", label: "Equals" },
 ];
 
 export function KeywordFilters({
