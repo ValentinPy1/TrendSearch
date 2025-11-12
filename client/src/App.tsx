@@ -85,7 +85,7 @@ function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <GradientOrbs />
         <div className="text-white text-xl">Loading...</div>
       </div>

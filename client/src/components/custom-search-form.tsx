@@ -133,7 +133,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     }, [pitch]);
 
     // Query to check if user has any projects
-    const { data: projectsData } = useQuery<{ projects: CustomSearchProject[] }>({
+    const { data: projectsData, isLoading: isLoadingProjects, isFetching: isFetchingProjects } = useQuery<{ projects: CustomSearchProject[] }>({
         queryKey: ["/api/custom-search/projects"],
         queryFn: async () => {
             const res = await apiRequest("GET", "/api/custom-search/projects");
@@ -161,12 +161,18 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
     // Update saved progress when project data changes
     useEffect(() => {
+        // Don't clear project if query is loading or fetching (prevents clearing during refetches when switching tabs)
+        if (isLoadingProjects || isFetchingProjects) {
+            return;
+        }
+
         if (currentProjectId && projectsData?.projects) {
             const currentProject = projectsData.projects.find(p => p.id === currentProjectId);
 
             // If current project was deleted, clear the form
             // BUT: Don't clear if we're currently creating a project (race condition protection)
-            if (!currentProject && currentProjectId && !isCreatingProjectRef.current && !createProjectMutation.isPending) {
+            // AND: Don't clear if query is loading/fetching (prevents clearing during refetches)
+            if (!currentProject && currentProjectId && !isCreatingProjectRef.current && !createProjectMutation.isPending && !isLoadingProjects && !isFetchingProjects) {
                 setCurrentProjectId(null);
                 form.reset({ name: "", pitch: "" });
                 setTopics([]);
@@ -287,7 +293,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             setReportData(null);
             reportProjectIdRef.current = null;
         }
-    }, [projectsData, currentProjectId]);
+    }, [projectsData, currentProjectId, isLoadingProjects, isFetchingProjects]);
 
     // Auto-resume incomplete pipelines on page load
     useEffect(() => {

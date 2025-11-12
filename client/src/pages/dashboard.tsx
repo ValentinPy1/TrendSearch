@@ -68,22 +68,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     // Track if filters are currently applied to prevent overwriting filtered keywords
     const hasActiveFiltersRef = useRef<Map<string, boolean>>(new Map());
 
-    // Clear selected idea when switching to custom search tab
-    useEffect(() => {
-        if (activeTab === "custom" && selectedIdea) {
-            // Clear the selected idea when switching to custom search
-            // This ensures standard search reports don't show in custom search
-            // Clear manually loaded keywords and filter flags for the current idea
-            if (selectedIdea.report?.id) {
-                manuallyLoadedKeywordsRef.current.delete(selectedIdea.report.id);
-                hasActiveFiltersRef.current.delete(selectedIdea.report.id);
-            }
-            setSelectedIdea(null);
-            setSelectedKeyword(null);
-            setDisplayedKeywordCount(10);
-            setExcludedKeywordIds(new Set());
-        }
-    }, [activeTab, selectedIdea]);
+    // Note: State is preserved when switching tabs. Results are conditionally rendered
+    // based on activeTab, so standard search results won't show on custom tab and vice versa.
 
     // Get filters from localStorage (same place IdeaGenerator stores them)
     const getFiltersFromStorage = (): KeywordFilter[] => {

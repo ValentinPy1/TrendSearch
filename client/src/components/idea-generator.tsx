@@ -297,7 +297,7 @@ export function IdeaGenerator({
                         </TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="standard" className="space-y-6">
+                    <TabsContent value="standard" className="space-y-6 tab-content" forceMount>
                         <div className="flex items-center gap-0">
                             <Button
                                 type="button"
@@ -376,7 +376,7 @@ export function IdeaGenerator({
                         />
                     </TabsContent>
 
-                    <TabsContent value="custom" className="">
+                    <TabsContent value="custom" className="tab-content" forceMount>
                         <CustomSearchForm />
                     </TabsContent>
                 </Tabs>

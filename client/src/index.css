@@ -402,4 +402,14 @@
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
   }
+
+  /* Ensure inactive tabs are hidden when using forceMount */
+  .tab-content[data-state="inactive"] {
+    display: none !important;
+  }
+  
+  /* Ensure active tabs are visible when using forceMount */
+  .tab-content[data-state="active"] {
+    display: block;
+  }
 }
