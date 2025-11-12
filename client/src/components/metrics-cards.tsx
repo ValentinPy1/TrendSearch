@@ -132,21 +132,57 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
         return { color: `hsl(30, 80%, ${lightness}%)` };
     };
 
-    const formatThreeSignificantDigits = (value: number): string => {
+    const formatTwoSignificantDigits = (value: number): string => {
+        if (value === 0 || isNaN(value) || !isFinite(value)) {
+            return "0";
+        }
+
+        // Round to 2 significant digits
+        const order = Math.floor(Math.log10(Math.abs(value)));
+        const rounded = Math.round(value / Math.pow(10, order - 1)) * Math.pow(10, order - 1);
+
+        // Format with thousands (k) if >= 100,000
+        if (rounded >= 1000) {
+            const inThousands = rounded / 1000;
+            // Round to 2 significant digits for the thousands value
+            const thousandsOrder = Math.floor(Math.log10(Math.abs(inThousands)));
+            const roundedThousands = Math.round(inThousands / Math.pow(10, thousandsOrder - 1)) * Math.pow(10, thousandsOrder - 1);
+            return `${roundedThousands.toLocaleString('en-US', { maximumFractionDigits: 0 })}k`;
+        }
+
+        // Format with thousands separators for smaller values
+        if (rounded >= 1) {
+            return Math.round(rounded).toLocaleString('en-US');
+        } else {
+            // For small values, show up to 2 decimal places if needed
+            return rounded.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        }
+    };
+
+    const formatCurrencyTwoSignificantDigits = (value: number): string => {
         if (value === 0 || isNaN(value) || !isFinite(value)) {
             return "$0";
         }
 
-        // Round to 3 significant digits
+        // Round to 2 significant digits
         const order = Math.floor(Math.log10(Math.abs(value)));
-        const rounded = Math.round(value / Math.pow(10, order - 2)) * Math.pow(10, order - 2);
+        const rounded = Math.round(value / Math.pow(10, order - 1)) * Math.pow(10, order - 1);
 
-        // Format with thousands separators
+        // Format with thousands (k) if >= 100,000
+        if (rounded >= 1000) {
+            const inThousands = rounded / 1000;
+            // Round to 2 significant digits for the thousands value
+            const thousandsOrder = Math.floor(Math.log10(Math.abs(inThousands)));
+            const roundedThousands = Math.round(inThousands / Math.pow(10, thousandsOrder - 1)) * Math.pow(10, thousandsOrder - 1);
+            return `$${roundedThousands.toLocaleString('en-US', { maximumFractionDigits: 0 })}k`;
+        }
+
+        // Format with thousands separators for smaller values
         if (rounded >= 1) {
             return `$${Math.round(rounded).toLocaleString('en-US')}`;
         } else {
-            // For small values, show up to 3 decimal places if needed
-            return `$${rounded.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}`;
+            // For small values, show up to 2 decimal places if needed
+            return `$${rounded.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
         }
     };
 
@@ -169,7 +205,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
         },
         {
             label: "Avg Volume",
-            value: Math.round(avgVolume).toLocaleString(),
+            value: formatTwoSignificantDigits(avgVolume),
             subtitle: "monthly searches",
             icon: BarChart3,
             style: getWhiteGradientText(avgVolume, maxVolume),
@@ -193,7 +229,7 @@ export function MetricsCards({ keywords }: MetricsCardsProps) {
         },
         {
             label: "Avg SAC",
-            value: formatThreeSignificantDigits(avgSac),
+            value: formatCurrencyTwoSignificantDigits(avgSac),
             subtitle: "seller ad cost",
             icon: DollarSign,
             style: getPurpleGradientText(avgSac, maxSac),

@@ -85,6 +85,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [isFetchingDataForSEO, setIsFetchingDataForSEO] = useState(false);
     const [isComputingMetrics, setIsComputingMetrics] = useState(false);
     const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+    const [isLoadingReport, setIsLoadingReport] = useState(false);
     const [dataForSEOStats, setDataForSEOStats] = useState<{ keywordsWithData: number; totalKeywords: number; keywordsWithoutData: number } | null>(null);
     const [metricsStats, setMetricsStats] = useState<{ processedCount: number; totalKeywords: number } | null>(null);
     const [reportData, setReportData] = useState<any>(null);
@@ -96,6 +97,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [activeSubTab, setActiveSubTab] = useState<string>("competitors");
     const [selectedLocation, setSelectedLocation] = useState<{ code: number; name: string } | null>(null);
     const [showHelpDialog, setShowHelpDialog] = useState(false);
+    const pitchTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
     const form = useForm<FormData>({
         defaultValues: {
@@ -106,6 +108,29 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
     const pitch = form.watch("pitch");
     const name = form.watch("name");
+
+    // Auto-resize pitch textarea
+    const resizePitchTextarea = () => {
+        const textarea = pitchTextareaRef.current;
+        if (textarea) {
+            // Reset height to auto to get the correct scrollHeight
+            textarea.style.height = 'auto';
+            // Set height based on scrollHeight, with minimum of 2 lines (~52px) and padding for buttons
+            const minHeight = 52; // ~2 lines
+            const paddingForButtons = 40; // Space for buttons at bottom
+            const newHeight = Math.max(minHeight, textarea.scrollHeight) + paddingForButtons;
+            textarea.style.height = `${newHeight}px`;
+        }
+    };
+
+    // Resize textarea when pitch changes
+    useEffect(() => {
+        // Use setTimeout to ensure DOM has updated
+        const timeoutId = setTimeout(() => {
+            resizePitchTextarea();
+        }, 0);
+        return () => clearTimeout(timeoutId);
+    }, [pitch]);
 
     // Query to check if user has any projects
     const { data: projectsData } = useQuery<{ projects: CustomSearchProject[] }>({
@@ -325,6 +350,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             return;
         }
 
+        setIsLoadingReport(true);
         try {
             const { data: { session } } = await supabase.auth.getSession();
             const headers: Record<string, string> = {};
@@ -354,6 +380,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
         } catch (error) {
             console.error("Error loading report:", error);
+        } finally {
+            setIsLoadingReport(false);
         }
     };
 
@@ -582,6 +610,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
         // Clear report data when switching projects
         setReportData(null);
+        setIsLoadingReport(false);
         setGeneratedKeywords([]);
         setSelectedKeyword(null);
         setDisplayedKeywordCount(10);
@@ -719,6 +748,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     status.hasDataForSEO &&
                     status.keywordsWithData > 0 &&
                     reportProjectIdRef.current !== project.id) {
+                    setIsLoadingReport(true);
                     try {
                         const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
                             projectId: project.id,
@@ -739,6 +769,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     } catch (reportError) {
                         console.error("Error generating report:", reportError);
                         // Don't show error, just continue - report will be generated when pipeline completes
+                    } finally {
+                        setIsLoadingReport(false);
                     }
                 }
             } else {
@@ -758,6 +790,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         setTimeout(() => {
             setIsLoadingProject(false);
             isInitialLoadRef.current = false; // Re-enable auto-save after loading is complete
+            // Resize textarea after project is loaded
+            resizePitchTextarea();
         }, 200); // Increased delay to ensure all state updates are complete
     };
 
@@ -1991,12 +2025,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         <FolderOpen className="h-4 w-4" />
                         Browse Projects
                     </Button>
-                    {isSaving && (
-                        <div className="flex items-center gap-2 text-xs text-white/60 ml-auto mr-2">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Saving...
-                        </div>
-                    )}
                     <Button
                         type="button"
                         onClick={handleSave}
@@ -2130,9 +2158,28 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     </label>
                     <div className="relative">
                         <Textarea
-                            {...form.register("pitch")}
+                            {...(() => {
+                                const registration = form.register("pitch");
+                                return {
+                                    ...registration,
+                                    ref: (e: HTMLTextAreaElement | null) => {
+                                        pitchTextareaRef.current = e;
+                                        if (typeof registration.ref === 'function') {
+                                            registration.ref(e);
+                                        } else if (registration.ref) {
+                                            (registration.ref as React.MutableRefObject<HTMLTextAreaElement | null>).current = e;
+                                        }
+                                    },
+                                    onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+                                        registration.onChange(e);
+                                        resizePitchTextarea();
+                                    }
+                                };
+                            })()}
                             placeholder="Write a one or two sentence pitch for your idea"
-                            className="min-h-[100px] bg-white/5 border-white/10 text-white placeholder:text-white/40 pr-56 pb-10"
+                            className="min-h-[52px] bg-white/5 border-white/10 text-white placeholder:text-white/40 pr-56 pb-10 resize-none overflow-hidden"
+                            onInput={resizePitchTextarea}
+                            rows={2}
                         />
                         <div className="absolute left-2 bottom-2 flex items-center gap-1">
                             <Button
@@ -2252,12 +2299,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                             <h4 className="text-sm font-medium text-white">
                                                                 {competitor.name}
                                                             </h4>
-                                                            {hasKeywordsGenerated && (
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded">
-                                                                    <Sparkles className="h-3 w-3" />
-                                                                    Keywords Generated
-                                                                </span>
-                                                            )}
                                                             {competitor.url && (
                                                                 <>
                                                                     <a
@@ -2290,6 +2331,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                                                         <Search className="h-3.5 w-3.5" />
                                                                     </button>
                                                                 </>
+                                                            )}
+                                                            {hasKeywordsGenerated && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded">
+                                                                    <Sparkles className="h-3 w-3" />
+                                                                    Keywords Generated
+                                                                </span>
                                                             )}
                                                         </div>
                                                         <p className="text-xs text-white/60 line-clamp-2">
@@ -2389,114 +2436,112 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             savedProgress?.reportGenerated !== true &&
                             savedProgress?.currentStage !== 'complete' &&
                             keywordProgress?.stage !== 'complete' &&
-                            !reportData && (
-                                <div className="mt-4 space-y-3 bg-white/5 rounded-lg p-4 border border-white/10">
-                                    <div className="text-sm font-medium text-white mb-3">
-                                        Progress
-                                    </div>
-                                    {(() => {
-                                        const currentStage = keywordProgress?.stage || '';
-                                        const stages = [
-                                            {
-                                                key: 'creating-task',
-                                                label: 'Creating task',
-                                                description: 'Submitting request to find keywords for the website...',
-                                                estimate: 3,
-                                            },
-                                            {
-                                                key: 'polling-task',
-                                                label: 'Waiting for results',
-                                                description: 'Analyzing the website. This may take 10-30 seconds (or 1-5 minutes if using task API)...',
-                                                estimate: 30,
-                                            },
-                                            {
-                                                key: 'extracting-keywords',
-                                                label: 'Extracting keywords',
-                                                description: 'Processing keywords from the website analysis...',
-                                                estimate: 2,
-                                            },
-                                            {
-                                                key: 'fetching-dataforseo',
-                                                label: 'Fetching keyword metrics',
-                                                description: 'Retrieving search volume, competition, and CPC data...',
-                                                estimate: 5,
-                                            },
-                                            {
-                                                key: 'generating-report',
-                                                label: 'Generating report',
-                                                description: 'Creating final keyword report with insights...',
-                                                estimate: 3,
-                                            },
-                                            {
-                                                key: 'computing-metrics',
-                                                label: 'Computing metrics',
-                                                description: 'Calculating growth, volatility, and opportunity scores...',
-                                                estimate: 10,
-                                            },
-                                        ];
+                            !reportData && (() => {
+                                // Use savedProgress.currentStage as primary source, fallback to keywordProgress.stage
+                                const currentStage = savedProgress?.currentStage || keywordProgress?.stage || '';
+                                const stages = [
+                                    {
+                                        key: 'creating-task',
+                                        label: 'Creating task',
+                                        description: 'Submitting request to find keywords for the website...',
+                                        estimate: 3,
+                                    },
+                                    {
+                                        key: 'polling-task',
+                                        label: 'Waiting for results',
+                                        description: 'Analyzing the website. This may take 10-30 seconds (or 1-5 minutes if using task API)...',
+                                        estimate: 30,
+                                    },
+                                    {
+                                        key: 'extracting-keywords',
+                                        label: 'Extracting keywords',
+                                        description: 'Processing keywords from the website analysis...',
+                                        estimate: 2,
+                                    },
+                                    {
+                                        key: 'fetching-dataforseo',
+                                        label: 'Fetching keyword metrics',
+                                        description: 'Retrieving search volume, competition, and CPC data...',
+                                        estimate: 5,
+                                    },
+                                    {
+                                        key: 'generating-report',
+                                        label: 'Generating report',
+                                        description: 'Creating final keyword report with insights...',
+                                        estimate: 3,
+                                    },
+                                    {
+                                        key: 'computing-metrics',
+                                        label: 'Computing metrics',
+                                        description: 'Calculating growth, volatility, and opportunity scores...',
+                                        estimate: 10,
+                                    },
+                                ];
 
-                                        const hasError = currentStage === 'error';
-                                        const errorMessage = savedProgress?.error || '';
+                                const hasError = currentStage === 'error';
+                                const errorMessage = savedProgress?.error || '';
 
-                                        // Find the current active stage, or create a fallback for unknown stages
-                                        const activeStage = stages.find(s => s.key === currentStage) ||
-                                            (currentStage ? {
-                                                key: currentStage,
-                                                label: currentStage.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
-                                                description: '',
-                                                estimate: 0,
-                                            } : null);
-                                        const elapsed = activeStage ? (elapsedTimes[activeStage.key] || 0) : 0;
+                                // Find the current active stage, or create a fallback for unknown stages
+                                const activeStage = stages.find(s => s.key === currentStage) ||
+                                    (currentStage && currentStage !== 'complete' && currentStage !== 'idle' ? {
+                                        key: currentStage,
+                                        label: currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+                                        description: '',
+                                        estimate: 0,
+                                    } : null);
+                                const elapsed = activeStage ? (elapsedTimes[activeStage.key] || 0) : 0;
 
-                                        return (
-                                            <div className="space-y-2">
-                                                {/* Explicit error display */}
-                                                {hasError && errorMessage && (
-                                                    <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg">
-                                                        <div className="text-sm font-medium text-red-400 mb-1">
-                                                            Error
-                                                        </div>
-                                                        <div className="text-xs text-red-300 whitespace-pre-wrap">
-                                                            {errorMessage}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Single line progress display - only show current active stage */}
-                                                {activeStage && !hasError && (
-                                                    <div className="flex items-center gap-3">
-                                                        <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="text-sm font-medium text-blue-400">
-                                                                {activeStage.label}
-                                                            </div>
-                                                        </div>
-                                                        {elapsed > 0 && (
-                                                            <div className="text-xs text-white/60 flex-shrink-0">
-                                                                {elapsed}s
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Error state - show current stage with error */}
-                                                {hasError && activeStage && (
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="h-4 w-4 rounded-full border-2 border-red-500 flex items-center justify-center flex-shrink-0">
-                                                            <span className="text-red-500 text-xs">✕</span>
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="text-sm font-medium text-red-400">
-                                                                {activeStage.label} - Failed
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
+                                // Show error message if there's an error
+                                if (hasError && errorMessage) {
+                                    return (
+                                        <div className="mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg">
+                                            <div className="text-sm font-medium text-red-400 mb-1">
+                                                Error
                                             </div>
-                                        );
-                                    })()}
-                                </div>
-                            )}
+                                            <div className="text-xs text-red-300 whitespace-pre-wrap">
+                                                {errorMessage}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                // Show current step with time
+                                if (currentStage && currentStage !== 'complete' && currentStage !== 'idle' && !hasError) {
+                                    return (
+                                        <div className="mt-4 flex items-center gap-3">
+                                            <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-sm font-medium text-blue-400">
+                                                    {activeStage?.label || currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                                                </div>
+                                            </div>
+                                            {elapsed > 0 && (
+                                                <div className="text-xs text-white/60 flex-shrink-0">
+                                                    {elapsed}s
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                }
+
+                                // Show error state
+                                if (hasError && currentStage) {
+                                    return (
+                                        <div className="mt-4 flex items-center gap-3">
+                                            <div className="h-4 w-4 rounded-full border-2 border-red-500 flex items-center justify-center flex-shrink-0">
+                                                <span className="text-red-500 text-xs">✕</span>
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-sm font-medium text-red-400">
+                                                    {activeStage?.label || currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')} - Failed
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                return null;
+                            })()}
                     </div>
                 </div>
             </form>
@@ -2660,6 +2705,22 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                             </div>
                         )}
 
+                        {/* Loading Report */}
+                        {isLoadingReport && !reportData && (
+                            <div className="pt-8 border-t border-white/10 space-y-4">
+                                <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                                    <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
+                                    <div className="text-center">
+                                        <h3 className="text-lg font-semibold text-white/90 mb-2">
+                                            Loading Report
+                                        </h3>
+                                        <p className="text-sm text-white/60">
+                                            Fetching report data...
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Report Display in Competitors Tab */}
                         {reportData && reportData.keywords && reportData.keywords.length > 0 && (() => {
@@ -2720,18 +2781,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                             return (
                                 <div className="pt-8 border-t border-white/10 space-y-4">
-                                    <div className="text-center pb-4">
-                                        <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight max-w-3xl mx-auto">
-                                            {name || "Custom Search Report"}
-                                        </h2>
-                                        {pitch && (
-                                            <p className="text-lg text-white/70 mt-4 max-w-2xl mx-auto">
-                                                {pitch}
-                                            </p>
-                                        )}
-                                    </div>
-
-                                    <div className="pt-8 space-y-4">
+                                    <div className="space-y-4">
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <h3 className="text-xl font-semibold text-white/90 mb-2">
@@ -2764,6 +2814,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             onKeywordSelect={setSelectedKeyword}
                                             onLoadMore={hasMoreToShow ? handleLoadMore : undefined}
                                             reportId={currentProjectId || ""}
+                                            metricsPending={savedProgress?.metricsComputed === false}
                                         />
                                     </div>
 
@@ -2877,6 +2928,21 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             </Dialog>
 
             {/* Report Display - Moved to Competitors Tab */}
+            {isLoadingReport && !reportData && (
+                <div className="space-y-4 mt-8">
+                    <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                        <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
+                        <div className="text-center">
+                            <h3 className="text-lg font-semibold text-white/90 mb-2">
+                                Loading Report
+                            </h3>
+                            <p className="text-sm text-white/60">
+                                Fetching report data...
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
             {
                 reportData && reportData.keywords && reportData.keywords.length > 0 && (() => {
                     // Count total keywords with data (volume, competition, cpc, or topPageBid)
@@ -2943,18 +3009,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                     return (
                         <div className="space-y-4 mt-8">
-                            <div className="text-center pt-8 pb-4">
-                                <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
-                                    {name || "Custom Search Report"}
-                                </h2>
-                                {pitch && (
-                                    <p className="text-lg text-white/70 mt-4 max-w-2xl mx-auto">
-                                        {pitch}
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="pt-16 space-y-4">
+                            <div className="space-y-4">
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <h3 className="text-xl font-semibold text-white/90 mb-2">
@@ -2987,6 +3042,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     onKeywordSelect={setSelectedKeyword}
                                     onLoadMore={hasMoreToShow ? handleLoadMore : undefined}
                                     reportId={currentProjectId || ""}
+                                    metricsPending={savedProgress?.metricsComputed === false}
                                 />
                             </div>
 
