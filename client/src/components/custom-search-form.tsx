@@ -10,7 +10,7 @@ import { LocationSelector } from "@/components/ui/location-selector";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabase";
-import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil, Sparkle, CheckCircle2, Save } from "lucide-react";
+import { Loader2, Search, ExternalLink, Building2, Sparkles, Plus, FolderOpen, Pencil, Sparkle, CheckCircle2, Save, HelpCircle } from "lucide-react";
 import { CustomSearchProjectBrowser } from "./custom-search-project-browser";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { CustomSearchProject, Keyword } from "@shared/schema";
@@ -95,6 +95,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [isFindingKeywordsFromWebsite, setIsFindingKeywordsFromWebsite] = useState(false);
     const [activeSubTab, setActiveSubTab] = useState<string>("competitors");
     const [selectedLocation, setSelectedLocation] = useState<{ code: number; name: string } | null>(null);
+    const [showHelpDialog, setShowHelpDialog] = useState(false);
 
     const form = useForm<FormData>({
         defaultValues: {
@@ -1884,29 +1885,15 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                 {/* Project Management Buttons */}
                 <div className="flex items-center gap-2">
-                    {isSaving && (
-                        <div className="flex items-center gap-2 text-xs text-white/60">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Saving...
-                        </div>
-                    )}
                     <Button
                         type="button"
-                        onClick={handleSave}
-                        disabled={isSaving || createProjectMutation.isPending || updateProjectMutation.isPending}
-                        className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700"
+                        variant="outline"
+                        onClick={() => setShowHelpDialog(true)}
+                        className="flex items-center gap-2"
+                        title="Help"
                     >
-                        {isSaving ? (
-                            <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Saving...
-                            </>
-                        ) : (
-                            <>
-                                <Save className="h-4 w-4" />
-                                Save
-                            </>
-                        )}
+                        <HelpCircle className="h-4 w-4" />
+                        Help
                     </Button>
                     <Button
                         type="button"
@@ -1927,6 +1914,30 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                         <FolderOpen className="h-4 w-4" />
                         Browse Projects
                     </Button>
+                    {isSaving && (
+                        <div className="flex items-center gap-2 text-xs text-white/60 ml-auto mr-2">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Saving...
+                        </div>
+                    )}
+                    <Button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={isSaving || createProjectMutation.isPending || updateProjectMutation.isPending}
+                        className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 ml-auto"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            <>
+                                <Save className="h-4 w-4" />
+                                Save
+                            </>
+                        )}
+                    </Button>
                 </div>
             </div>
 
@@ -1937,6 +1948,61 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 onSelectProject={handleSelectProject}
                 onCreateNew={handleNewProject}
             />
+
+            {/* Help Dialog */}
+            <Dialog open={showHelpDialog} onOpenChange={setShowHelpDialog}>
+                <DialogContent className="max-w-2xl max-h-[80vh] bg-gray-900 border-gray-700">
+                    <DialogHeader>
+                        <DialogTitle className="text-white">How to Use Custom Search</DialogTitle>
+                        <DialogDescription className="text-white/60">
+                            Learn how to use the custom search features to find keywords and analyze trends
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="mt-4 max-h-[60vh] overflow-y-auto space-y-6 text-white/90">
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-semibold text-white">1. Start with Your Idea</h3>
+                            <p className="text-sm text-white/80">
+                                Write a one or two sentence pitch describing your business idea in the <strong>Idea Pitch</strong> field.
+                                You can use the <strong>Generate New</strong> button to get AI-generated ideas, or <strong>Expand Current</strong> to enhance your existing pitch.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-semibold text-white">2. Find Competitors</h3>
+                            <p className="text-sm text-white/80">
+                                Click the <strong>Find Competitors</strong> button to discover companies similar to your idea.
+                                The system will analyze your pitch and return a list of competitors with their descriptions and websites.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-semibold text-white">3. Generate Keywords from Website</h3>
+                            <p className="text-sm text-white/80">
+                                Enter a website URL (yours or a competitor's) in the search field. Optionally select a location to focus on specific regions.
+                                Click <strong>Get Keywords</strong> to extract relevant keywords that the website targets.
+                                You can click the search icon on any competitor card to quickly use their URL.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-semibold text-white">What Results to Expect</h3>
+                            <ul className="text-sm text-white/80 space-y-2 list-disc list-inside">
+                                <li><strong>Keywords List:</strong> A curated list of relevant keywords with search volume, competition, and trend data</li>
+                                <li><strong>Trend Charts:</strong> Visual representations showing how keyword popularity changes over time</li>
+                                <li><strong>Metrics Cards:</strong> Key statistics including average search volume, competition levels, and trend indicators</li>
+                                <li><strong>SEO Report:</strong> Detailed analysis of keyword opportunities, difficulty scores, and recommendations</li>
+                                <li><strong>Competitor Analysis:</strong> Insights into what keywords your competitors are targeting</li>
+                            </ul>
+                        </div>
+
+                        <div className="space-y-2 pt-2 border-t border-white/10">
+                            <p className="text-sm text-white/70">
+                                <strong>Tip:</strong> Save your project regularly to preserve your work. Projects auto-save after 2 seconds of inactivity.
+                            </p>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             <form className="space-y-6">
                 {/* Idea Pitch */}

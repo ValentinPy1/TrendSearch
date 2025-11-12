@@ -15,10 +15,11 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { X, Filter, ChevronDown, ChevronUp, Plus, Pencil, Check } from "lucide-react";
+import { X, Filter, ChevronDown, ChevronUp, Plus, Pencil, Check, HelpCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PaywallModal } from "./paywall-modal";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 export type FilterOperator = ">" | "<";
 
@@ -70,6 +71,7 @@ export function KeywordFilters({
     const [previewCount, setPreviewCount] = useState<number | null>(null);
     const [isLoadingPreview, setIsLoadingPreview] = useState(false);
     const [showPaywall, setShowPaywall] = useState(false);
+    const [showHelpDialog, setShowHelpDialog] = useState(false);
     const { data: paymentStatus } = usePaymentStatus();
     const hasPaid = paymentStatus?.hasPaid ?? false;
 
@@ -226,25 +228,37 @@ export function KeywordFilters({
         <>
         <Collapsible open={isOpen} onOpenChange={setIsOpen}>
             <div className="flex items-center justify-between">
-                <CollapsibleTrigger asChild>
+                <div className="flex items-center gap-2">
                     <Button
+                        type="button"
                         variant="ghost"
+                        onClick={() => setShowHelpDialog(true)}
                         className="text-white/60 hover:text-white text-sm flex items-center gap-2"
+                        title="Help"
                     >
-                        <Filter className="h-4 w-4" />
-                        Advanced Filters
-                        {filters.length > 0 && (
-                            <Badge variant="secondary" className="ml-2">
-                                {filters.length}
-                            </Badge>
-                        )}
-                        {isOpen ? (
-                            <ChevronUp className="h-4 w-4" />
-                        ) : (
-                            <ChevronDown className="h-4 w-4" />
-                        )}
+                        <HelpCircle className="h-4 w-4" />
+                        Help
                     </Button>
-                </CollapsibleTrigger>
+                    <CollapsibleTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            className="text-white/60 hover:text-white text-sm flex items-center gap-2"
+                        >
+                            <Filter className="h-4 w-4" />
+                            Advanced Filters
+                            {filters.length > 0 && (
+                                <Badge variant="secondary" className="ml-2">
+                                    {filters.length}
+                                </Badge>
+                            )}
+                            {isOpen ? (
+                                <ChevronUp className="h-4 w-4" />
+                            ) : (
+                                <ChevronDown className="h-4 w-4" />
+                            )}
+                        </Button>
+                    </CollapsibleTrigger>
+                </div>
                 {filters.length > 0 && (
                     <Button
                         variant="ghost"
@@ -417,6 +431,80 @@ export function KeywordFilters({
             onOpenChange={setShowPaywall}
             feature="advanced-filters"
         />
+
+        {/* Help Dialog */}
+        <Dialog open={showHelpDialog} onOpenChange={setShowHelpDialog}>
+            <DialogContent className="max-w-2xl max-h-[80vh] bg-gray-900 border-gray-700">
+                <DialogHeader>
+                    <DialogTitle className="text-white">How to Use Standard Search</DialogTitle>
+                    <DialogDescription className="text-white/60">
+                        Learn how to use the standard search features to find keywords and analyze trends
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="mt-4 max-h-[60vh] overflow-y-auto space-y-6 text-white/90">
+                    <div className="space-y-2">
+                        <h3 className="text-lg font-semibold text-white">1. Enter Your Idea</h3>
+                        <p className="text-sm text-white/80">
+                            Type a short pitch describing your business idea in the search field and press <strong>Enter</strong> 
+                            or click the <strong>Generate</strong> button. The system will find semantically related keywords based on your idea.
+                        </p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <h3 className="text-lg font-semibold text-white">2. Browse Sectors</h3>
+                        <p className="text-sm text-white/80">
+                            Click <strong>Browse Sectors</strong> to explore keywords by industry or sector. 
+                            This helps you discover trending keywords in specific markets and compare opportunities across different sectors.
+                        </p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <h3 className="text-lg font-semibold text-white">3. Use Advanced Filters</h3>
+                        <p className="text-sm text-white/80">
+                            Click <strong>Advanced Filters</strong> to refine your keyword results. You can filter by:
+                        </p>
+                        <ul className="text-sm text-white/80 space-y-1 list-disc list-inside ml-2">
+                            <li><strong>Volume:</strong> Search volume (monthly searches)</li>
+                            <li><strong>Competition:</strong> Competition level for the keyword</li>
+                            <li><strong>CPC:</strong> Cost per click</li>
+                            <li><strong>Growth:</strong> 3-month or year-over-year growth rates</li>
+                            <li><strong>Opportunity Score:</strong> Overall keyword opportunity rating</li>
+                            <li>And many more metrics to find the perfect keywords</li>
+                        </ul>
+                        <p className="text-sm text-white/80 mt-2">
+                            Filters use operators like "Greater than" or "Less than" to narrow down results. 
+                            You can combine multiple filters to find keywords that match all your criteria.
+                        </p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <h3 className="text-lg font-semibold text-white">4. View Your History</h3>
+                        <p className="text-sm text-white/80">
+                            Click the <strong>History</strong> button to see your previous searches and reports. 
+                            This allows you to quickly access past keyword research and compare results over time.
+                        </p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <h3 className="text-lg font-semibold text-white">What Results to Expect</h3>
+                        <ul className="text-sm text-white/80 space-y-2 list-disc list-inside">
+                            <li><strong>Keyword List:</strong> A ranked list of relevant keywords with detailed metrics</li>
+                            <li><strong>Trend Charts:</strong> Visual graphs showing keyword popularity trends over time</li>
+                            <li><strong>Metrics Overview:</strong> Summary cards with key statistics like average volume, competition, and growth</li>
+                            <li><strong>Filter Preview:</strong> See how many keywords match your filters before applying them</li>
+                            <li><strong>Detailed Analysis:</strong> Click on any keyword to see comprehensive data and insights</li>
+                        </ul>
+                    </div>
+
+                    <div className="space-y-2 pt-2 border-t border-white/10">
+                        <p className="text-sm text-white/70">
+                            <strong>Tip:</strong> Start with a broad idea, then use filters to narrow down to the most promising keywords. 
+                            Advanced filters require a one-time payment to unlock.
+                        </p>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
     </>
     );
 }
