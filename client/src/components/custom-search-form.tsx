@@ -66,6 +66,19 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [isLoadingProject, setIsLoadingProject] = useState(false);
     const [isEditingName, setIsEditingName] = useState(false);
     const [isGeneratingKeywords, setIsGeneratingKeywords] = useState(false);
+    // Track multiple pipeline executions
+    const [runningExecutions, setRunningExecutions] = useState<Array<{
+        id: string;
+        website: string;
+        normalizedWebsite: string;
+        stage: string;
+        status: string;
+        progress: any;
+        error?: string | null;
+        createdAt: string;
+        updatedAt: string;
+    }>>([]);
+    // Legacy single progress state (for backward compatibility with UI)
     const [keywordProgress, setKeywordProgress] = useState<{
         stage: string;
         seedsGenerated: number;
@@ -80,8 +93,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         existingKeywords?: string[];
         newKeywords?: string[];
     } | null>(null);
-    const [stepStartTimes, setStepStartTimes] = useState<Record<string, number>>({});
-    const [elapsedTimes, setElapsedTimes] = useState<Record<string, number>>({});
+    const [stepStartTimes, setStepStartTimes] = useState<Record<string, Record<string, number>>>({}); // executionId -> stage -> timestamp
+    const [elapsedTimes, setElapsedTimes] = useState<Record<string, Record<string, number>>>({}); // executionId -> stage -> elapsed
     const [generatedKeywords, setGeneratedKeywords] = useState<string[]>([]);
     const [showQuadrantPopup, setShowQuadrantPopup] = useState(false);
     const [quadrantPopupType, setQuadrantPopupType] = useState<'seeds' | 'keywords' | 'duplicates' | 'existing' | null>(null);
@@ -105,6 +118,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [activeSubTab, setActiveSubTab] = useState<string>("competitors");
     const [selectedLocation, setSelectedLocation] = useState<{ code: number; name: string } | null>(null);
     const [showHelpDialog, setShowHelpDialog] = useState(false);
+    const [shouldResumePipeline, setShouldResumePipeline] = useState<{ projectId: string } | null>(null);
     const pitchTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
     const form = useForm<FormData>({
@@ -361,44 +375,52 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     useEffect(() => {
         if (currentProjectId && projectsData?.projects && !isInitialLoadRef.current) {
             const currentProject = projectsData.projects.find(p => p.id === currentProjectId);
-            if (currentProject?.keywordGenerationProgress) {
-                const progress = currentProject.keywordGenerationProgress;
-                const currentStage = progress.currentStage || progress.stage || '';
-                const isComplete = currentStage === 'complete';
-                const isError = currentStage === 'error';
-                const isRunning = !isComplete && !isError && currentStage !== 'idle' && currentStage !== '';
 
-                // If pipeline is running, auto-resume polling
-                if (isRunning) {
-                    // Restore progress state
-                    setKeywordProgress({
-                        stage: currentStage,
-                        seedsGenerated: progress.seedsGenerated || 0,
-                        keywordsGenerated: progress.keywordsGenerated || 0,
-                        duplicatesFound: progress.duplicatesFound || 0,
-                        existingKeywordsFound: progress.existingKeywordsFound || 0,
-                        newKeywordsCollected: progress.newKeywordsCollected || 0,
-                        newKeywords: progress.newKeywords || [],
-                    });
-
-                    if (progress.newKeywords) {
-                        setGeneratedKeywords(progress.newKeywords);
+            // Check for running executions via API
+            (async () => {
+                try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const headers: Record<string, string> = {};
+                    if (session?.access_token) {
+                        headers["Authorization"] = `Bearer ${session.access_token}`;
                     }
 
-                    // Start polling
-                    setIsFindingKeywordsFromWebsite(true);
-                    setIsGeneratingKeywords(true);
-                    // Initialize previous status to 'running' so we can detect completion
-                    previousPipelineStatusRef.current = 'running';
-                    pollPipelineStatus(currentProjectId);
-                    pollingIntervalRef.current = setInterval(() => {
-                        pollPipelineStatus(currentProjectId);
-                    }, 2000);
-                } else if (isComplete && progress.reportGenerated) {
-                    // Pipeline complete - load report
-                    loadReportForProject(currentProjectId);
+                    const response = await fetch(`/api/custom-search/pipeline-status/${currentProjectId}`, {
+                        method: "GET",
+                        headers,
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+
+                        // Handle array of executions
+                        if (data.executions && Array.isArray(data.executions) && data.executions.length > 0) {
+                            // Update running executions state
+                            setRunningExecutions(data.executions);
+
+                            // Resume each running execution independently
+                            setIsFindingKeywordsFromWebsite(true);
+                            setIsGeneratingKeywords(true);
+
+                            // Start polling for all running executions
+                            pollPipelineStatus(currentProjectId);
+                            pollingIntervalRef.current = setInterval(() => {
+                                pollPipelineStatus(currentProjectId);
+                            }, 2000);
+                        } else {
+                            // No running executions - check if report should be loaded
+                            if (currentProject?.keywordGenerationProgress) {
+                                const progress = currentProject.keywordGenerationProgress;
+                                if (progress.reportGenerated && progress.currentStage === 'complete') {
+                                    loadReportForProject(currentProjectId);
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error checking pipeline status on load:", error);
                 }
-            }
+            })();
 
             isInitialLoadRef.current = true;
         }
@@ -455,7 +477,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     };
 
     // Use ref to track step start times to avoid closure issues in timer
-    const stepStartTimesRef = useRef<Record<string, number>>({});
+    const stepStartTimesRef = useRef<Record<string, Record<string, number>>>({});
     useEffect(() => {
         stepStartTimesRef.current = stepStartTimes;
     }, [stepStartTimes]);
@@ -474,51 +496,34 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         return () => clearInterval(interval);
     }, [competitorStepStartTime, isFindingCompetitors]);
 
-    // Update elapsed times every second for active steps
+    // Update elapsed times every second for active executions
     useEffect(() => {
-        if (!isGeneratingKeywords || Object.keys(stepStartTimes).length === 0) {
+        if (!isGeneratingKeywords || runningExecutions.length === 0) {
             return;
         }
 
         const interval = setInterval(() => {
             setElapsedTimes(prev => {
-                const currentTimes: Record<string, number> = {};
+                const newTimes: Record<string, Record<string, number>> = { ...prev };
                 const currentStepStartTimes = stepStartTimesRef.current;
-                const currentStage = keywordProgress?.stage || '';
 
-                Object.entries(currentStepStartTimes).forEach(([stepKey, startTime]) => {
-                    const stepMap: Record<string, string[]> = {
-                        'calling-api': ['calling-api'],
-                        'creating-task': ['creating-task'],
-                        'polling-task': ['polling-task'],
-                        'extracting-keywords': ['extracting-keywords'],
-                        'fetching-dataforseo': ['fetching-dataforseo'],
-                        'computing-metrics': ['computing-metrics'],
-                        'generating-report': ['generating-report']
-                    };
-
-                    const isActive = stepMap[stepKey]?.includes(currentStage) || false;
-                    if (isActive) {
-                        // Calculate elapsed time from start time, preserving it even if progress updates reset state
-                        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                        currentTimes[stepKey] = elapsed;
-                    } else {
-                        // If step is completed, preserve the last elapsed time instead of resetting
-                        // This prevents the time from resetting when progress updates come in
-                        const lastElapsed = prev[stepKey];
-                        if (lastElapsed !== undefined && lastElapsed > 0) {
-                            currentTimes[stepKey] = lastElapsed;
-                        }
+                runningExecutions.forEach(exec => {
+                    if (!newTimes[exec.id]) {
+                        newTimes[exec.id] = {};
+                    }
+                    const stage = exec.stage || exec.progress?.currentStage || '';
+                    if (stage && currentStepStartTimes[exec.id] && currentStepStartTimes[exec.id][stage]) {
+                        const startTime = currentStepStartTimes[exec.id][stage];
+                        newTimes[exec.id][stage] = Math.floor((Date.now() - startTime) / 1000);
                     }
                 });
 
-                // Merge with previous times to preserve all step times
-                return { ...prev, ...currentTimes };
+                return newTimes;
             });
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [isGeneratingKeywords, keywordProgress]);
+    }, [isGeneratingKeywords, runningExecutions, stepStartTimes]);
 
     // Create project mutation
     const createProjectMutation = useMutation({
@@ -1509,9 +1514,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             });
 
             if (!response.ok) {
-                // If 404, the pipeline doesn't exist - stop polling
+                // If 404, the project doesn't exist - stop polling
                 if (response.status === 404) {
-                    console.log("Pipeline not found, stopping polling");
+                    console.log("Project not found, stopping polling");
                     stopPolling();
                     setIsFindingKeywordsFromWebsite(false);
                     setIsGeneratingKeywords(false);
@@ -1522,138 +1527,120 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             const data = await response.json();
 
-            if (data.status === 'error') {
-                // Pipeline error
-                setKeywordProgress(prev => prev ? {
-                    ...prev,
-                    stage: 'error',
-                } : {
-                    stage: 'error',
-                    seedsGenerated: 0,
-                    keywordsGenerated: 0,
-                    duplicatesFound: 0,
-                    existingKeywordsFound: 0,
-                    newKeywordsCollected: 0,
+            // Handle array of executions
+            if (data.executions && Array.isArray(data.executions)) {
+                const executions = data.executions;
+                
+                // Update running executions state, merging with any optimistic updates
+                setRunningExecutions(prev => {
+                    // Create a map of existing executions by ID for quick lookup
+                    const existingMap = new Map(prev.map(e => [e.id, e]));
+                    
+                    // Update or add executions from the API response
+                    executions.forEach(exec => {
+                        existingMap.set(exec.id, exec);
+                    });
+                    
+                    // Return array of all executions (both from API and optimistic ones)
+                    const merged = Array.from(existingMap.values());
+                    
+                    // Log for debugging
+                    console.log("Pipeline status update:", {
+                        apiExecutions: executions.length,
+                        mergedExecutions: merged.length,
+                        executionIds: merged.map(e => e.id),
+                    });
+                    
+                    return merged;
                 });
 
-                const errorMessage = data.progress?.error || "Unknown error occurred";
-                toast({
-                    title: "Pipeline Error",
-                    description: errorMessage,
-                    variant: "destructive",
-                    duration: 10000,
-                });
+                // If no running executions from API, stop polling and clear state
+                // (This will clear optimistic updates too if API confirms no running executions)
+                if (executions.length === 0) {
+                    stopPolling();
+                    setIsFindingKeywordsFromWebsite(false);
+                    setIsGeneratingKeywords(false);
 
-                stopPolling();
-                setIsFindingKeywordsFromWebsite(false);
-                setIsGeneratingKeywords(false);
-                return;
-            }
-
-            if (data.progress) {
-                const progress = data.progress;
-                const stage = progress.currentStage || progress.stage || '';
-
-                // Update progress state
-                setKeywordProgress(prev => ({
-                    ...prev,
-                    stage: stage,
-                    currentStage: stage,
-                    seedsGenerated: progress.seedsGenerated || prev?.seedsGenerated || 0,
-                    keywordsGenerated: progress.keywordsGenerated || prev?.keywordsGenerated || 0,
-                    duplicatesFound: progress.duplicatesFound || prev?.duplicatesFound || 0,
-                    existingKeywordsFound: progress.existingKeywordsFound || prev?.existingKeywordsFound || 0,
-                    newKeywordsCollected: progress.newKeywordsCollected || prev?.newKeywordsCollected || 0,
-                    newKeywords: progress.newKeywords || prev?.newKeywords || [],
-                }));
-
-                // Track step start times - only set if stage doesn't exist yet
-                // Use functional update to ensure we have the latest state
-                setStepStartTimes(prev => {
-                    if (stage && !prev[stage]) {
-                        const newTimes = { ...prev, [stage]: Date.now() };
-                        // Update ref immediately so timer can use it
-                        stepStartTimesRef.current = newTimes;
-                        return newTimes;
+                    // Reload report if we were waiting for pipelines to complete
+                    if (projectId === currentProjectId && !reportData) {
+                        loadReportForProject(projectId);
                     }
-                    return prev;
+
+                    // Clear progress state after a short delay
+                    setTimeout(() => {
+                        setRunningExecutions([]);
+                        setStepStartTimes({});
+                        setElapsedTimes({});
+                    }, 500);
+                    return;
+                }
+
+                // Track step start times for each execution
+                setStepStartTimes(prev => {
+                    const newTimes = { ...prev };
+                    executions.forEach((exec: { id: string; stage: string; progress?: any }) => {
+                        if (!newTimes[exec.id]) {
+                            newTimes[exec.id] = {};
+                        }
+                        const stage = exec.stage || exec.progress?.currentStage || '';
+                        if (stage && !newTimes[exec.id][stage]) {
+                            newTimes[exec.id][stage] = Date.now();
+                        }
+                    });
+                    return newTimes;
                 });
 
-                // Update stats
-                if (progress.keywordsFetchedCount !== undefined) {
+                // Aggregate stats from all executions (for display)
+                let totalKeywordsWithData = 0;
+                let totalKeywords = 0;
+                let totalMetricsProcessed = 0;
+                const allNewKeywords = new Set<string>();
+
+                executions.forEach((exec: { id: string; stage: string; progress?: any }) => {
+                    const progress = exec.progress || {};
+                    if (progress.keywordsFetchedCount !== undefined) {
+                        totalKeywordsWithData += progress.keywordsFetchedCount;
+                    }
+                    if (progress.newKeywords && Array.isArray(progress.newKeywords)) {
+                        progress.newKeywords.forEach((kw: string) => allNewKeywords.add(kw));
+                    }
+                    if (progress.metricsProcessedCount !== undefined) {
+                        totalMetricsProcessed += progress.metricsProcessedCount;
+                    }
+                });
+
+                totalKeywords = allNewKeywords.size;
+
+                if (totalKeywordsWithData > 0) {
                     setDataForSEOStats({
-                        keywordsWithData: progress.keywordsFetchedCount,
-                        totalKeywords: progress.newKeywords?.length || 0,
-                        keywordsWithoutData: (progress.newKeywords?.length || 0) - progress.keywordsFetchedCount,
+                        keywordsWithData: totalKeywordsWithData,
+                        totalKeywords: totalKeywords,
+                        keywordsWithoutData: totalKeywords - totalKeywordsWithData,
                     });
                 }
 
-                if (progress.metricsProcessedCount !== undefined) {
+                if (totalMetricsProcessed > 0) {
                     setMetricsStats({
-                        processedCount: progress.metricsProcessedCount,
-                        totalKeywords: progress.newKeywords?.length || 0,
+                        processedCount: totalMetricsProcessed,
+                        totalKeywords: totalKeywords,
                     });
                 }
 
-                // Update generated keywords if available
-                if (progress.newKeywords && Array.isArray(progress.newKeywords)) {
-                    setGeneratedKeywords(progress.newKeywords);
-                }
-            }
-
-            // Handle report if available (only for current project)
-            if (data.report && projectId === currentProjectId) {
-                setReportData(data.report);
-                reportProjectIdRef.current = projectId;
-                setIsLoadingReport(false); // Stop loading when report is available
-                // Reset source website filter when loading new report
-                setSelectedSourceWebsites([]);
-                if (data.report.newKeywords && Array.isArray(data.report.newKeywords)) {
-                    setGeneratedKeywords(data.report.newKeywords);
-                }
-            }
-
-            // If pipeline is complete, stop polling
-            if (data.status === 'complete') {
-                setIsLoadingReport(false); // Ensure loading is stopped
-                // Only set report data if it's for the current project
-                if (data.report && projectId === currentProjectId) {
-                    setReportData(data.report);
-                    reportProjectIdRef.current = projectId;
-                    setSelectedSourceWebsites([]); // Reset source website filter when loading new report
-                } else if (data.progress?.reportGenerated && projectId === currentProjectId) {
-                    // If report was regenerated but not included in response, reload it
-                    loadReportForProject(projectId);
+                // Update generated keywords (aggregate from all executions)
+                if (allNewKeywords.size > 0) {
+                    setGeneratedKeywords(Array.from(allNewKeywords));
                 }
 
-                // Only show success toast if we transitioned from a non-complete status to complete
-                // This prevents showing the toast on page refresh when the pipeline was already complete
-                const wasRunning = previousPipelineStatusRef.current !== null &&
-                    previousPipelineStatusRef.current !== 'complete' &&
-                    previousPipelineStatusRef.current !== 'error';
-
-                if (wasRunning) {
-                    const keywordCount = data.report?.keywords?.length || data.report?.totalKeywords || 0;
-                    toast({
-                        title: "Success!",
-                        description: `Successfully found keywords from website with ${keywordCount} keywords`,
-                    });
-                }
-
+                // Keep polling while there are running executions
+                setIsFindingKeywordsFromWebsite(true);
+                setIsGeneratingKeywords(true);
+            } else {
+                // Fallback: no executions or legacy format
+                setRunningExecutions([]);
                 stopPolling();
                 setIsFindingKeywordsFromWebsite(false);
                 setIsGeneratingKeywords(false);
-
-                // Clear progress state after a short delay to allow report to render
-                setTimeout(() => {
-                    setKeywordProgress(null);
-                    setStepStartTimes({});
-                    setElapsedTimes({});
-                }, 500);
             }
-
-            // Update previous status for next poll
-            previousPipelineStatusRef.current = data.status;
         } catch (error) {
             console.error("Error polling pipeline status:", error);
             // Don't stop polling on transient errors - continue trying
@@ -1760,12 +1747,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             return;
         }
 
-        setIsFindingKeywordsFromWebsite(true);
-        setIsGeneratingKeywords(true);
+        // Don't set isFindingKeywordsFromWebsite to true here - we'll set it only when we get a successful response
+        // This allows users to launch multiple pipelines
         setShowQuadrantPopup(false);
 
-        // Stop any existing polling
-        stopPolling();
+        // Don't stop existing polling - allow multiple pipelines to run
 
         // If resuming, restore progress state from savedProgress
         if (resume && savedProgress) {
@@ -1831,38 +1817,78 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
-                throw new Error(errorData.message || "Failed to start pipeline");
+                const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+
+                toast({
+                    title: "Error Starting Pipeline",
+                    description: errorMessage,
+                    variant: "destructive",
+                    duration: 10000,
+                });
+
+                // Don't stop polling or reset flags - other pipelines may still be running
+                return;
             }
 
-            const result = await response.json();
+            const data = await response.json();
 
-            // Initialize previous status to 'running' so we can detect completion
-            previousPipelineStatusRef.current = 'running';
+            // If we got an executionId, the pipeline started successfully
+            if (data.executionId) {
+                // Optimistically add the execution to runningExecutions immediately
+                // This ensures UI feedback is instant, even before the first poll
+                const normalizedUrlToUse = normalizedUrl || websiteUrl?.trim() || '';
+                console.log("Pipeline started, adding optimistic execution:", {
+                    executionId: data.executionId,
+                    website: normalizedUrlToUse,
+                });
+                
+                setRunningExecutions(prev => {
+                    // Check if this execution already exists
+                    const exists = prev.some(e => e.id === data.executionId);
+                    if (exists) {
+                        console.log("Execution already exists in state, skipping optimistic add");
+                        return prev; // Already added
+                    }
+                    // Add new execution with optimistic state
+                    const newExecution = {
+                        id: data.executionId,
+                        website: normalizedUrlToUse,
+                        normalizedWebsite: normalizedUrlToUse,
+                        stage: 'creating-task',
+                        status: 'running',
+                        progress: {
+                            currentStage: 'creating-task',
+                            stage: 'creating-task',
+                        },
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    };
+                    console.log("Added optimistic execution, total running:", prev.length + 1);
+                    return [...prev, newExecution];
+                });
 
-            // Start polling immediately
-            pollPipelineStatus(projectId);
-
-            // Set up polling interval (poll every 2 seconds)
-            pollingIntervalRef.current = setInterval(() => {
-                pollPipelineStatus(projectId);
-            }, 2000);
+                // Set flags to indicate we have running pipelines
+                setIsFindingKeywordsFromWebsite(true);
+                setIsGeneratingKeywords(true);
+                
+                // Start polling for progress updates (if not already polling)
+                if (!pollingIntervalRef.current) {
+                    pollPipelineStatus(projectId);
+                    pollingIntervalRef.current = setInterval(() => {
+                        pollPipelineStatus(projectId);
+                    }, 2000);
+                } else {
+                    // Already polling, just trigger an immediate poll to get the new execution
+                    pollPipelineStatus(projectId);
+                }
+            } else if (data.status === 'complete') {
+                // Pipeline already completed - reload report
+                loadReportForProject(projectId);
+            }
 
         } catch (error) {
             console.error("Error starting pipeline:", error);
             const errorMessage = error instanceof Error ? error.message : "Failed to start pipeline";
-
-            // Update progress to show error state
-            setKeywordProgress(prev => prev ? {
-                ...prev,
-                stage: 'error',
-            } : {
-                stage: 'error',
-                seedsGenerated: 0,
-                keywordsGenerated: 0,
-                duplicatesFound: 0,
-                existingKeywordsFound: 0,
-                newKeywordsCollected: 0,
-            });
 
             toast({
                 title: "Error Starting Pipeline",
@@ -1871,11 +1897,28 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 duration: 10000,
             });
 
-            stopPolling();
-            setIsFindingKeywordsFromWebsite(false);
-            setIsGeneratingKeywords(false);
+            // Don't stop polling or reset flags - other pipelines may still be running
         }
     };
+
+    // Handle pipeline resume when shouldResumePipeline flag is set
+    useEffect(() => {
+        if (shouldResumePipeline && shouldResumePipeline.projectId) {
+            const projectId = shouldResumePipeline.projectId;
+            // Clear the flag first to prevent re-triggering
+            setShouldResumePipeline(null);
+
+            // Resume pipeline execution
+            handleFindKeywordsFromWebsite(true).catch((error) => {
+                console.error("Failed to resume pipeline:", error);
+                // If resume fails, still start polling in case pipeline is already running
+                pollPipelineStatus(projectId);
+                pollingIntervalRef.current = setInterval(() => {
+                    pollPipelineStatus(projectId);
+                }, 2000);
+            });
+        }
+    }, [shouldResumePipeline]);
 
     const handleGenerateFullReport = async (resume: boolean = false) => {
         if (!pitch || pitch.trim().length === 0) {
@@ -2563,7 +2606,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 placeholder="Enter your landing page URL or pick one from competitors (e.g., example.com)"
                                 value={websiteUrl}
                                 onChange={(e) => setWebsiteUrl(e.target.value)}
-                                disabled={isFindingKeywordsFromWebsite || isGeneratingKeywords}
+                                disabled={createProjectMutation.isPending}
                                 className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/40 rounded-none border-l-0 border-r-0 h-10"
                             />
                             <Button
@@ -2572,13 +2615,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 disabled={
                                     !websiteUrl ||
                                     websiteUrl.trim().length === 0 ||
-                                    isFindingKeywordsFromWebsite ||
-                                    isGeneratingKeywords ||
                                     createProjectMutation.isPending
                                 }
                                 className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 rounded-r-full rounded-l-none border-l-0 h-10"
                             >
-                                {isFindingKeywordsFromWebsite ? (
+                                {runningExecutions.length > 0 ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                         Finding...
@@ -2594,7 +2635,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                         {/* Show resume option if progress exists and is incomplete (website search) - only show if NOT currently running */}
                         {savedProgress &&
-                            !isFindingKeywordsFromWebsite &&
+                            runningExecutions.length === 0 &&
                             savedProgress.currentStage !== 'complete' &&
                             savedProgress.reportGenerated !== true &&
                             savedProgress.currentStage !== undefined &&
@@ -2607,136 +2648,109 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         <Button
                                             type="button"
                                             onClick={() => handleFindKeywordsFromWebsite(true)}
-                                            disabled={isFindingKeywordsFromWebsite || isGeneratingKeywords}
+                                            disabled={createProjectMutation.isPending}
                                             className="flex-1 bg-yellow-600 hover:bg-yellow-700"
                                         >
-                                            {isFindingKeywordsFromWebsite ? (
-                                                <>
-                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                    Resuming...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Search className="mr-2 h-4 w-4" />
-                                                    Resume Website Search
-                                                </>
-                                            )}
+                                            <Search className="mr-2 h-4 w-4" />
+                                            Resume Website Search
                                         </Button>
                                     </div>
                                 </div>
                             )}
 
-                        {/* Progress Steps - Always display when pipeline is running or has progress, but hide if report is completed or generating-report is done */}
-                        {(isFindingKeywordsFromWebsite || (keywordProgress && keywordProgress.stage && keywordProgress.stage !== 'idle' && keywordProgress.stage !== 'complete')) &&
-                            (isFindingKeywordsFromWebsite || savedProgress?.currentStage !== 'complete') &&
-                            (isFindingKeywordsFromWebsite || keywordProgress?.stage !== 'complete') &&
-                            (isFindingKeywordsFromWebsite || savedProgress?.currentStage !== 'generating-report') &&
-                            !reportData && (() => {
-                                // Use savedProgress.currentStage as primary source, fallback to keywordProgress.stage
-                                const currentStage = savedProgress?.currentStage || keywordProgress?.stage || '';
-                                const stages = [
-                                    {
-                                        key: 'creating-task',
-                                        label: 'Creating task',
-                                        description: 'Submitting request to find keywords for the website...',
-                                        estimate: 3,
-                                    },
-                                    {
-                                        key: 'polling-task',
-                                        label: 'Waiting for results',
-                                        description: 'Analyzing the website. This may take 10-30 seconds (or 1-5 minutes if using task API)...',
-                                        estimate: 30,
-                                    },
-                                    {
-                                        key: 'extracting-keywords',
-                                        label: 'Extracting keywords',
-                                        description: 'Processing keywords from the website analysis...',
-                                        estimate: 2,
-                                    },
-                                    {
-                                        key: 'fetching-dataforseo',
-                                        label: 'Fetching keywords metrics',
-                                        description: 'Retrieving search volume, competition, and CPC data...',
-                                        estimate: 5,
-                                    },
-                                    {
-                                        key: 'generating-report',
-                                        label: 'Generating report',
-                                        description: 'Creating final keyword report with insights...',
-                                        estimate: 3,
-                                    },
-                                    {
-                                        key: 'computing-metrics',
-                                        label: 'Computing metrics',
-                                        description: 'Calculating growth, volatility, and opportunity scores...',
-                                        estimate: 10,
-                                    },
-                                ];
+                        {/* Progress Steps - Show multiple running pipelines side by side */}
+                        {runningExecutions.length > 0 && (
+                            <div className="mt-4 space-y-3">
+                                {runningExecutions.map((exec) => {
+                                    const currentStage = exec.stage || exec.progress?.currentStage || '';
+                                    const execElapsed = elapsedTimes[exec.id]?.[currentStage] || 0;
+                                    const execProgress = exec.progress || {};
+                                    const hasError = currentStage === 'error';
+                                    const errorMessage = exec.error || execProgress.error || '';
 
-                                const hasError = currentStage === 'error';
-                                const errorMessage = savedProgress?.error || '';
+                                    const stages = [
+                                        {
+                                            key: 'creating-task',
+                                            label: 'Creating task',
+                                            description: 'Submitting request to find keywords for the website...',
+                                            estimate: 3,
+                                        },
+                                        {
+                                            key: 'polling-task',
+                                            label: 'Waiting for results',
+                                            description: 'Analyzing the website. This may take 10-30 seconds (or 1-5 minutes if using task API)...',
+                                            estimate: 30,
+                                        },
+                                        {
+                                            key: 'extracting-keywords',
+                                            label: 'Extracting keywords',
+                                            description: 'Processing keywords from the website analysis...',
+                                            estimate: 2,
+                                        },
+                                        {
+                                            key: 'fetching-dataforseo',
+                                            label: 'Fetching keywords metrics',
+                                            description: 'Retrieving search volume, competition, and CPC data...',
+                                            estimate: 5,
+                                        },
+                                        {
+                                            key: 'generating-report',
+                                            label: 'Generating report',
+                                            description: 'Creating final keyword report with insights...',
+                                            estimate: 3,
+                                        },
+                                        {
+                                            key: 'computing-metrics',
+                                            label: 'Computing metrics',
+                                            description: 'Calculating growth, volatility, and opportunity scores...',
+                                            estimate: 10,
+                                        },
+                                    ];
 
-                                // Find the current active stage, or create a fallback for unknown stages
-                                const activeStage = stages.find(s => s.key === currentStage) ||
-                                    (currentStage && currentStage !== 'complete' && currentStage !== 'idle' ? {
-                                        key: currentStage,
-                                        label: currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
-                                        description: '',
-                                        estimate: 0,
-                                    } : null);
-                                const elapsed = activeStage ? (elapsedTimes[activeStage.key] || 0) : 0;
+                                    // Find the current active stage
+                                    const activeStage = stages.find(s => s.key === currentStage) ||
+                                        (currentStage && currentStage !== 'complete' && currentStage !== 'idle' ? {
+                                            key: currentStage,
+                                            label: currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+                                            description: '',
+                                            estimate: 0,
+                                        } : null);
 
-                                // Show error message if there's an error
-                                if (hasError && errorMessage) {
-                                    return (
-                                        <div className="mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg">
-                                            <div className="text-sm font-medium text-red-400 mb-1">
-                                                Error
-                                            </div>
-                                            <div className="text-xs text-red-300 whitespace-pre-wrap">
-                                                {errorMessage}
-                                            </div>
-                                        </div>
-                                    );
-                                }
-
-                                // Show current step with time (but not if generating-report is done and we should show loading report instead)
-                                if (currentStage && currentStage !== 'complete' && currentStage !== 'idle' && !hasError) {
-                                    // Don't show generating-report step if reportGenerated is true (show loading report instead)
-                                    if (currentStage === 'generating-report' && savedProgress?.reportGenerated === true) {
-                                        return null;
-                                    }
-                                    return (
-                                        <div className="mt-4 flex items-center justify-center gap-2">
-                                            <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />
-                                            <div className="text-sm font-medium text-blue-400 whitespace-nowrap">
-                                                {activeStage?.label || currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                                            </div>
-                                            {elapsed > 0 && (
-                                                <div className="text-xs text-white/60 flex-shrink-0">
-                                                    {elapsed}s
+                                    // Show error message if there's an error
+                                    if (hasError && errorMessage) {
+                                        return (
+                                            <div key={exec.id} className="p-3 bg-red-500/20 border border-red-500/50 rounded-lg">
+                                                <div className="text-sm font-medium text-red-400 mb-1">
+                                                    Error: {exec.website}
                                                 </div>
-                                            )}
-                                        </div>
-                                    );
-                                }
-
-                                // Show error state
-                                if (hasError && currentStage) {
-                                    return (
-                                        <div className="mt-4 flex items-center justify-center gap-2">
-                                            <div className="h-4 w-4 rounded-full border-2 border-red-500 flex items-center justify-center flex-shrink-0">
-                                                <span className="text-red-500 text-xs">✕</span>
+                                                <div className="text-xs text-red-300 whitespace-pre-wrap">
+                                                    {errorMessage}
+                                                </div>
                                             </div>
-                                            <div className="text-sm font-medium text-red-400 whitespace-nowrap">
-                                                {activeStage?.label || currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')} - Failed
-                                            </div>
-                                        </div>
-                                    );
-                                }
+                                        );
+                                    }
 
-                                return null;
-                            })()}
+                                    // Show current step with time
+                                    if (currentStage && currentStage !== 'complete' && currentStage !== 'idle' && !hasError) {
+                                        return (
+                                            <div key={exec.id} className="flex items-center justify-center gap-2 p-2 bg-white/5 rounded border border-white/10">
+                                                <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />
+                                                <div className="text-sm font-medium text-blue-400 whitespace-nowrap">
+                                                    {exec.website}: {activeStage?.label || currentStage.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                                                </div>
+                                                {execElapsed > 0 && (
+                                                    <div className="text-xs text-white/60 flex-shrink-0">
+                                                        {execElapsed}s
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    }
+
+                                    return null;
+                                })}
+                            </div>
+                        )}
 
                         {/* Loading Report - Show after generating-report step completes until report is loaded */}
                         {(() => {

@@ -189,6 +189,23 @@ export const customSearchProjectKeywords = pgTable("custom_search_project_keywor
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const pipelineExecutions = pgTable("pipeline_executions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customSearchProjectId: varchar("custom_search_project_id").notNull().references(() => customSearchProjects.id, { onDelete: 'cascade' }),
+  normalizedWebsite: varchar("normalized_website").notNull(),
+  targetWebsite: varchar("target_website").notNull(),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  locationCode: integer("location_code"),
+  locationName: varchar("location_name"),
+  currentStage: varchar("current_stage").notNull().default('creating-task'),
+  progress: jsonb("progress").$type<KeywordGenerationProgress>().notNull(),
+  status: varchar("status").notNull().default('running'),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Keyword embeddings table with vector support (using customType for vector)
 export const keywordEmbeddings = pgTable("keyword_embeddings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -294,6 +311,9 @@ export type InsertGlobalKeyword = z.infer<typeof insertGlobalKeywordSchema>;
 
 export type CustomSearchProjectKeyword = typeof customSearchProjectKeywords.$inferSelect;
 export type InsertCustomSearchProjectKeyword = z.infer<typeof insertCustomSearchProjectKeywordSchema>;
+
+export type PipelineExecution = typeof pipelineExecutions.$inferSelect;
+export type InsertPipelineExecution = typeof pipelineExecutions.$inferInsert;
 
 export type KeywordEmbedding = typeof keywordEmbeddings.$inferSelect;
 export type InsertKeywordEmbedding = z.infer<typeof insertKeywordEmbeddingSchema>;

@@ -145,6 +145,7 @@ class KeywordVectorService {
     }
 
     private async doInitialize() {
+        let pgClientCreated = false;
         try {
             this.keywords = [];
             this.extractor = null;
@@ -165,6 +166,7 @@ class KeywordVectorService {
                 ssl: 'require',
                 prepare: false,
             });
+            pgClientCreated = true;
 
             // Load keywords from database with increased timeout
             // Use pgClient directly for better timeout control
@@ -241,6 +243,22 @@ class KeywordVectorService {
 
             this.initialized = true;
             console.log('[KeywordVectorService] Initialization complete!');
+        } catch (error) {
+            // Clean up pgClient if it was created but initialization failed
+            if (pgClientCreated && this.pgClient) {
+                try {
+                    await this.pgClient.end();
+                } catch (cleanupError) {
+                    // Ignore cleanup errors - connection may already be closed
+                    console.warn('[KeywordVectorService] Error cleaning up pgClient:', cleanupError);
+                }
+                this.pgClient = null;
+            }
+            // Reset state on error
+            this.keywords = [];
+            this.extractor = null;
+            this.initialized = false;
+            throw error;
         } finally {
             this.initializationPromise = null;
         }
@@ -359,11 +377,32 @@ class KeywordVectorService {
         const queryEmbedding = new Float32Array(queryOutput.data);
         const embeddingArray = Array.from(queryEmbedding);
 
-        // Call Supabase match_keywords function
-        const results = await this.pgClient.unsafe(
-            `SELECT * FROM match_keywords($1::vector(384), $2, $3)`,
-            [`[${embeddingArray.join(',')}]`, 0.0, topN]
-        );
+        // Call Supabase match_keywords function with error handling
+        let results;
+        try {
+            results = await this.pgClient.unsafe(
+                `SELECT * FROM match_keywords($1::vector(384), $2, $3)`,
+                [`[${embeddingArray.join(',')}]`, 0.0, topN]
+            );
+        } catch (error: any) {
+            // If connection error, try to reinitialize
+            if (error?.code === 'CONNECTION_CLOSED' || error?.code === 'UND_ERR_CONNECT_TIMEOUT' || error?.errno === 'CONNECTION_CLOSED' || error?.message?.includes('write')) {
+                console.warn('[KeywordVectorService] Connection lost, reinitializing...');
+                this.initialized = false;
+                this.pgClient = null;
+                await this.initialize();
+                // Retry the query after reinitialization
+                if (!this.pgClient) {
+                    throw new Error('PostgreSQL client reinitialization failed');
+                }
+                results = await this.pgClient.unsafe(
+                    `SELECT * FROM match_keywords($1::vector(384), $2, $3)`,
+                    [`[${embeddingArray.join(',')}]`, 0.0, topN]
+                );
+            } else {
+                throw error;
+            }
+        }
 
         // Convert database results to KeywordWithScore format
         return results.map((row: any) => {

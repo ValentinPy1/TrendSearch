@@ -1,7 +1,7 @@
-import { eq, desc, inArray, sql, or } from "drizzle-orm";
+import { eq, desc, inArray, sql, or, and } from "drizzle-orm";
 import { db } from "./db";
 import {
-    users, ideas, reports, keywords, customSearchProjects, globalKeywords, customSearchProjectKeywords,
+    users, ideas, reports, keywords, customSearchProjects, globalKeywords, customSearchProjectKeywords, pipelineExecutions,
     type User, type InsertUser,
     type Idea, type InsertIdea,
     type Report, type InsertReport,
@@ -10,7 +10,8 @@ import {
     type CustomSearchProject, type InsertCustomSearchProject,
     type GlobalKeyword, type InsertGlobalKeyword,
     type CustomSearchProjectKeyword, type InsertCustomSearchProjectKeyword,
-    type KeywordGenerationProgress
+    type KeywordGenerationProgress,
+    type PipelineExecution, type InsertPipelineExecution
 } from "@shared/schema";
 
 export interface IStorage {
@@ -59,6 +60,14 @@ export interface IStorage {
 
     // Keyword Generation Progress methods
     saveKeywordGenerationProgress(projectId: string, progress: KeywordGenerationProgress): Promise<void>;
+
+    // Pipeline execution methods
+    createPipelineExecution(execution: InsertPipelineExecution): Promise<PipelineExecution>;
+    getPipelineExecution(id: string): Promise<PipelineExecution | undefined>;
+    getPipelineExecutionsByProject(projectId: string, status?: string): Promise<PipelineExecution[]>;
+    getPipelineExecutionByWebsiteMonth(projectId: string, normalizedWebsite: string, year: number, month: number): Promise<PipelineExecution | undefined>;
+    updatePipelineExecution(id: string, update: Partial<PipelineExecution>): Promise<PipelineExecution>;
+    getQueriedWebsites(projectId: string): Promise<string[]>; // Derived from completed pipeline states
 
     // Health check
     healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }>;
@@ -432,6 +441,81 @@ export class DatabaseStorage implements IStorage {
                 updatedAt: sql`now()`,
             })
             .where(eq(customSearchProjects.id, projectId));
+    }
+
+    async createPipelineExecution(execution: InsertPipelineExecution): Promise<PipelineExecution> {
+        const result = await db.insert(pipelineExecutions).values(execution).returning();
+        return result[0];
+    }
+
+    async getPipelineExecution(id: string): Promise<PipelineExecution | undefined> {
+        const result = await db.select().from(pipelineExecutions).where(eq(pipelineExecutions.id, id));
+        return result[0];
+    }
+
+    async getPipelineExecutionsByProject(projectId: string, status?: string): Promise<PipelineExecution[]> {
+        const conditions = [eq(pipelineExecutions.customSearchProjectId, projectId)];
+        if (status) {
+            conditions.push(eq(pipelineExecutions.status, status));
+        }
+        
+        return await db
+            .select()
+            .from(pipelineExecutions)
+            .where(and(...conditions))
+            .orderBy(desc(pipelineExecutions.createdAt));
+    }
+
+    async getPipelineExecutionByWebsiteMonth(
+        projectId: string,
+        normalizedWebsite: string,
+        year: number,
+        month: number
+    ): Promise<PipelineExecution | undefined> {
+        const result = await db
+            .select()
+            .from(pipelineExecutions)
+            .where(
+                sql`${pipelineExecutions.customSearchProjectId} = ${projectId} 
+                    AND ${pipelineExecutions.normalizedWebsite} = ${normalizedWebsite}
+                    AND ${pipelineExecutions.year} = ${year}
+                    AND ${pipelineExecutions.month} = ${month}`
+            )
+            .limit(1);
+        return result[0];
+    }
+
+    async updatePipelineExecution(id: string, update: Partial<PipelineExecution>): Promise<PipelineExecution> {
+        const result = await db
+            .update(pipelineExecutions)
+            .set({
+                ...update,
+                updatedAt: sql`now()`,
+            } as any)
+            .where(eq(pipelineExecutions.id, id))
+            .returning();
+        return result[0];
+    }
+
+    async getQueriedWebsites(projectId: string): Promise<string[]> {
+        const completedExecutions = await db
+            .select({
+                normalizedWebsite: pipelineExecutions.normalizedWebsite,
+            })
+            .from(pipelineExecutions)
+            .where(
+                sql`${pipelineExecutions.customSearchProjectId} = ${projectId} 
+                    AND ${pipelineExecutions.status} = 'complete'`
+            );
+        
+        const uniqueWebsites = new Set<string>();
+        completedExecutions.forEach(exec => {
+            if (exec.normalizedWebsite) {
+                uniqueWebsites.add(exec.normalizedWebsite);
+            }
+        });
+        
+        return Array.from(uniqueWebsites);
     }
 
     async healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }> {

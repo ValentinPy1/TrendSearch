@@ -2291,10 +2291,22 @@ Generate 5-10 features as a JSON array of strings. Each feature should be concis
     // Find competitors based on idea description
     app.post("/api/custom-search/find-competitors", requireAuth, requirePayment, async (req, res) => {
         try {
-            const { pitch, topics, personas, painPoints, features } = req.body;
+            const { pitch, topics, personas, painPoints, features, projectId } = req.body;
 
             if (!pitch || typeof pitch !== "string" || pitch.trim().length === 0) {
                 return res.status(400).json({ message: "Pitch is required" });
+            }
+
+            // If projectId is provided, verify project exists and user owns it
+            let project = null;
+            if (projectId) {
+                project = await storage.getCustomSearchProject(projectId);
+                if (!project) {
+                    return res.status(404).json({ message: "Project not found" });
+                }
+                if (project.userId !== req.user.id) {
+                    return res.status(403).json({ message: "Forbidden" });
+                }
             }
 
             const additionalContext: string[] = [];
@@ -2498,6 +2510,47 @@ Return ONLY the JSON array, no other text. Example format:
             let completedCount = 0;
             const totalCount = competitors.length;
 
+            // Helper function to save competitor to project immediately
+            const saveCompetitorToProject = async (competitor: { name: string; description: string; url?: string | null }) => {
+                if (projectId && project) {
+                    try {
+                        // Get current competitors array
+                        const currentCompetitors = project.competitors || [];
+                        
+                        // Check if competitor already exists (by name)
+                        const competitorExists = currentCompetitors.some(
+                            (c: any) => c.name.toLowerCase() === competitor.name.toLowerCase()
+                        );
+                        
+                        if (!competitorExists) {
+                            // Add new competitor to array
+                            const updatedCompetitors = [...currentCompetitors, competitor];
+                            
+                            // Save to database immediately
+                            await storage.updateCustomSearchProject(projectId, {
+                                competitors: updatedCompetitors
+                            });
+                            
+                            // Update local project reference
+                            project.competitors = updatedCompetitors;
+                            
+                            logger.debug("Saved competitor to project immediately", {
+                                projectId,
+                                competitor: competitor.name,
+                                totalCompetitors: updatedCompetitors.length
+                            });
+                        }
+                    } catch (error) {
+                        logger.error("Error saving competitor to project", {
+                            projectId,
+                            competitor: competitor.name,
+                            error: error instanceof Error ? error.message : String(error)
+                        });
+                        // Don't throw - continue processing other competitors
+                    }
+                }
+            };
+
             // Create promises that both validate and send results immediately when they complete
             const validationPromises = competitors.map((competitor) => {
                 // Handle competitors without URLs immediately (they're valid)
@@ -2505,6 +2558,10 @@ Return ONLY the JSON array, no other text. Example format:
                     validatedCompetitors.push(competitor);
                     logger.debug("Sending competitor via SSE (no URL)", { competitor: competitor.name });
                     sendSSE("competitor", { competitor });
+                    // Save to project immediately
+                    saveCompetitorToProject(competitor).catch(err => {
+                        logger.error("Failed to save competitor without URL", { competitor: competitor.name, error: err });
+                    });
                     // Update progress
                     sendSSE("progress", { 
                         stage: "validating", 
@@ -2523,6 +2580,10 @@ Return ONLY the JSON array, no other text. Example format:
                             validatedCompetitors.push(competitor);
                             logger.debug("Sending competitor via SSE (validated)", { competitor: competitor.name });
                             sendSSE("competitor", { competitor });
+                            // Save to project immediately after validation
+                            saveCompetitorToProject(competitor).catch(err => {
+                                logger.error("Failed to save validated competitor", { competitor: competitor.name, error: err });
+                            });
                             // Update progress
                             sendSSE("progress", { 
                                 stage: "validating", 
@@ -2721,6 +2782,9 @@ Return ONLY the JSON array, no other text. Example format:
             // Get all keywords for the project
             const keywords = await storage.getProjectKeywords(id);
 
+            // Get queried websites from completed pipeline executions
+            const queriedWebsites = await storage.getQueriedWebsites(id);
+
             // Count keywords with data (volume is not null)
             const keywordsWithData = keywords.filter(kw => kw.volume !== null && kw.volume !== undefined);
 
@@ -2756,7 +2820,8 @@ Return ONLY the JSON array, no other text. Example format:
                 keywordList: keywordList,
                 hasDataForSEO: keywordsWithData.length > 0,
                 hasMetrics: keywordsWithMetrics.length > 0,
-                sourceWebsites: sourceWebsites,
+                sourceWebsites: sourceWebsites, // From keywords (what's actually linked)
+                queriedWebsites: queriedWebsites, // From completed pipeline executions
             });
         } catch (error) {
             console.error("Error fetching project keywords status:", error);
@@ -3557,7 +3622,7 @@ Return ONLY the JSON array, no other text. Example format:
     // Find keywords from website using DataForSEO keywords_for_site API
     app.post("/api/custom-search/find-keywords-from-website", requireAuth, requirePayment, async (req, res) => {
         try {
-            const { projectId, target, location_code, location_name, resume } = req.body;
+            const { projectId, target, location_code, location_name, resume, executionId } = req.body;
 
             // Verify project exists and user owns it
             if (!projectId) {
@@ -3572,22 +3637,135 @@ Return ONLY the JSON array, no other text. Example format:
                 return res.status(403).json({ message: "Forbidden" });
             }
 
-            // Start pipeline in background
+            // Helper function to normalize website URL
+            const normalizeWebsite = (website: string): string => {
+                if (!website) return '';
+                try {
+                    const urlWithProtocol = website.startsWith('http') ? website : `https://${website}`;
+                    const urlObj = new URL(urlWithProtocol);
+                    return urlObj.hostname.replace(/^www\./, '').toLowerCase();
+                } catch {
+                    return website.replace(/^https?:\/\//, '').replace(/^www\./, '').toLowerCase().split('/')[0];
+                }
+            };
+
+            let execution: any = null;
+            let normalizedWebsite = '';
+            let targetToUse = target?.trim() || '';
+
+            // If resuming with executionId, load existing execution
+            if (resume && executionId) {
+                execution = await storage.getPipelineExecution(executionId);
+                if (!execution) {
+                    return res.status(404).json({ message: "Pipeline execution not found" });
+                }
+                if (execution.customSearchProjectId !== projectId) {
+                    return res.status(403).json({ message: "Execution does not belong to this project" });
+                }
+                normalizedWebsite = execution.normalizedWebsite;
+                targetToUse = execution.targetWebsite;
+            } else if (target) {
+                // New pipeline - normalize website and check for existing execution
+                normalizedWebsite = normalizeWebsite(target);
+                targetToUse = target.trim();
+
+                // Extract year/month from current date
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = now.getMonth() + 1; // 1-12
+
+                // Check if pipeline already exists for this website+month combination
+                const existingExecution = await storage.getPipelineExecutionByWebsiteMonth(
+                    projectId,
+                    normalizedWebsite,
+                    year,
+                    month
+                );
+
+                if (existingExecution) {
+                    if (existingExecution.status === 'complete') {
+                        // Already completed - return existing execution
+                        return res.json({
+                            status: 'complete',
+                            executionId: existingExecution.id,
+                            message: 'Pipeline already completed for this website and month.'
+                        });
+                    } else if (existingExecution.status === 'running') {
+                        // Already running - return existing execution
+                        return res.json({
+                            status: 'running',
+                            executionId: existingExecution.id,
+                            message: 'Pipeline already running for this website and month.'
+                        });
+                    } else if (existingExecution.status === 'error') {
+                        // Previous error - allow re-run by creating new execution (will violate unique constraint, so delete old one first)
+                        // Actually, we should update the existing one to restart
+                        execution = await storage.updatePipelineExecution(existingExecution.id, {
+                            status: 'running',
+                            currentStage: 'creating-task',
+                            error: null,
+                            progress: {
+                                currentStage: 'creating-task',
+                                stage: 'creating-task',
+                                newKeywords: [],
+                                seedsGenerated: 0,
+                                keywordsGenerated: 0,
+                                duplicatesFound: 0,
+                                existingKeywordsFound: 0,
+                                newKeywordsCollected: 0,
+                            } as any
+                        });
+                    } else {
+                        execution = existingExecution;
+                    }
+                } else {
+                    // Create new execution
+                    execution = await storage.createPipelineExecution({
+                        customSearchProjectId: projectId,
+                        normalizedWebsite: normalizedWebsite,
+                        targetWebsite: targetToUse,
+                        year: year,
+                        month: month,
+                        locationCode: location_code || null,
+                        locationName: location_name || null,
+                        currentStage: 'creating-task',
+                        progress: {
+                            currentStage: 'creating-task',
+                            stage: 'creating-task',
+                            newKeywords: [],
+                            seedsGenerated: 0,
+                            keywordsGenerated: 0,
+                            duplicatesFound: 0,
+                            existingKeywordsFound: 0,
+                            newKeywordsCollected: 0,
+                        } as any,
+                        status: 'running',
+                        error: null,
+                    });
+                }
+            } else {
+                return res.status(400).json({ message: "target (website URL) is required for new pipelines" });
+            }
+
+            // Start pipeline in background with executionId
             executeWebsiteKeywordPipeline(
+                execution.id,
                 projectId,
-                target,
+                targetToUse,
                 location_code,
                 location_name,
                 resume === true
             ).catch((error) => {
                 logger.error("Error in background pipeline execution", error, {
-                    projectId
+                    projectId,
+                    executionId: execution.id
                 });
             });
 
             // Return immediately with status
             return res.json({
                 status: 'running',
+                executionId: execution.id,
                 message: 'Pipeline started. Use /api/custom-search/pipeline-status/:projectId to check progress.'
             });
         } catch (error) {
@@ -3605,6 +3783,7 @@ Return ONLY the JSON array, no other text. Example format:
      * Runs the pipeline independently of client connection
      */
     async function executeWebsiteKeywordPipeline(
+        executionId: string,
         projectId: string,
         target: string | undefined,
         location_code: number | undefined,
@@ -3614,39 +3793,47 @@ Return ONLY the JSON array, no other text. Example format:
         // Declare finalKeywords outside try block so it's accessible in catch block
         let finalKeywords: string[] = [];
         try {
+            logger.info("=== PIPELINE EXECUTION START ===", {
+                executionId,
+                projectId,
+                target,
+                resume,
+                timestamp: new Date().toISOString()
+            });
+
             const project = await storage.getCustomSearchProject(projectId);
             if (!project) {
                 throw new Error("Project not found");
             }
 
-            // Get saved progress early to check if we're resuming
-            let savedProgress = project.keywordGenerationProgress;
+            // Load execution state instead of project progress
+            let execution = await storage.getPipelineExecution(executionId);
+            if (!execution) {
+                throw new Error("Pipeline execution not found");
+            }
+
+            // Get saved progress from execution
+            let savedProgress = execution.progress;
+            
+            // Initialize targetToUse early so it's available in error handlers
+            // Use execution's targetWebsite if target not provided
+            const targetToUse = target?.trim() || execution.targetWebsite || '';
+            
+            logger.info("Pipeline state check", {
+                projectId,
+                hasSavedProgress: !!savedProgress,
+                currentStage: savedProgress?.currentStage || savedProgress?.stage || 'none',
+                hasKeywords: !!(savedProgress?.newKeywords && Array.isArray(savedProgress.newKeywords) && savedProgress.newKeywords.length > 0),
+                hasDataForSEOResults: !!(savedProgress?.dataForSEOSiteResults && Array.isArray(savedProgress.dataForSEOSiteResults) && savedProgress.dataForSEOSiteResults.length > 0),
+                hasDataForSEOMetrics: savedProgress?.dataForSEOFetched === true,
+                hasReport: savedProgress?.reportGenerated === true
+            });
 
             // When resuming, target is optional if we already have progress
             // Otherwise, target is required for new requests
             const isResuming = resume === true || (savedProgress && savedProgress.currentStage && savedProgress.currentStage !== 'complete' && savedProgress.currentStage !== 'error');
             if (!isResuming && (!target || typeof target !== 'string' || target.trim().length === 0)) {
                 throw new Error("target (website URL) is required");
-            }
-
-            // If resuming and no target provided, try to get it from saved progress or use empty string
-            const targetToUse = target?.trim() || savedProgress?.target || '';
-
-            // If starting a new pipeline (not resuming), reset reportGenerated flag to allow progress display
-            if (!isResuming && savedProgress?.reportGenerated === true) {
-                logger.info("Starting new pipeline on project with existing report, resetting reportGenerated flag", {
-                    projectId,
-                    target: targetToUse
-                });
-                // Reset reportGenerated to false so progress steps can be shown
-                // We'll set it back to true after new report is generated
-                await saveProgress({
-                    reportGenerated: false,
-                    currentStage: 'creating-task'
-                });
-                // Refresh savedProgress after reset
-                const refreshedProject = await storage.getCustomSearchProject(projectId);
-                savedProgress = refreshedProject?.keywordGenerationProgress;
             }
 
             // Helper function to normalize website URL for consistent comparison
@@ -3666,11 +3853,11 @@ Return ONLY the JSON array, no other text. Example format:
 
             const normalizedTarget = normalizeWebsite(targetToUse);
 
-            // Helper function to save progress
+            // Helper function to save progress to execution
             const saveProgress = async (progressData: any) => {
                 try {
-                    // Get current saved progress to preserve existing state
-                    const currentProgress = project.keywordGenerationProgress || {};
+                    // Get current saved progress from execution to preserve existing state
+                    const currentProgress = execution.progress || {};
 
                     const { progressToSaveFormat } = await import("./keyword-collector");
                     const progressToSave = progressToSaveFormat(
@@ -3695,15 +3882,26 @@ Return ONLY the JSON array, no other text. Example format:
                         progressToSave.target = targetToUse;
                     }
 
-                    await storage.saveKeywordGenerationProgress(projectId, progressToSave);
-
-                    // Update local project reference to reflect saved progress
-                    project.keywordGenerationProgress = progressToSave;
-
-                    // Update savedProgress to reflect the new state
-                    if (savedProgress) {
-                        Object.assign(savedProgress, progressToSave);
+                    // Determine status based on stage
+                    let status = execution.status;
+                    if (progressData.currentStage === 'complete') {
+                        status = 'complete';
+                    } else if (progressData.currentStage === 'error' || progressData.error) {
+                        status = 'error';
+                    } else {
+                        status = 'running';
                     }
+
+                    // Update execution instead of project
+                    execution = await storage.updatePipelineExecution(executionId, {
+                        currentStage: progressToSave.currentStage || execution.currentStage,
+                        progress: progressToSave,
+                        status: status,
+                        error: progressData.error || null,
+                    });
+
+                    // Update local savedProgress reference
+                    savedProgress = execution.progress;
                 } catch (error) {
                     logger.error("Error saving progress:", error);
                 }
@@ -3712,7 +3910,7 @@ Return ONLY the JSON array, no other text. Example format:
             // Declare siteResults at function scope for error handling
             let siteResults: any[] | undefined = undefined;
 
-            // Check if everything is already done - if so, skip all API calls
+            // Check if everything is already done for this execution - if so, skip all API calls
             // Note: These checks are done at the start, but savedProgress is updated after each saveProgress call
             // So we need to re-check these flags after each step completes
             let hasKeywords = savedProgress?.newKeywords && Array.isArray(savedProgress.newKeywords) && savedProgress.newKeywords.length > 0;
@@ -3720,32 +3918,10 @@ Return ONLY the JSON array, no other text. Example format:
             let hasDataForSEOMetrics = savedProgress?.dataForSEOFetched === true;
             let hasReport = savedProgress?.reportGenerated === true;
 
-            // Check if the target website is different from existing ones
-            let isDifferentWebsite = true;
-            if (normalizedTarget && hasKeywords) {
-                // Get existing keywords with their source websites
-                const existingKeywords = await storage.getProjectKeywords(projectId);
-                const existingSourceWebsites = new Set<string>();
-                existingKeywords.forEach((kw: any) => {
-                    if (kw.sourceWebsites && Array.isArray(kw.sourceWebsites)) {
-                        kw.sourceWebsites.forEach((site: string) => existingSourceWebsites.add(site));
-                    }
-                });
-                
-                // Check if this website was already processed
-                isDifferentWebsite = !existingSourceWebsites.has(normalizedTarget);
-                
-                logger.info("Checking if website is different", {
-                    projectId,
-                    normalizedTarget,
-                    existingSourceWebsites: Array.from(existingSourceWebsites),
-                    isDifferentWebsite
-                });
-            }
-
-            // Check if everything is already done for this specific website - if so, skip all API calls
-            if (hasKeywords && hasDataForSEOResults && hasDataForSEOMetrics && hasReport && savedProgress && !isDifferentWebsite) {
-                logger.info("All API calls already completed for this website, pipeline is complete", {
+            // Check if everything is already done for this execution - if so, skip all API calls
+            if (hasKeywords && hasDataForSEOResults && hasDataForSEOMetrics && hasReport && savedProgress) {
+                logger.info("All API calls already completed for this execution, pipeline is complete", {
+                    executionId,
                     projectId,
                     target: targetToUse,
                     normalizedTarget,
@@ -3757,18 +3933,20 @@ Return ONLY the JSON array, no other text. Example format:
                 finalKeywords = savedProgress.newKeywords || [];
                 siteResults = savedProgress.dataForSEOSiteResults as any;
 
-                // Save progress to mark as complete
-                await saveProgress({
-                    currentStage: 'complete',
-                    reportGenerated: true,
-                    newKeywords: finalKeywords
-                });
+                // Mark execution as complete if not already
+                if (execution.status !== 'complete') {
+                    await saveProgress({
+                        currentStage: 'complete',
+                        reportGenerated: true,
+                        newKeywords: finalKeywords
+                    });
+                }
 
-                return; // Pipeline already complete for this website
+                return; // Pipeline already complete for this execution
             }
 
-            // STEP 1: Fetch keywords from website using live API (skip if keywords already found for this website)
-            if (!hasKeywords || isDifferentWebsite) {
+            // STEP 1: Fetch keywords from website using live API (skip if keywords already found for this execution)
+            if (!hasKeywords) {
                 // Only fetch if we have a target (not resuming without target)
                 if (!targetToUse || targetToUse.trim().length === 0) {
                     const errorMessage = "Cannot fetch keywords: website URL is required. Please provide a website URL or resume from existing progress.";
@@ -3862,10 +4040,10 @@ Return ONLY the JSON array, no other text. Example format:
                 hasKeywords = true;
                 hasDataForSEOResults = true;
 
-                // Re-fetch project to get updated progress state
-                const updatedProject = await storage.getCustomSearchProject(projectId);
-                if (updatedProject?.keywordGenerationProgress) {
-                    savedProgress = updatedProject.keywordGenerationProgress;
+                // Re-fetch execution to get updated progress state
+                execution = await storage.getPipelineExecution(executionId);
+                if (execution?.progress) {
+                    savedProgress = execution.progress;
                     // Re-evaluate hasDataForSEOMetrics based on updated progress
                     hasDataForSEOMetrics = savedProgress.dataForSEOFetched === true;
                     // Ensure siteResults is available from saved progress
@@ -3873,6 +4051,7 @@ Return ONLY the JSON array, no other text. Example format:
                         siteResults = savedProgress.dataForSEOSiteResults as any;
                     }
                     logger.info("Re-evaluated flags after saving keywords", {
+                        executionId,
                         projectId,
                         hasKeywords,
                         hasDataForSEOResults,
@@ -3884,15 +4063,20 @@ Return ONLY the JSON array, no other text. Example format:
 
                 // Immediately transition to next stage if metrics haven't been fetched yet
                 if (!hasDataForSEOMetrics) {
-                    logger.info("Transitioning to fetching-dataforseo stage after extracting keywords", { projectId });
+                    logger.info("Transitioning to fetching-dataforseo stage after extracting keywords", { executionId, projectId });
                     await saveProgress({
                         currentStage: 'fetching-dataforseo',
                     });
+                    // Re-fetch execution to get updated progress after transition
+                    execution = await storage.getPipelineExecution(executionId);
+                    if (execution?.progress) {
+                        savedProgress = execution.progress;
+                        hasDataForSEOMetrics = savedProgress.dataForSEOFetched === true;
+                    }
+                } else {
+                    // Update savedProgress reference after extraction (if not transitioning)
+                    hasDataForSEOMetrics = savedProgress?.dataForSEOFetched === true;
                 }
-
-                // Update savedProgress reference after extraction
-                savedProgress = project.keywordGenerationProgress;
-                hasDataForSEOMetrics = savedProgress?.dataForSEOFetched === true;
             } else {
                 // Use saved DataForSEO results or keywords
                 let finalKeywordsLocal: string[] = [];
@@ -3945,10 +4129,44 @@ Return ONLY the JSON array, no other text. Example format:
                     hasDataForSEOResults = savedProgress?.dataForSEOSiteResults && Array.isArray(savedProgress.dataForSEOSiteResults) && savedProgress.dataForSEOSiteResults.length > 0;
 
                     logger.info("Using keywords", { projectId, keywordsCount: finalKeywords.length });
-                    await saveProgress({
-                        currentStage: 'extracting-keywords',
-                        newKeywords: finalKeywords
-                    });
+                    
+                    // Only update stage if we're not already at extracting-keywords or beyond
+                    // If resuming from extracting-keywords, skip setting it again and go straight to transition
+                    const currentStage = savedProgress?.currentStage || savedProgress?.stage || 'idle';
+                    const shouldSetExtractingStage = currentStage !== 'extracting-keywords' && 
+                                                     currentStage !== 'fetching-dataforseo' && 
+                                                     currentStage !== 'generating-report' &&
+                                                     currentStage !== 'complete';
+                    
+                    if (shouldSetExtractingStage) {
+                        await saveProgress({
+                            currentStage: 'extracting-keywords',
+                            newKeywords: finalKeywords
+                        });
+                    } else {
+                        // Just update keywords without changing stage
+                        await saveProgress({
+                            newKeywords: finalKeywords
+                        });
+                    }
+                    
+                    // Transition to next stage if metrics haven't been fetched yet
+                    if (!hasDataForSEOMetrics) {
+                        logger.info("Transitioning to fetching-dataforseo stage after loading saved keywords", { 
+                            executionId,
+                            projectId,
+                            previousStage: currentStage
+                        });
+                        await saveProgress({
+                            currentStage: 'fetching-dataforseo',
+                        });
+                        // Re-fetch execution to get updated progress after transition
+                        execution = await storage.getPipelineExecution(executionId);
+                        if (execution?.progress) {
+                            savedProgress = execution.progress;
+                            hasDataForSEOMetrics = savedProgress.dataForSEOFetched === true;
+                        }
+                    }
                 }
 
                 // Validate that we have keywords before proceeding
@@ -4006,8 +4224,9 @@ Return ONLY the JSON array, no other text. Example format:
 
             // STEP 3: Process DataForSEO results in memory (skip if already done)
             // This runs regardless of whether keywords were just extracted or loaded from saved progress
-            // Re-check flags after potential updates
-            savedProgress = project.keywordGenerationProgress;
+            // Re-check flags after potential updates - re-fetch execution to get latest progress state
+            execution = await storage.getPipelineExecution(executionId);
+            savedProgress = execution?.progress || savedProgress;
             hasDataForSEOMetrics = savedProgress?.dataForSEOFetched === true;
             hasDataForSEOResults = savedProgress?.dataForSEOSiteResults && Array.isArray(savedProgress.dataForSEOSiteResults) && savedProgress.dataForSEOSiteResults.length > 0;
 
@@ -4071,7 +4290,8 @@ Return ONLY the JSON array, no other text. Example format:
 
             // STEP 4: Generate report FIRST (before saving to database)
             // Re-check hasReport flag after potential updates
-            savedProgress = project.keywordGenerationProgress;
+            execution = await storage.getPipelineExecution(executionId);
+            savedProgress = execution?.progress || savedProgress;
             hasReport = savedProgress?.reportGenerated === true;
 
             if (!hasReport) {
@@ -4233,6 +4453,7 @@ Return ONLY the JSON array, no other text. Example format:
 
                         // Update progress after save completes
                         logger.info("Saved DataForSEO metrics to database", {
+                            executionId,
                             projectId,
                             keywordsWithData: savedKeywordsCount,
                             totalKeywords: finalKeywords.length
@@ -4242,9 +4463,9 @@ Return ONLY the JSON array, no other text. Example format:
                             keywordsFetchedCount: savedKeywordsCount
                         });
 
-                        // Re-fetch project to get updated progress state
-                        const updatedProject = await storage.getCustomSearchProject(projectId);
-                        const currentProgress = updatedProject?.keywordGenerationProgress;
+                        // Re-fetch execution to get updated progress state
+                        const currentExecution = await storage.getPipelineExecution(executionId);
+                        const currentProgress = currentExecution?.progress;
 
                         // STEP 6: Compute metrics in the background AFTER keywords are saved
                         // This ensures keywords exist in the database before metrics computation starts
@@ -4753,18 +4974,19 @@ Return ONLY the JSON array, no other text. Example format:
             }
         } catch (error) {
             logger.error("Error in background pipeline execution", error, {
+                executionId,
                 projectId,
             });
 
-            // Try to save error state - use a basic save since saveProgress might not be available
+            // Try to save error state to execution
             try {
                 // Try to get keywords from saved progress if finalKeywords is empty
                 let keywordsForError = finalKeywords || [];
                 if (keywordsForError.length === 0) {
                     try {
-                        const project = await storage.getCustomSearchProject(projectId);
-                        if (project?.keywordGenerationProgress?.newKeywords) {
-                            keywordsForError = project.keywordGenerationProgress.newKeywords;
+                        const currentExecution = await storage.getPipelineExecution(executionId);
+                        if (currentExecution?.progress?.newKeywords) {
+                            keywordsForError = currentExecution.progress.newKeywords;
                         }
                     } catch (e) {
                         // Ignore errors when trying to get saved progress
@@ -4782,17 +5004,114 @@ Return ONLY the JSON array, no other text. Example format:
                     existingKeywordsFound: 0,
                     newKeywordsCollected: keywordsForError.length
                 };
-                await storage.saveKeywordGenerationProgress(projectId, errorProgress);
+                await storage.updatePipelineExecution(executionId, {
+                    status: 'error',
+                    currentStage: 'error',
+                    progress: errorProgress,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                });
             } catch (saveError) {
                 logger.error("Error saving error progress", saveError, {
+                    executionId,
                     projectId,
                 });
             }
         }
     }
 
-    // Pipeline status endpoint - allows polling for progress
+    // Pipeline status endpoint - returns array of active/running executions
     app.get("/api/custom-search/pipeline-status/:projectId", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { projectId } = req.params;
+
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+
+            const project = await storage.getCustomSearchProject(projectId);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (project.userId !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden" });
+            }
+
+            // Get all running executions for this project
+            const runningExecutions = await storage.getPipelineExecutionsByProject(projectId, 'running');
+            
+            // Format executions for response
+            const executions = runningExecutions.map(exec => ({
+                id: exec.id,
+                website: exec.targetWebsite,
+                normalizedWebsite: exec.normalizedWebsite,
+                stage: exec.currentStage,
+                status: exec.status,
+                progress: exec.progress,
+                createdAt: exec.createdAt,
+                updatedAt: exec.updatedAt,
+            }));
+
+            return res.json({
+                executions: executions,
+                // Include report if any execution is complete (for backward compatibility)
+                report: null // Report is fetched separately via /api/custom-search/projects/:id/report
+            });
+        } catch (error) {
+            logger.error("Error fetching pipeline status", error, {
+                projectId: req.params.projectId
+            });
+            return res.status(500).json({
+                message: error instanceof Error ? error.message : "Unknown error"
+            });
+        }
+    });
+
+    // Execution-specific status endpoint
+    app.get("/api/custom-search/pipeline-execution/:executionId", requireAuth, requirePayment, async (req, res) => {
+        try {
+            const { executionId } = req.params;
+
+            if (!executionId) {
+                return res.status(400).json({ message: "executionId is required" });
+            }
+
+            const execution = await storage.getPipelineExecution(executionId);
+            if (!execution) {
+                return res.status(404).json({ message: "Pipeline execution not found" });
+            }
+
+            // Verify user owns the project
+            const project = await storage.getCustomSearchProject(execution.customSearchProjectId);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            if (project.userId !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden" });
+            }
+
+            return res.json({
+                id: execution.id,
+                website: execution.targetWebsite,
+                normalizedWebsite: execution.normalizedWebsite,
+                stage: execution.currentStage,
+                status: execution.status,
+                progress: execution.progress,
+                error: execution.error,
+                createdAt: execution.createdAt,
+                updatedAt: execution.updatedAt,
+            });
+        } catch (error) {
+            logger.error("Error fetching execution status", error, {
+                executionId: req.params.executionId
+            });
+            return res.status(500).json({
+                message: error instanceof Error ? error.message : "Unknown error"
+            });
+        }
+    });
+
+    // Legacy endpoint for backward compatibility - returns single progress if exists
+    app.get("/api/custom-search/pipeline-status-legacy/:projectId", requireAuth, requirePayment, async (req, res) => {
         try {
             const { projectId } = req.params;
 

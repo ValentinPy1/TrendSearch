@@ -142,6 +142,21 @@ GOOGLE_SEARCH_ENGINE_ID=your_search_engine_id
 
 **Note:** Google Custom Search API has a free tier of 100 queries per day. Beyond that, it's a paid service.
 
+### Supabase MCP Configuration (Optional)
+
+For Cursor AI integration with Supabase, you can configure a Model Context Protocol (MCP) server:
+
+- `SUPABASE_ACCESS_TOKEN` - Your Supabase Personal Access Token (PAT) for MCP authentication
+
+This is optional and only needed if you want Cursor AI to interact directly with your Supabase database.
+
+```env
+# Supabase MCP (optional, for Cursor AI integration)
+SUPABASE_ACCESS_TOKEN=your_personal_access_token
+```
+
+**Note:** See `MCP_SETUP.md` for detailed instructions on setting up the Supabase MCP server.
+
 ## Security Notes
 
 - Never commit the `.env` file to version control
@@ -151,4 +166,5 @@ GOOGLE_SEARCH_ENGINE_ID=your_search_engine_id
 - The `STRIPE_PUBLISHABLE_KEY` can be used in client-side code (but not needed for this implementation)
 - The `DATA_FOR_SEO_LOGIN`, `DATA_FOR_SEO_PASSWORD`, and `DATA_FOR_SEO_CRED_B64` should only be used on the server side
 - The `GOOGLE_SEARCH_API_KEY` and `GOOGLE_SEARCH_ENGINE_ID` should only be used on the server side
+- The `SUPABASE_ACCESS_TOKEN` is used for MCP authentication and should be kept secure (not committed to version control)
 
