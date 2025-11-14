@@ -17,7 +17,18 @@ createRoot(document.getElementById("root")!).render(
         api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
         defaults: '2025-05-24',
         capture_exceptions: true,
-          debug: false,
+        debug: false,
+        // Enable surveys
+        surveys: true,
+        // Load surveys on initialization
+        loaded: (posthog) => {
+          if (import.meta.env.MODE !== 'development') {
+            // Load surveys when PostHog is ready
+            posthog.onSurveysLoaded(() => {
+              console.log('PostHog surveys loaded');
+            });
+          }
+        },
       }}
     >
       <App />

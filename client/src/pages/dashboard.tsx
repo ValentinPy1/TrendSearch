@@ -33,6 +33,8 @@ import { usePaymentStatus } from "@/hooks/use-payment-status";
 import { PaywallModal } from "@/components/paywall-modal";
 import { CreditPurchaseModal } from "@/components/credit-purchase-modal";
 import { FeedbackModal } from "@/components/feedback-modal";
+import { usePostHog } from "posthog-js/react";
+import { DisplaySurveyType } from "posthog-js";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -56,6 +58,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     const [showPaywall, setShowPaywall] = useState(false);
     const [showCreditPurchase, setShowCreditPurchase] = useState(false);
     const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+    const posthog = usePostHog();
     const { data: paymentStatus } = usePaymentStatus();
     const hasPaid = paymentStatus?.hasPaid ?? false;
     const credits = paymentStatus?.credits ?? 0;
