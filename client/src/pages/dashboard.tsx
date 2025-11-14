@@ -25,10 +25,12 @@ import {
     DialogOverlay,
     DialogPortal,
 } from "@/components/ui/dialog";
-import { LogOut, Loader2, HelpCircle } from "lucide-react";
+import { LogOut, Loader2, HelpCircle, Sparkles, Coins } from "lucide-react";
 import type { IdeaWithReport } from "@shared/schema";
 import logoImage from "@assets/image_1761146000585.png";
 import { KeywordFilter } from "@/components/keyword-filters";
+import { usePaymentStatus } from "@/hooks/use-payment-status";
+import { PaywallModal } from "@/components/paywall-modal";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -49,6 +51,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     const [selectedIdea, setSelectedIdea] = useState<IdeaWithReport | null>(null);
     const [showHistory, setShowHistory] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
+    const { data: paymentStatus } = usePaymentStatus();
+    const hasPaid = paymentStatus?.hasPaid ?? false;
+    const credits = paymentStatus?.credits ?? 0;
     const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
     const [isGeneratingReport, setIsGeneratingReport] = useState(false);
     const [searchKeyword, setSearchKeyword] = useState<string | null>(null);
@@ -401,6 +407,23 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                         <img src={logoImage} alt="Pioneers AI Lab" className="h-6" />
                     </a>
                     <div className="flex items-center gap-4">
+                        {hasPaid && (
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20">
+                                <Coins className="h-4 w-4 text-primary" />
+                                <span className="text-sm font-semibold text-white">{credits}</span>
+                                <span className="text-xs text-white/60">credits</span>
+                            </div>
+                        )}
+                        {!hasPaid && (
+                            <Button
+                                onClick={() => setShowPaywall(true)}
+                                size="sm"
+                                className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
+                            >
+                                <Sparkles className="h-4 w-4 mr-2" />
+                                Upgrade Premium
+                            </Button>
+                        )}
                         <span className="text-sm text-white/60">{user.email}</span>
                         <Button
                             variant="ghost"
@@ -756,6 +779,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Paywall Modal */}
+            <PaywallModal
+                open={showPaywall}
+                onOpenChange={setShowPaywall}
+                feature="custom-search"
+            />
         </div>
     );
 }

@@ -2189,8 +2189,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
     });
 
-    // Get aggregated sector metrics - requires payment
-    app.get("/api/sectors/aggregated", requireAuth, requirePayment, async (req, res) => {
+    // Get aggregated sector metrics - free tier (list only, details require payment)
+    app.get("/api/sectors/aggregated", requireAuth, async (req, res) => {
         try {
             const sectorsPath = path.join(process.cwd(), "data", "sectors_aggregated_metrics.json");
             const sectorsStructurePath = path.join(process.cwd(), "data", "sectors.json");

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import { useSectorData, type IndustryAggregateResult, type CompanyMetricResult } from "@/hooks/use-sector-data";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
 import { queryClient } from "@/lib/queryClient";
@@ -198,7 +198,6 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
 
     // Check if payment is required
     const hasPaid = paymentStatus?.hasPaid ?? false;
-    const isPaymentRequired = !hasPaid && ((error as any)?.status === 402 || (error as any)?.requiresPayment);
 
     // Refetch payment status when component opens to ensure we have latest status
     useEffect(() => {
@@ -208,14 +207,13 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
         }
     }, [open]);
 
-    // Show paywall if payment is required
-    useEffect(() => {
-        if (isPaymentRequired && open) {
-            setShowPaywall(true);
-        }
-    }, [isPaymentRequired, open]);
-
     const handleSubIndustryClick = (subIndustryName: string) => {
+        // Check payment status before allowing access to sector details
+        if (!hasPaid) {
+            setShowPaywall(true);
+            return;
+        }
+        
         setSelectedSubIndustry(subIndustryName);
         setFilterQuery("");
         setCompanyFilterQuery("");
@@ -455,45 +453,6 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
         );
     }
 
-    // Show paywall if payment is required
-    if (isPaymentRequired) {
-        return (
-            <>
-                <Dialog open={open} onOpenChange={onOpenChange}>
-                    <DialogContent className="max-w-md">
-                        <DialogHeader>
-                            <div className="flex items-center justify-center mb-4">
-                                <div className="p-3 rounded-full bg-primary/10">
-                                    <Lock className="h-8 w-8 text-primary" />
-                                </div>
-                            </div>
-                            <DialogTitle className="text-center text-2xl">
-                                Premium Feature
-                            </DialogTitle>
-                        </DialogHeader>
-                        <GlassmorphicCard className="p-8 text-center space-y-4">
-                            <p className="text-white/90">
-                                Sector browsing is a premium feature. Unlock it with a one-time payment.
-                            </p>
-                            <Button
-                                onClick={() => setShowPaywall(true)}
-                                className="w-full"
-                                size="lg"
-                            >
-                                Unlock Premium Features
-                            </Button>
-                        </GlassmorphicCard>
-                    </DialogContent>
-                </Dialog>
-                <PaywallModal
-                    open={showPaywall}
-                    onOpenChange={setShowPaywall}
-                    feature="sector-browsing"
-                />
-            </>
-        );
-    }
-
     if (error || !data) {
         return (
             <Dialog open={open} onOpenChange={onOpenChange}>
@@ -513,6 +472,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
 
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col bg-background/95 backdrop-blur-xl">
                 <DialogHeader className="border-b border-white/10 pb-4 px-6">
@@ -1580,6 +1540,14 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                 </DialogContent>
             </Dialog>
         </Dialog>
+
+        {/* Paywall Modal for sector details */}
+        <PaywallModal
+            open={showPaywall}
+            onOpenChange={setShowPaywall}
+            feature="sector-browsing"
+        />
+        </>
     );
 }
 

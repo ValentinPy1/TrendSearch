@@ -100,13 +100,17 @@ export function IdeaGenerator({
             const res = await apiRequest("POST", "/api/generate-idea", data);
             return res.json();
         },
-        onSuccess: (result) => {
-            toast({
-                title: "Idea Generated!",
-                description: result.idea.generatedIdea,
-            });
-            // Set the generated idea in the input field
-            form.setValue("idea", result.idea.generatedIdea);
+        onSuccess: (result, variables) => {
+            // Only show toast if idea was AI-generated (originalIdea is null)
+            // Don't show toast for original ideas typed by the user
+            if (variables.originalIdea === null) {
+                toast({
+                    title: "Idea Generated!",
+                    description: result.idea.generatedIdea,
+                });
+                // Set the generated idea in the input field
+                form.setValue("idea", result.idea.generatedIdea);
+            }
             queryClient.invalidateQueries({ queryKey: ["/api/ideas"] });
             onIdeaGenerated(result.idea);
 
