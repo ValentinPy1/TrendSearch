@@ -63,7 +63,7 @@ export function KeywordMetricsCards({ keyword, allKeywords }: KeywordMetricsCard
     const getOrangeGradientText = (value: number, max: number) => {
         const normalizedValue = Math.min(1, (value / max));
         const lightness = 100 - (normalizedValue * 40);
-        return { color: `hsl(30, 80%, ${lightness}%)` };
+        return { color: `hsl(142, 80%, ${lightness}%)` };
     };
 
     const formatTwoSignificantDigits = (value: number): string => {

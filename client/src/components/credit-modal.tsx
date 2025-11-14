@@ -21,8 +21,10 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
     const hasPaid = paymentStatus?.hasPaid ?? false;
 
     const createCheckoutMutation = useMutation({
-        mutationFn: async () => {
-            const res = await apiRequest("POST", "/api/stripe/create-checkout");
+        mutationFn: async (purchaseType: "premium" | "credits") => {
+            const res = await apiRequest("POST", "/api/stripe/create-checkout", {
+                type: purchaseType
+            });
             return res.json();
         },
         onSuccess: (data) => {
@@ -46,8 +48,12 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
         },
     });
 
-    const handleCheckout = () => {
-        createCheckoutMutation.mutate();
+    const handlePremiumCheckout = () => {
+        createCheckoutMutation.mutate("premium");
+    };
+
+    const handleCreditsCheckout = () => {
+        createCheckoutMutation.mutate("credits");
     };
 
     return (
@@ -94,10 +100,32 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
                     )}
 
                     {hasPaid && creditsAvailable < creditsRequired && (
-                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-                            <p className="text-sm text-white/90">
-                                You've used all your credits. Please contact support to purchase more credits.
+                        <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm text-white/80 font-semibold">Refuel Credits</span>
+                                <span className="text-xs text-white/60">$4.99</span>
+                            </div>
+                            <p className="text-xs text-white/60 mb-3">
+                                Purchase 20 more credits to continue using premium features.
                             </p>
+                            <Button
+                                onClick={handleCreditsCheckout}
+                                disabled={createCheckoutMutation.isPending}
+                                className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
+                                size="sm"
+                            >
+                                {createCheckoutMutation.isPending ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Processing...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Coins className="mr-2 h-4 w-4" />
+                                        Purchase 20 Credits
+                                    </>
+                                )}
+                            </Button>
                         </div>
                     )}
 
@@ -111,9 +139,9 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
                         </Button>
                         {!hasPaid && (
                             <Button
-                                onClick={handleCheckout}
+                                onClick={handlePremiumCheckout}
                                 disabled={createCheckoutMutation.isPending}
-                                className="flex-1"
+                                className="flex-1 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
                             >
                                 {createCheckoutMutation.isPending ? (
                                     <>
@@ -121,7 +149,10 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
                                         Processing...
                                     </>
                                 ) : (
-                                    "Upgrade to Premium"
+                                    <>
+                                        <Sparkles className="mr-2 h-4 w-4" />
+                                        Upgrade Premium ($9.99)
+                                    </>
                                 )}
                             </Button>
                         )}

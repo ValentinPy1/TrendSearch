@@ -54,15 +54,15 @@ export function SectorMetricsMini({ metrics, compact = false }: SectorMetricsMin
         const clampedValue = Math.max(minOpportunity, Math.min(maxOpportunity, value));
         const normalizedValue = (clampedValue - minOpportunity) / (maxOpportunity - minOpportunity);
 
-        // Interpolate from white (at 20) to orange (at 35)
-        // White: hsl(0, 0%, 100%) -> Orange: hsl(25, 100%, 60%)
+        // Interpolate from white (at 20) to green (at 35)
+        // White: hsl(0, 0%, 100%) -> Green: hsl(142, 100%, 60%)
         if (normalizedValue === 0) {
             return { color: `hsl(0, 0%, 100%)` }; // Pure white at 20
         }
 
         // At 20: white (0% saturation, 100% lightness)
-        // At 35: orange (25 hue, 100% saturation, 60% lightness)
-        const hue = 25;
+        // At 35: green (142 hue, 100% saturation, 60% lightness)
+        const hue = 142;
         const saturation = normalizedValue * 100; // 0% to 100%
         const lightness = 100 - (normalizedValue * 40); // 100% to 60%
 

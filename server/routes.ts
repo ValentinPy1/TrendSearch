@@ -1434,16 +1434,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     app.post("/api/stripe/create-checkout", requireAuth, async (req, res) => {
         try {
             const user = req.user;
+            const { type = "premium" } = req.body; // "premium" or "credits"
 
-            // If user already paid, return success
-            if (user.hasPaid) {
+            // For premium: check if user already paid
+            if (type === "premium" && user.hasPaid) {
                 return res.json({
                     message: "User already has access",
                     alreadyPaid: true
                 });
             }
 
-            if (!process.env.STRIPE_PRICE_ID) {
+            // Determine price ID based on type
+            let priceId: string;
+            if (type === "credits") {
+                priceId = process.env.STRIPE_CREDITS_PRICE_ID || "price_1STJJAP3RKjma8FgHswJMmoh";
+            } else {
+                priceId = process.env.STRIPE_PRICE_ID || "price_1STJINP3RKjma8Fgx6YuZSGj";
+            }
+
+            if (!priceId) {
                 return res.status(500).json({
                     message: "Stripe price ID not configured"
                 });
@@ -1454,7 +1463,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 payment_method_types: ['card'],
                 line_items: [
                     {
-                        price: process.env.STRIPE_PRICE_ID,
+                        price: priceId,
                         quantity: 1,
                     },
                 ],
@@ -1464,6 +1473,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 customer_email: user.email,
                 metadata: {
                     userId: user.id,
+                    purchaseType: type, // "premium" or "credits"
                 },
             });
 
@@ -1515,32 +1525,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (event.type === 'checkout.session.completed') {
             const session = event.data.object as Stripe.Checkout.Session;
 
-            // Get user ID from metadata
+            // Get user ID and purchase type from metadata
             const userId = session.metadata?.userId;
+            const purchaseType = session.metadata?.purchaseType || "premium"; // Default to premium for backward compatibility
+            
             if (!userId) {
                 console.error("No userId in checkout session metadata");
                 return res.status(400).json({ message: "Missing userId in session metadata" });
             }
 
-            // Update user payment status and grant credits
             try {
-                await db.update(users)
-                    .set({
-                        hasPaid: true,
-                        paymentDate: new Date(),
-                        stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
-                        credits: 20, // Grant 20 credits for premium account
-                    })
-                    .where(eq(users.id, userId));
-
-                console.log(`✅ Payment completed for user ${userId} - hasPaid set to true, 20 credits granted`);
-
-                // Verify the update was successful
-                const updatedUser = await storage.getUser(userId);
-                if (updatedUser?.hasPaid) {
-                    console.log(`✅ Verified: User ${userId} payment status updated successfully, credits: ${updatedUser.credits ?? 0}`);
+                if (purchaseType === "credits") {
+                    // Add 20 credits for credit purchase
+                    await storage.addCredits(userId, 20);
+                    console.log(`✅ Credits purchase completed for user ${userId} - 20 credits added`);
+                    
+                    // Verify the update
+                    const updatedUser = await storage.getUser(userId);
+                    console.log(`✅ Verified: User ${userId} credits updated successfully, total credits: ${updatedUser?.credits ?? 0}`);
                 } else {
-                    console.error(`❌ Warning: User ${userId} payment status update may have failed`);
+                    // Premium purchase: set hasPaid and grant 20 credits
+                    await db.update(users)
+                        .set({
+                            hasPaid: true,
+                            paymentDate: new Date(),
+                            stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
+                            credits: 20, // Grant 20 credits for premium account
+                        })
+                        .where(eq(users.id, userId));
+
+                    console.log(`✅ Premium payment completed for user ${userId} - hasPaid set to true, 20 credits granted`);
+
+                    // Verify the update was successful
+                    const updatedUser = await storage.getUser(userId);
+                    if (updatedUser?.hasPaid) {
+                        console.log(`✅ Verified: User ${userId} payment status updated successfully, credits: ${updatedUser.credits ?? 0}`);
+                    } else {
+                        console.error(`❌ Warning: User ${userId} payment status update may have failed`);
+                    }
                 }
             } catch (dbError) {
                 console.error("Failed to update user payment status:", dbError);

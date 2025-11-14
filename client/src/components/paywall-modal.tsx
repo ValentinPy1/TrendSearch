@@ -17,8 +17,10 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
     const [expandedFeatures, setExpandedFeatures] = useState<Set<number>>(new Set());
 
     const createCheckoutMutation = useMutation({
-        mutationFn: async () => {
-            const res = await apiRequest("POST", "/api/stripe/create-checkout");
+        mutationFn: async (purchaseType: "premium" | "credits" = "premium") => {
+            const res = await apiRequest("POST", "/api/stripe/create-checkout", {
+                type: purchaseType
+            });
             return res.json();
         },
         onSuccess: (data) => {
@@ -43,7 +45,7 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
     });
 
     const handleCheckout = () => {
-        createCheckoutMutation.mutate();
+        createCheckoutMutation.mutate("premium");
     };
 
     const featureName = feature === "sector-browsing" 

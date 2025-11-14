@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { GlassmorphicCard } from "./glassmorphic-card";
-import { ArrowUpDown, ArrowUp, ArrowDown, Copy, Search, Trash2, Columns, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Copy, Search, Trash2, Columns, ChevronUp, ChevronDown, Loader2, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { Keyword } from "@shared/schema";
 
 type SortField =
@@ -106,6 +107,7 @@ export function KeywordsTable({
         return DEFAULT_VISIBLE_COLUMNS;
     });
     const [isColumnSelectorOpen, setIsColumnSelectorOpen] = useState(false);
+    const [isMetricsExplanationOpen, setIsMetricsExplanationOpen] = useState(false);
 
     // Save visible columns to localStorage whenever they change
     useEffect(() => {
@@ -183,15 +185,15 @@ export function KeywordsTable({
     const getOrangeGradientText = (value: number, max: number = 100) => {
         const normalizedValue = Math.min(1, Math.max(0, value / max));
 
-        // Interpolate from white (at 0) to orange (at 100)
-        // White: hsl(0, 0%, 100%) -> Orange: hsl(25, 100%, 60%)
+        // Interpolate from white (at 0) to green (at 100)
+        // White: hsl(0, 0%, 100%) -> Green: hsl(142, 100%, 60%)
         if (normalizedValue === 0) {
             return { color: `hsl(0, 0%, 100%)` }; // Pure white at 0
         }
 
         // At 0: white (0% saturation, 100% lightness)
-        // At 100: orange (25 hue, 100% saturation, 60% lightness)
-        const hue = 25;
+        // At 100: green (142 hue, 100% saturation, 60% lightness)
+        const hue = 142;
         const saturation = normalizedValue * 100; // 0% to 100%
         const lightness = 100 - (normalizedValue * 40); // 100% to 60%
 
@@ -391,7 +393,7 @@ export function KeywordsTable({
                 field: "similarityScore",
                 align: "center",
                 sortable: true,
-                tooltip: "How closely this keyword matches your idea",
+                tooltip: "How closely this keyword matches your idea semantically",
                 format: (value) => {
                     const matchPercentage = parseFloat(value || "0") * 100;
                     return (
@@ -522,7 +524,7 @@ export function KeywordsTable({
                 field: "volatility",
                 align: "right",
                 sortable: true,
-                tooltip: "Variability in search volume (lower = more stable)",
+                tooltip: "Measures deviation from expected growth trend by comparing actual monthly volumes to predicted exponential growth. Lower = more stable patterns.",
                 format: (value) => {
                     if (value === null || value === undefined || value === "") {
                         if (metricsPending) {
@@ -544,7 +546,7 @@ export function KeywordsTable({
                 field: "trendStrength",
                 align: "right",
                 sortable: true,
-                tooltip: "Strength and reliability of the trend (0-1, higher = stronger trend)",
+                tooltip: "Combines YoY growth with volatility to measure trend reliability. Higher values = stronger, more consistent growth that accounts for both magnitude and stability.",
                 format: (value) => {
                     if (value === null || value === undefined || value === "") {
                         if (metricsPending) {
@@ -566,7 +568,7 @@ export function KeywordsTable({
                 field: "bidEfficiency",
                 align: "right",
                 sortable: true,
-                tooltip: "Efficiency metric for bidding (higher = better value)",
+                tooltip: "Compares top page bid to CPC. Higher values = better value for top placement, meaning you pay less relative to top position costs.",
                 format: (value) => {
                     if (value === null || value === undefined || value === "") {
                         if (metricsPending) {
@@ -588,7 +590,7 @@ export function KeywordsTable({
                 field: "tac",
                 align: "right",
                 sortable: true,
-                tooltip: "Total Acquisition Cost",
+                tooltip: "Total monthly ad spend if capturing all searches at current CPC. Calculated as volume × CPC. Represents total market size for this keyword.",
                 format: (value) => {
                     if (value === null || value === undefined || value === "") {
                         if (metricsPending) {
@@ -623,7 +625,7 @@ export function KeywordsTable({
                 field: "sac",
                 align: "right",
                 sortable: true,
-                tooltip: "Search Acquisition Cost",
+                tooltip: "TAC adjusted for competition level. Lower competition = higher SAC, indicating more advertiser value relative to competition. Scales TAC inversely with competition.",
                 format: (value) => {
                     if (value === null || value === undefined || value === "") {
                         if (metricsPending) {
@@ -658,7 +660,7 @@ export function KeywordsTable({
                 field: "opportunityScore",
                 align: "right",
                 sortable: true,
-                tooltip: "Comprehensive opportunity score combining multiple factors (higher = better opportunity)",
+                tooltip: "Combines SAC, trend strength, and bid efficiency. Higher = better opportunity with strong growth, good bid value, and high advertiser interest relative to competition.",
                 format: (value) => {
                     if (value === null || value === undefined || value === "") {
                         if (metricsPending) {
@@ -893,7 +895,18 @@ export function KeywordsTable({
 
     return (
         <GlassmorphicCard className="p-8">
-            <div className="flex items-center justify-end mb-4">
+            <div className="flex items-center justify-between mb-4">
+                {/* Metrics Explanation Button */}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-white/60 hover:text-white gap-2"
+                    onClick={() => setIsMetricsExplanationOpen(true)}
+                >
+                    <HelpCircle className="h-4 w-4" />
+                    <span className="text-sm">Metrics Explanation</span>
+                </Button>
+
                 {/* Columns Button */}
                 <Popover open={isColumnSelectorOpen} onOpenChange={setIsColumnSelectorOpen}>
                     <PopoverTrigger asChild>
@@ -1087,6 +1100,72 @@ export function KeywordsTable({
                     </tbody>
                 </table>
             </div>
+
+            {/* Metrics Explanation Dialog */}
+            <Dialog open={isMetricsExplanationOpen} onOpenChange={setIsMetricsExplanationOpen}>
+                <DialogContent className="max-w-3xl max-h-[80vh] bg-gray-900 border-gray-700 overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="text-white">Metrics Explanation</DialogTitle>
+                        <DialogDescription className="text-white/60">
+                            Understanding how each metric is calculated
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="mt-4 space-y-6 text-white/90">
+                        {/* Primary Metrics */}
+                        <div>
+                            <h3 className="text-lg font-semibold text-white mb-3">Primary Metrics</h3>
+                            <div className="space-y-3 text-sm">
+                                <div>
+                                    <strong className="text-white">Match:</strong> Semantic similarity using AI embeddings to compare meaning, not exact words. Higher = more relevant to your idea's intent.
+                                </div>
+                                <div>
+                                    <strong className="text-white">Volume:</strong> Average monthly searches for this keyword
+                                </div>
+                                <div>
+                                    <strong className="text-white">Competition:</strong> Level of advertiser competition (0-100 scale)
+                                </div>
+                                <div>
+                                    <strong className="text-white">CPC:</strong> Average cost per click in advertising
+                                </div>
+                                <div>
+                                    <strong className="text-white">Top Page Bid:</strong> Estimated cost to appear at top of search results
+                                </div>
+                                <div>
+                                    <strong className="text-white">3Mo Trend:</strong> Search volume change over last 3 months
+                                </div>
+                                <div>
+                                    <strong className="text-white">YoY Trend:</strong> Search volume change compared to last year
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Secondary Metrics */}
+                        <div>
+                            <h3 className="text-lg font-semibold text-white mb-3">Secondary Metrics</h3>
+                            <div className="space-y-3 text-sm">
+                                <div>
+                                    <strong className="text-white">Volatility:</strong> Measures deviation from expected growth trend by comparing actual monthly volumes to predicted exponential growth. Lower = more stable patterns.
+                                </div>
+                                <div>
+                                    <strong className="text-white">Trend Strength:</strong> Combines YoY growth with volatility to measure trend reliability. Higher values = stronger, more consistent growth that accounts for both magnitude and stability.
+                                </div>
+                                <div>
+                                    <strong className="text-white">Bid Efficiency:</strong> Compares top page bid to CPC. Higher values = better value for top placement, meaning you pay less relative to top position costs.
+                                </div>
+                                <div>
+                                    <strong className="text-white">TAC:</strong> Total monthly ad spend if capturing all searches at current CPC. Calculated as volume × CPC. Represents total market size for this keyword.
+                                </div>
+                                <div>
+                                    <strong className="text-white">SAC:</strong> TAC adjusted for competition level. Lower competition = higher SAC, indicating more advertiser value relative to competition. Scales TAC inversely with competition.
+                                </div>
+                                <div>
+                                    <strong className="text-white">Opportunity Score:</strong> Combines SAC, trend strength, and bid efficiency. Higher = better opportunity with strong growth, good bid value, and high advertiser interest relative to competition.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </GlassmorphicCard>
     );
 }

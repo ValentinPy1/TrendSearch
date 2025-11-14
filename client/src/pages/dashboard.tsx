@@ -31,6 +31,7 @@ import logoImage from "@assets/image_1761146000585.png";
 import { KeywordFilter } from "@/components/keyword-filters";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
 import { PaywallModal } from "@/components/paywall-modal";
+import { CreditPurchaseModal } from "@/components/credit-purchase-modal";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -52,6 +53,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     const [showHistory, setShowHistory] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
     const [showPaywall, setShowPaywall] = useState(false);
+    const [showCreditPurchase, setShowCreditPurchase] = useState(false);
     const { data: paymentStatus } = usePaymentStatus();
     const hasPaid = paymentStatus?.hasPaid ?? false;
     const credits = paymentStatus?.credits ?? 0;
@@ -408,11 +410,17 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     </a>
                     <div className="flex items-center gap-4">
                         {hasPaid && (
-                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20">
+                            <button
+                                onClick={() => setShowCreditPurchase(true)}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-colors cursor-pointer"
+                            >
                                 <Coins className="h-4 w-4 text-primary" />
                                 <span className="text-sm font-semibold text-white">{credits}</span>
                                 <span className="text-xs text-white/60">credits</span>
-                            </div>
+                                {credits < 5 && (
+                                    <span className="ml-1 text-xs text-yellow-400">Low</span>
+                                )}
+                            </button>
                         )}
                         {!hasPaid && (
                             <Button
@@ -786,6 +794,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 onOpenChange={setShowPaywall}
                 feature="custom-search"
             />
+
+            {/* Credit Purchase Modal */}
+            {hasPaid && (
+                <CreditPurchaseModal
+                    open={showCreditPurchase}
+                    onOpenChange={setShowCreditPurchase}
+                />
+            )}
         </div>
     );
 }

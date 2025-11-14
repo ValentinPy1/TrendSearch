@@ -818,7 +818,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                         if (normalizedValue === 0) {
                                             return { color: `hsl(0, 0%, 100%)` };
                                         }
-                                        const hue = 25;
+                                        const hue = 142;
                                         const saturation = normalizedValue * 100;
                                         const lightness = 100 - (normalizedValue * 40);
                                         return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
@@ -896,11 +896,11 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                         </TableHead>
                                                         <TableHead
                                                             className="text-white/90 text-right cursor-pointer hover:text-white select-none"
-                                                            onClick={() => handleColumnSort("opportunityScore")}
+                                                            onClick={() => handleColumnSort("cpc")}
                                                         >
                                                             <div className="flex items-center justify-end">
-                                                                Avg Opportunity
-                                                                <SortIcon column="opportunityScore" />
+                                                                Avg CPC
+                                                                <SortIcon column="cpc" />
                                                             </div>
                                                         </TableHead>
                                                         <TableHead
@@ -914,11 +914,11 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                         </TableHead>
                                                         <TableHead
                                                             className="text-white/90 text-right cursor-pointer hover:text-white select-none"
-                                                            onClick={() => handleColumnSort("cpc")}
+                                                            onClick={() => handleColumnSort("opportunityScore")}
                                                         >
                                                             <div className="flex items-center justify-end">
-                                                                Avg CPC
-                                                                <SortIcon column="cpc" />
+                                                                Avg Opportunity
+                                                                <SortIcon column="opportunityScore" />
                                                             </div>
                                                         </TableHead>
                                                     </TableRow>
@@ -961,8 +961,8 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                     </span>
                                                                 </TableCell>
                                                                 <TableCell className="text-right">
-                                                                    <span style={getOrangeGradientText(metrics.opportunityScore)}>
-                                                                        {Math.round(metrics.opportunityScore)}
+                                                                    <span style={getPurpleGradientText(metrics.avgCpc)}>
+                                                                        ${metrics.avgCpc.toFixed(2)}
                                                                     </span>
                                                                 </TableCell>
                                                                 <TableCell className="text-right">
@@ -971,8 +971,8 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                     </span>
                                                                 </TableCell>
                                                                 <TableCell className="text-right">
-                                                                    <span style={getPurpleGradientText(metrics.avgCpc)}>
-                                                                        ${metrics.avgCpc.toFixed(2)}
+                                                                    <span style={getOrangeGradientText(metrics.opportunityScore)}>
+                                                                        {Math.round(metrics.opportunityScore)}
                                                                     </span>
                                                                 </TableCell>
                                                             </TableRow>
@@ -1140,7 +1140,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                             if (normalizedValue === 0) {
                                                                 return { color: `hsl(0, 0%, 100%)` };
                                                             }
-                                                            const hue = 25;
+                                                            const hue = 142;
                                                             const saturation = normalizedValue * 100;
                                                             const lightness = 100 - (normalizedValue * 40);
                                                             return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
@@ -1210,11 +1210,11 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                             </TableHead>
                                                                             <TableHead
                                                                                 className="text-white/90 text-right cursor-pointer hover:text-white select-none"
-                                                                                onClick={() => handleCompanyColumnSort("opportunityScore")}
+                                                                                onClick={() => handleCompanyColumnSort("cpc")}
                                                                             >
                                                                                 <div className="flex items-center justify-end">
-                                                                                    Avg Opportunity
-                                                                                    <CompanySortIcon column="opportunityScore" />
+                                                                                    Avg CPC
+                                                                                    <CompanySortIcon column="cpc" />
                                                                                 </div>
                                                                             </TableHead>
                                                                             <TableHead
@@ -1228,11 +1228,11 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                             </TableHead>
                                                                             <TableHead
                                                                                 className="text-white/90 text-right cursor-pointer hover:text-white select-none"
-                                                                                onClick={() => handleCompanyColumnSort("cpc")}
+                                                                                onClick={() => handleCompanyColumnSort("opportunityScore")}
                                                                             >
                                                                                 <div className="flex items-center justify-end">
-                                                                                    Avg CPC
-                                                                                    <CompanySortIcon column="cpc" />
+                                                                                    Avg Opportunity
+                                                                                    <CompanySortIcon column="opportunityScore" />
                                                                                 </div>
                                                                             </TableHead>
                                                                         </TableRow>
@@ -1290,8 +1290,8 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                                         </span>
                                                                                     </TableCell>
                                                                                     <TableCell className="text-right">
-                                                                                        <span style={getOrangeGradientText(metrics.opportunityScore)}>
-                                                                                            {Math.round(metrics.opportunityScore)}
+                                                                                        <span style={getPurpleGradientText(metrics.avgCpc)}>
+                                                                                            ${metrics.avgCpc.toFixed(2)}
                                                                                         </span>
                                                                                     </TableCell>
                                                                                     <TableCell className="text-right">
@@ -1300,8 +1300,8 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                                                         </span>
                                                                                     </TableCell>
                                                                                     <TableCell className="text-right">
-                                                                                        <span style={getPurpleGradientText(metrics.avgCpc)}>
-                                                                                            ${metrics.avgCpc.toFixed(2)}
+                                                                                        <span style={getOrangeGradientText(metrics.opportunityScore)}>
+                                                                                            {Math.round(metrics.opportunityScore)}
                                                                                         </span>
                                                                                     </TableCell>
                                                                                 </TableRow>
