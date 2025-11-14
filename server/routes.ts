@@ -1144,6 +1144,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
 
             if (error || !user) {
+                // Check if this is a network/DNS error (transient issue)
+                const isNetworkError = error?.message?.includes('fetch failed') || 
+                                      error?.message?.includes('EAI_AGAIN') ||
+                                      error?.message?.includes('getaddrinfo') ||
+                                      (error as any)?.code === 'EAI_AGAIN' ||
+                                      (error as any)?.status === 0;
+                
+                if (isNetworkError) {
+                    console.error("Network error during JWT verification (DNS/connectivity issue):", error);
+                    return res.status(503).json({ 
+                        message: "Authentication service temporarily unavailable. Please try again.",
+                        retryable: true
+                    });
+                }
+                
                 console.error("JWT verification error:", error);
                 return res.status(401).json({ message: "Unauthorized" });
             }
@@ -1233,6 +1248,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         next();
     };
 
+    // Credits middleware - check if user has paid and sufficient credits
+    const requireCredits = (amount: number) => {
+        return async (req: any, res: any, next: any) => {
+            if (!req.user) {
+                return res.status(401).json({ message: "Unauthorized" });
+            }
+
+            // Refetch user from database to get latest payment status and credits
+            const freshUser = await storage.getUser(req.user.id);
+
+            if (!freshUser) {
+                return res.status(404).json({ message: "User not found" });
+            }
+
+            // Update req.user with fresh data
+            req.user = freshUser;
+
+            // Check if user has paid
+            if (!freshUser.hasPaid) {
+                return res.status(402).json({
+                    message: "Payment required",
+                    requiresPayment: true,
+                    creditsRequired: amount,
+                    creditsAvailable: freshUser.credits ?? 0,
+                    hasPaid: false
+                });
+            }
+
+            // Check if user has sufficient credits
+            const availableCredits = freshUser.credits ?? 0;
+            if (availableCredits < amount) {
+                return res.status(402).json({
+                    message: "Insufficient credits",
+                    requiresPayment: true,
+                    creditsRequired: amount,
+                    creditsAvailable: availableCredits,
+                    hasPaid: true
+                });
+            }
+
+            // Store credit amount to deduct after successful operation
+            req.creditAmount = amount;
+            next();
+        };
+    };
+
     // Auth routes
     // Note: Signup and login are handled by Supabase Auth on the client side
     // This endpoint is called after Supabase creates the user to create the local profile
@@ -1293,7 +1354,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         res.json({
             hasPaid: freshUser.hasPaid,
-            paymentDate: freshUser.paymentDate
+            paymentDate: freshUser.paymentDate,
+            credits: freshUser.credits ?? 0
         });
     });
 
@@ -1330,12 +1392,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(403).json({ message: "Unauthorized" });
             }
 
-            // Update user payment status
+            // Update user payment status and grant credits
             await db.update(users)
                 .set({
                     hasPaid: true,
                     paymentDate: new Date(),
                     stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
+                    credits: 20, // Grant 20 credits for premium account
                 })
                 .where(eq(users.id, userId));
 
@@ -1459,22 +1522,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return res.status(400).json({ message: "Missing userId in session metadata" });
             }
 
-            // Update user payment status
+            // Update user payment status and grant credits
             try {
                 await db.update(users)
                     .set({
                         hasPaid: true,
                         paymentDate: new Date(),
                         stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
+                        credits: 20, // Grant 20 credits for premium account
                     })
                     .where(eq(users.id, userId));
 
-                console.log(`✅ Payment completed for user ${userId} - hasPaid set to true`);
+                console.log(`✅ Payment completed for user ${userId} - hasPaid set to true, 20 credits granted`);
 
                 // Verify the update was successful
                 const updatedUser = await storage.getUser(userId);
                 if (updatedUser?.hasPaid) {
-                    console.log(`✅ Verified: User ${userId} payment status updated successfully`);
+                    console.log(`✅ Verified: User ${userId} payment status updated successfully, credits: ${updatedUser.credits ?? 0}`);
                 } else {
                     console.error(`❌ Warning: User ${userId} payment status update may have failed`);
                 }
@@ -2289,7 +2353,7 @@ Generate 5-10 features as a JSON array of strings. Each feature should be concis
     });
 
     // Find competitors based on idea description
-    app.post("/api/custom-search/find-competitors", requireAuth, requirePayment, async (req, res) => {
+    app.post("/api/custom-search/find-competitors", requireAuth, requireCredits(1), async (req, res) => {
         try {
             const { pitch, topics, personas, painPoints, features, projectId } = req.body;
 
@@ -2630,6 +2694,15 @@ Return ONLY the JSON array, no other text. Example format:
                 sendSSE("error", { error: "No valid competitors found after URL validation" });
                 res.end();
                 return;
+            }
+
+            // Deduct credits after successful operation
+            try {
+                await storage.deductCredits(req.user.id, req.creditAmount || 1);
+                logger.info("Credits deducted", { userId: req.user.id, amount: req.creditAmount || 1 });
+            } catch (creditError) {
+                logger.error("Error deducting credits", { error: creditError });
+                // Don't fail the request if credit deduction fails, but log it
             }
 
             // Send completion message with all validated competitors
@@ -3193,10 +3266,8 @@ Return ONLY the JSON array, no other text. Example format:
                 // Process DataForSEO results using shared function
                 const { processDataForSEOResults, saveKeywordsToProject } = await import("./keyword-processing-service");
                 const { keywordsToInsert, keywordMap, keywordsWithData } = processDataForSEOResults(dataForSEOResults, finalKeywords);
-                // Get target from saved progress for sourceWebsite tracking
-                const savedProgressForTarget = project.keywordGenerationProgress;
-                const targetForSource = savedProgressForTarget?.target || '';
-                const savedKeywordsCount = await saveKeywordsToProject(keywordsToInsert, finalKeywords, projectId, project.pitch, storage, keywordVectorService, targetForSource);
+                // This endpoint is for custom keywords (not website-based), so no sourceWebsite needed
+                const savedKeywordsCount = await saveKeywordsToProject(keywordsToInsert, finalKeywords, projectId, project.pitch, storage, keywordVectorService);
 
                 // Save progress
                 await saveProgress({
@@ -3620,7 +3691,7 @@ Return ONLY the JSON array, no other text. Example format:
     });
 
     // Find keywords from website using DataForSEO keywords_for_site API
-    app.post("/api/custom-search/find-keywords-from-website", requireAuth, requirePayment, async (req, res) => {
+    app.post("/api/custom-search/find-keywords-from-website", requireAuth, requireCredits(2), async (req, res) => {
         try {
             const { projectId, target, location_code, location_name, resume, executionId } = req.body;
 
@@ -4274,12 +4345,28 @@ Return ONLY the JSON array, no other text. Example format:
                 }
 
                 // Process DataForSEO results in memory (fast, no database operations)
-                const { processDataForSEOResults } = await import("./keyword-processing-service");
+                const { processDataForSEOResults, saveKeywordsToProject } = await import("./keyword-processing-service");
                 const { keywordsToInsert, keywordsWithData } = processDataForSEOResults(siteResults, finalKeywords);
                 processedKeywordsToInsert = keywordsToInsert;
                 processedKeywordsWithDataCount = keywordsWithData;
 
-                logger.info("Processed DataForSEO metrics in memory", {
+                // Save keywords to database BEFORE report generation so sourceWebsites are available
+                logger.info("Saving keywords to database with sourceWebsites", {
+                    projectId,
+                    keywordsCount: keywordsToInsert.length,
+                    sourceWebsite: targetToUse
+                });
+                await saveKeywordsToProject(
+                    keywordsToInsert,
+                    finalKeywords,
+                    projectId,
+                    project.pitch || '',
+                    storage,
+                    keywordVectorService,
+                    targetToUse // Pass sourceWebsite so keywords are linked with sourceWebsites
+                );
+
+                logger.info("Processed DataForSEO metrics in memory and saved to database", {
                     projectId,
                     keywordsWithData,
                     totalKeywords: finalKeywords.length
@@ -4429,95 +4516,74 @@ Return ONLY the JSON array, no other text. Example format:
                 });
             }
 
-            // STEP 5: Save DataForSEO metrics to database in background (after report generation)
-            // This allows users to see the report immediately while database operations happen in background
+            // STEP 5: Keywords are already saved before report generation (see STEP 3)
+            // This step is now only for updating progress flags
             if (!hasDataForSEOMetrics && processedKeywordsToInsert && processedKeywordsToInsert.length > 0) {
-                // Start database save in background (fire and forget, but with error handling)
-                (async () => {
-                    try {
-                        logger.info("Saving DataForSEO metrics to database (background)", {
-                            projectId,
-                            keywordsCount: processedKeywordsToInsert!.length,
-                        });
+                // Keywords were already saved in STEP 3, just update progress flags
+                logger.info("Keywords already saved to database with sourceWebsites", {
+                    projectId,
+                    keywordsCount: processedKeywordsToInsert.length,
+                });
+                
+                // Update progress to mark DataForSEO metrics as saved
+                await saveProgress({
+                    dataForSEOFetched: true,
+                    keywordsFetchedCount: processedKeywordsWithDataCount
+                });
 
-                        const { saveKeywordsToProject } = await import("./keyword-processing-service");
-                        const savedKeywordsCount = await saveKeywordsToProject(
-                            processedKeywordsToInsert!,
-                            finalKeywords,
-                            projectId,
-                            project.pitch || '',
-                            storage,
-                            keywordVectorService,
-                            targetToUse // Pass sourceWebsite
-                        );
+                // STEP 6: Compute metrics in the background AFTER keywords are saved
+                // This ensures keywords exist in the database before metrics computation starts
+                execution = await storage.getPipelineExecution(executionId);
+                savedProgress = execution?.progress || savedProgress;
+                if (!savedProgress || !savedProgress.metricsComputed) {
+                    // Start metrics computation asynchronously (fire and forget, but with error handling)
+                    (async () => {
+                        let metricsError: Error | null = null;
+                        let failedBatches: Array<{ batchNumber: number; error: string }> = [];
+                        const MAX_BATCH_RETRIES = 2; // Retry failed batches up to 2 times
 
-                        // Update progress after save completes
-                        logger.info("Saved DataForSEO metrics to database", {
-                            executionId,
-                            projectId,
-                            keywordsWithData: savedKeywordsCount,
-                            totalKeywords: finalKeywords.length
-                        });
-                        await saveProgress({
-                            dataForSEOFetched: true,
-                            keywordsFetchedCount: savedKeywordsCount
-                        });
+                        try {
+                            const metricsStartTime = Date.now();
+                            logger.info("=== COMPUTE METRICS PIPELINE START (BACKGROUND) ===", {
+                                projectId,
+                                timestamp: new Date().toISOString(),
+                            });
 
-                        // Re-fetch execution to get updated progress state
-                        const currentExecution = await storage.getPipelineExecution(executionId);
-                        const currentProgress = currentExecution?.progress;
+                            const keywords = await storage.getProjectKeywords(projectId);
+                            const { calculateVolatility, calculateTrendStrength } = await import("./opportunity-score");
 
-                        // STEP 6: Compute metrics in the background AFTER keywords are saved
-                        // This ensures keywords exist in the database before metrics computation starts
-                        if (!currentProgress || !currentProgress.metricsComputed) {
-                            // Start metrics computation asynchronously (fire and forget, but with error handling)
-                            (async () => {
-                                let metricsError: Error | null = null;
-                                let failedBatches: Array<{ batchNumber: number; error: string }> = [];
-                                const MAX_BATCH_RETRIES = 2; // Retry failed batches up to 2 times
+                            const BATCH_SIZE = 50; // Process 50 keywords concurrently
+                            let processedCount = 0;
+                            let skippedCount = 0;
+                            let errorCount = 0;
+                            const totalKeywords = keywords.filter(kw => kw.monthlyData && Array.isArray(kw.monthlyData) && kw.monthlyData.length > 0 && kw.volume !== null).length;
+                            const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);
+
+                            logger.info("Starting background metrics computation", {
+                                totalKeywords: keywords.length,
+                                keywordsWithData: totalKeywords,
+                                batchSize: BATCH_SIZE,
+                                totalBatches,
+                            });
+
+                            // Helper function to process a batch with retry
+                            const processBatchWithRetry = async (
+                                batch: any[],
+                                batchNumber: number,
+                                retryCount: number = 0
+                            ): Promise<{ successful: number; skipped: number; errors: number; validUpdates: any[] }> => {
+                                const batchStartTime = Date.now();
 
                                 try {
-                                    const metricsStartTime = Date.now();
-                                    logger.info("=== COMPUTE METRICS PIPELINE START (BACKGROUND) ===", {
-                                        projectId,
-                                        timestamp: new Date().toISOString(),
-                                    });
-
-                                    const keywords = await storage.getProjectKeywords(projectId);
-                                    const { calculateVolatility, calculateTrendStrength } = await import("./opportunity-score");
-
-                                    const BATCH_SIZE = 50; // Process 50 keywords concurrently
-                                    let processedCount = 0;
-                                    let skippedCount = 0;
-                                    let errorCount = 0;
-                                    const totalKeywords = keywords.filter(kw => kw.monthlyData && Array.isArray(kw.monthlyData) && kw.monthlyData.length > 0 && kw.volume !== null).length;
-                                    const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);
-
-                                    logger.info("Starting background metrics computation", {
-                                        totalKeywords: keywords.length,
-                                        keywordsWithData: totalKeywords,
-                                        batchSize: BATCH_SIZE,
+                                    logger.debug(`[Batch ${batchNumber}/${totalBatches}] Processing batch (background)${retryCount > 0 ? ` [Retry ${retryCount}]` : ''}`, {
+                                        batchNumber,
                                         totalBatches,
+                                        batchSize: batch.length,
+                                        retryCount,
                                     });
 
-                                    // Helper function to process a batch with retry
-                                    const processBatchWithRetry = async (
-                                        batch: any[],
-                                        batchNumber: number,
-                                        retryCount: number = 0
-                                    ): Promise<{ successful: number; skipped: number; errors: number; validUpdates: any[] }> => {
-                                        const batchStartTime = Date.now();
-
-                                        try {
-                                            logger.debug(`[Batch ${batchNumber}/${totalBatches}] Processing batch (background)${retryCount > 0 ? ` [Retry ${retryCount}]` : ''}`, {
-                                                batchNumber,
-                                                totalBatches,
-                                                batchSize: batch.length,
-                                                retryCount,
-                                            });
-
-                                            const batchUpdates = await Promise.allSettled(
-                                                batch.map(async (keyword) => {
+                                    const batchUpdates = await Promise.allSettled(
+                                        batch.map(async (keyword) => {
                                                     if (!keyword.monthlyData || !Array.isArray(keyword.monthlyData) || keyword.monthlyData.length === 0 || keyword.volume === null) {
                                                         return { keywordId: keyword.id, metrics: null, skipped: true };
                                                     }
@@ -4675,6 +4741,36 @@ Return ONLY the JSON array, no other text. Example format:
                                         failedBatches: failedBatches.length > 0 ? failedBatches : undefined,
                                     });
 
+                                    // Deduct credits after successful pipeline completion (only if not already complete)
+                                    // Check BEFORE saving progress to avoid race conditions
+                                    try {
+                                        if (project) {
+                                            // Check execution status to avoid duplicate deductions
+                                            const currentExecution = await storage.getPipelineExecution(executionId);
+                                            if (currentExecution && currentExecution.status !== 'complete') {
+                                                await storage.deductCredits(project.userId, 2);
+                                                logger.info("Credits deducted for pipeline completion", { 
+                                                    userId: project.userId, 
+                                                    projectId,
+                                                    executionId,
+                                                    amount: 2 
+                                                });
+                                            } else {
+                                                logger.info("Skipping credit deduction - execution already marked as complete", {
+                                                    executionId,
+                                                    status: currentExecution?.status
+                                                });
+                                            }
+                                        }
+                                    } catch (creditError) {
+                                        logger.error("Error deducting credits after pipeline completion", { 
+                                            error: creditError,
+                                            projectId,
+                                            executionId
+                                        });
+                                        // Don't fail the pipeline if credit deduction fails
+                                    }
+
                                     // Save progress with success state
                                     await saveProgress({
                                         currentStage: 'complete',
@@ -4713,15 +4809,8 @@ Return ONLY the JSON array, no other text. Example format:
                                         });
                                     }
                                 }
-                            })();
-                        }
-                    } catch (error) {
-                        logger.error("Error saving DataForSEO metrics to database (background)", error, {
-                            projectId,
-                        });
-                        // Don't throw - this is background operation, report is already generated
-                    }
-                })();
+                    })();
+                }
             } else {
                 // STEP 6: Compute metrics in the background (asynchronously, after sending report)
                 // Only start metrics computation if keywords were already saved (hasDataForSEOMetrics is true)

@@ -26,6 +26,7 @@ export const users = pgTable("users", {
   stripeCustomerId: text("stripe_customer_id"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   paymentDate: timestamp("payment_date"),
+  credits: integer("credits").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -238,6 +239,7 @@ export const insertUserSchema = createInsertSchema(users).omit({
   stripeCustomerId: true,
   stripePaymentIntentId: true,
   paymentDate: true,
+  credits: true,
 }).extend({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),

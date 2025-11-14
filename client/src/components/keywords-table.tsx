@@ -68,7 +68,6 @@ interface KeywordsTableProps {
     isLoadingMore?: boolean;
     reportId?: string;
     metricsPending?: boolean; // Indicates if secondary metrics are still being computed
-    selectedSourceWebsites?: string[]; // Filter keywords by source websites
 }
 
 export function KeywordsTable({
@@ -81,7 +80,6 @@ export function KeywordsTable({
     isLoadingMore = false,
     reportId,
     metricsPending = false,
-    selectedSourceWebsites,
 }: KeywordsTableProps) {
     const { toast } = useToast();
     const [sortField, setSortField] = useState<SortField | null>(null);
@@ -677,6 +675,32 @@ export function KeywordsTable({
                     );
                 },
             },
+            sourceWebsites: {
+                id: "sourceWebsites",
+                label: "Source",
+                field: "sourceWebsites" as keyof Keyword,
+                align: "left",
+                sortable: false,
+                tooltip: "Website(s) where this keyword was found",
+                format: (value, keyword) => {
+                    const sourceWebsites = (keyword as any).sourceWebsites || [];
+                    if (sourceWebsites.length === 0) {
+                        return <span className="text-white/40 text-xs">—</span>;
+                    }
+                    return (
+                        <div className="flex flex-wrap gap-1">
+                            {sourceWebsites.map((site: string, idx: number) => (
+                                <span
+                                    key={idx}
+                                    className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-white/10 text-white/80 border border-white/20"
+                                >
+                                    {site}
+                                </span>
+                            ))}
+                        </div>
+                    );
+                },
+            },
         };
         return configs;
     }, [onDeleteKeyword, onSearchKeyword, toast, metricsPending]);
@@ -732,17 +756,9 @@ export function KeywordsTable({
         }
     };
 
-    // Filter keywords by selected source websites
-    const filteredKeywords = useMemo(() => {
-        if (!selectedSourceWebsites || selectedSourceWebsites.length === 0) {
-            return keywords; // Show all if no filter selected
-        }
-        return keywords.filter(kw => {
-            const kwSourceWebsites = kw.sourceWebsites || [];
-            // Show keyword if any of its sourceWebsites matches any selected sourceWebsite
-            return kwSourceWebsites.some(site => selectedSourceWebsites.includes(site));
-        });
-    }, [keywords, selectedSourceWebsites]);
+    // Keywords are already filtered by sourceWebsite in parent component
+    // No need to filter again here - just use keywords as-is
+    const filteredKeywords = keywords;
 
     const sortedKeywords = useMemo(() => {
         if (!sortField || !sortDirection) {
@@ -877,7 +893,8 @@ export function KeywordsTable({
 
     return (
         <GlassmorphicCard className="p-8">
-            <div className="flex justify-end mb-4">
+            <div className="flex items-center justify-end mb-4">
+                {/* Columns Button */}
                 <Popover open={isColumnSelectorOpen} onOpenChange={setIsColumnSelectorOpen}>
                     <PopoverTrigger asChild>
                         <Button

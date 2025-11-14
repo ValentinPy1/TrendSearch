@@ -69,6 +69,11 @@ export interface IStorage {
     updatePipelineExecution(id: string, update: Partial<PipelineExecution>): Promise<PipelineExecution>;
     getQueriedWebsites(projectId: string): Promise<string[]>; // Derived from completed pipeline states
 
+    // Credit management methods
+    deductCredits(userId: string, amount: number): Promise<User>;
+    getUserCredits(userId: string): Promise<number>;
+    addCredits(userId: string, amount: number): Promise<User>;
+
     // Health check
     healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }>;
 }
@@ -516,6 +521,42 @@ export class DatabaseStorage implements IStorage {
         });
         
         return Array.from(uniqueWebsites);
+    }
+
+    async deductCredits(userId: string, amount: number): Promise<User> {
+        const result = await db
+            .update(users)
+            .set({ credits: sql`GREATEST(0, ${users.credits} - ${amount})` })
+            .where(eq(users.id, userId))
+            .returning();
+        
+        if (!result[0]) {
+            throw new Error(`User ${userId} not found`);
+        }
+        
+        return result[0];
+    }
+
+    async getUserCredits(userId: string): Promise<number> {
+        const user = await this.getUser(userId);
+        if (!user) {
+            throw new Error(`User ${userId} not found`);
+        }
+        return user.credits ?? 0;
+    }
+
+    async addCredits(userId: string, amount: number): Promise<User> {
+        const result = await db
+            .update(users)
+            .set({ credits: sql`${users.credits} + ${amount}` })
+            .where(eq(users.id, userId))
+            .returning();
+        
+        if (!result[0]) {
+            throw new Error(`User ${userId} not found`);
+        }
+        
+        return result[0];
     }
 
     async healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }> {

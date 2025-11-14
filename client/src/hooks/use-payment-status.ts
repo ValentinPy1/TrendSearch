@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 export interface PaymentStatus {
     hasPaid: boolean;
     paymentDate: string | null;
+    credits: number;
 }
 
 export function usePaymentStatus() {

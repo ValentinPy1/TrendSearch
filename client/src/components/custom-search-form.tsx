@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,8 @@ import { KeywordMetricsCards } from "@/components/keyword-metrics-cards";
 import { MetricsCards } from "@/components/metrics-cards";
 import { AverageTrendChart } from "@/components/average-trend-chart";
 import { Checkbox } from "@/components/ui/checkbox";
+import { usePaymentStatus } from "@/hooks/use-payment-status";
+import { CreditModal } from "@/components/credit-modal";
 
 interface CustomSearchFormProps { }
 
@@ -113,6 +115,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [displayedKeywordCount, setDisplayedKeywordCount] = useState(10);
     const [showOnlyFullData, setShowOnlyFullData] = useState(false);
     const [selectedSourceWebsites, setSelectedSourceWebsites] = useState<string[]>([]);
+    const [queriedWebsites, setQueriedWebsites] = useState<string[]>([]);
     const [websiteUrl, setWebsiteUrl] = useState<string>("");
     const [isFindingKeywordsFromWebsite, setIsFindingKeywordsFromWebsite] = useState(false);
     const [activeSubTab, setActiveSubTab] = useState<string>("competitors");
@@ -120,6 +123,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const [showHelpDialog, setShowHelpDialog] = useState(false);
     const [shouldResumePipeline, setShouldResumePipeline] = useState<{ projectId: string } | null>(null);
     const pitchTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const [showCreditModal, setShowCreditModal] = useState(false);
+    const [creditModalData, setCreditModalData] = useState<{ creditsRequired: number; featureName: string } | null>(null);
+    const { data: paymentStatus } = usePaymentStatus();
 
     const form = useForm<FormData>({
         defaultValues: {
@@ -321,6 +327,64 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
     }, [projectsData, currentProjectId, isLoadingProjects, isFetchingProjects]);
 
+    // Fetch queriedWebsites when reportData is loaded (for fallback if sourceWebsites are missing)
+    useEffect(() => {
+        if (reportData && currentProjectId) {
+            (async () => {
+                try {
+                    const res = await apiRequest("GET", `/api/custom-search/projects/${currentProjectId}/keywords-status`);
+                    const status = await res.json();
+                    if (status.queriedWebsites && Array.isArray(status.queriedWebsites) && status.queriedWebsites.length > 0) {
+                        setQueriedWebsites(status.queriedWebsites);
+                        console.log("Fetched queriedWebsites for report:", status.queriedWebsites);
+                    } else {
+                        console.log("No queriedWebsites found in status:", status);
+                    }
+                } catch (error) {
+                    console.error("Error fetching queriedWebsites:", error);
+                }
+            })();
+        }
+    }, [reportData, currentProjectId]);
+
+    // Track if we've initialized selectedSourceWebsites for the current report
+    const initializedWebsitesRef = useRef<string | null>(null);
+    
+    // Initialize selectedSourceWebsites to all available websites when report loads
+    useEffect(() => {
+        if (reportData && reportData.keywords && reportData.keywords.length > 0) {
+            const reportId = currentProjectId || '';
+            
+            // Only initialize once per report
+            if (initializedWebsitesRef.current === reportId) {
+                return;
+            }
+            
+            // Extract unique source websites from keywords
+            const allSourceWebsitesSet = new Set<string>();
+            reportData.keywords.forEach((k: any) => {
+                if (k.sourceWebsites && Array.isArray(k.sourceWebsites)) {
+                    k.sourceWebsites.forEach((site: string) => allSourceWebsitesSet.add(site));
+                }
+            });
+            
+            const allSourceWebsites = Array.from(allSourceWebsitesSet).sort();
+            const websitesToShow = allSourceWebsites.length > 0 
+                ? allSourceWebsites 
+                : (queriedWebsites.length > 0 ? queriedWebsites : []);
+            
+            // Initialize to all websites if we have any
+            if (websitesToShow.length > 0) {
+                console.log("✅ Initializing selectedSourceWebsites to all websites:", websitesToShow);
+                setSelectedSourceWebsites(websitesToShow);
+                initializedWebsitesRef.current = reportId;
+            }
+        } else if (!reportData) {
+            // Reset when report is cleared
+            initializedWebsitesRef.current = null;
+        }
+    }, [reportData, queriedWebsites, currentProjectId]);
+
     // Poll for computed metrics while they're being computed
     useEffect(() => {
         if (!currentProjectId || !reportData || savedProgress?.metricsComputed !== false) {
@@ -442,27 +506,72 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
         setIsLoadingReport(true);
         try {
-            const { data: { session } } = await supabase.auth.getSession();
-            const headers: Record<string, string> = {};
-            if (session?.access_token) {
-                headers["Authorization"] = `Bearer ${session.access_token}`;
-            }
-
-            const response = await fetch(`/api/custom-search/pipeline-status/${projectId}`, {
-                method: "GET",
-                headers,
+            // Generate/fetch report using the generate-report endpoint
+            // This endpoint will return existing report if available, or generate a new one
+            const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
+                projectId: projectId,
             });
-
-            if (response.ok) {
-                const data = await response.json();
+            
+            if (reportRes.ok) {
+                const reportResult = await reportRes.json();
+                console.log("loadReportForProject result:", {
+                    success: reportResult.success,
+                    hasReport: !!reportResult.report,
+                    reportKeywordsCount: reportResult.report?.keywords?.length || 0,
+                    sampleKeyword: reportResult.report?.keywords?.[0] ? {
+                        keyword: reportResult.report.keywords[0].keyword,
+                        sourceWebsites: reportResult.report.keywords[0].sourceWebsites
+                    } : null
+                });
+                
+                // Also fetch queriedWebsites to ensure we have them for the filter UI
+                try {
+                    const statusRes = await apiRequest("GET", `/api/custom-search/projects/${projectId}/keywords-status`);
+                    const status = await statusRes.json();
+                    console.log("🔍 Keywords status API response:", {
+                        queriedWebsites: status.queriedWebsites,
+                        sourceWebsites: status.sourceWebsites,
+                        totalKeywords: status.totalKeywords,
+                        hasDataForSEO: status.hasDataForSEO
+                    });
+                    if (status.queriedWebsites && Array.isArray(status.queriedWebsites)) {
+                        setQueriedWebsites(status.queriedWebsites);
+                        console.log("✅ Set queriedWebsites state:", status.queriedWebsites);
+                    } else {
+                        console.warn("⚠️ No queriedWebsites in status response:", status);
+                    }
+                } catch (statusError) {
+                    console.error("❌ Error fetching queriedWebsites:", statusError);
+                    // Don't fail report loading if this fails
+                }
+                
                 // Double-check that this is still the current project before setting report data
-                if (data.report && projectId === currentProjectId) {
-                    setReportData(data.report);
+                if (reportResult.success && reportResult.report && projectId === currentProjectId) {
+                    console.log("✅ Setting reportData:", {
+                        reportKeywordsCount: reportResult.report.keywords?.length || 0,
+                        sampleKeyword: reportResult.report.keywords?.[0] ? {
+                            keyword: reportResult.report.keywords[0].keyword,
+                            sourceWebsites: reportResult.report.keywords[0].sourceWebsites
+                        } : null
+                    });
+                    setReportData(reportResult.report);
                     reportProjectIdRef.current = projectId;
-                    setSelectedSourceWebsites([]); // Reset source website filter when loading report
-                    if (data.report.keywords && Array.isArray(data.report.keywords)) {
+                    
+                    // Initialize selectedSourceWebsites to all available websites (so all checkboxes are checked by default)
+                    // Extract websites from report keywords or use queriedWebsites
+                    const websitesFromKeywords = new Set<string>();
+                    reportResult.report.keywords?.forEach((k: any) => {
+                        if (k.sourceWebsites && Array.isArray(k.sourceWebsites)) {
+                            k.sourceWebsites.forEach((site: string) => websitesFromKeywords.add(site));
+                        }
+                    });
+                    const allWebsites = Array.from(websitesFromKeywords).length > 0 
+                        ? Array.from(websitesFromKeywords).sort()
+                        : queriedWebsites.length > 0 ? queriedWebsites : [];
+                    setSelectedSourceWebsites(allWebsites);
+                    if (reportResult.report.keywords && Array.isArray(reportResult.report.keywords)) {
                         // Extract keywords from report if needed
-                        const keywords = data.report.keywords.map((k: any) => k.keyword || k).filter(Boolean);
+                        const keywords = reportResult.report.keywords.map((k: any) => k.keyword || k).filter(Boolean);
                         if (keywords.length > 0) {
                             setGeneratedKeywords(keywords);
                         }
@@ -471,6 +580,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
         } catch (error) {
             console.error("Error loading report:", error);
+            throw error; // Re-throw so caller knows it failed
         } finally {
             setIsLoadingReport(false);
         }
@@ -805,10 +915,18 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 });
             }
 
-            // If report is already generated, try to load it from pipeline-status endpoint
-            // Only try to generate a new report if report is marked as generated but doesn't exist yet
+            // Store queried websites for fallback if sourceWebsites are missing from report
+            if (status.queriedWebsites && Array.isArray(status.queriedWebsites)) {
+                setQueriedWebsites(status.queriedWebsites);
+            }
+
+            // Determine if we should try to load/generate report
+            // Check multiple conditions since we moved to pipeline_executions table
+            const hasCompletedPipelines = status.queriedWebsites && status.queriedWebsites.length > 0;
+            const hasKeywordsWithData = status.hasDataForSEO && status.keywordsWithData > 0;
             const shouldTryLoadReport = savedProgress?.reportGenerated ||
-                savedProgress?.currentStage === 'complete';
+                savedProgress?.currentStage === 'complete' ||
+                (hasCompletedPipelines && hasKeywordsWithData && !reportData);
 
             if (shouldTryLoadReport) {
                 console.log("Attempting to load report for project:", {
@@ -818,24 +936,25 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     hasKeywords: status.keywordList?.length > 0,
                     keywordsCount: status.keywordList?.length,
                     hasDataForSEO: status.hasDataForSEO,
-                    keywordsWithData: status.keywordsWithData
+                    keywordsWithData: status.keywordsWithData,
+                    hasCompletedPipelines: hasCompletedPipelines,
+                    queriedWebsites: status.queriedWebsites
                 });
 
                 // First try to load from pipeline-status (which returns existing reports)
                 try {
                     await loadReportForProject(project.id);
                 } catch (loadError) {
-                    console.log("Report not found in pipeline-status, will be loaded when pipeline completes");
+                    console.log("Report not found in pipeline-status, will try to generate");
                 }
 
-                // Only try to generate a new report if:
-                // 1. Report is marked as generated
-                // 2. We have keywords with data (metrics are computed)
-                // 3. Report doesn't already exist (loadReportForProject didn't find it)
-                if (savedProgress?.reportGenerated &&
-                    status.hasDataForSEO &&
-                    status.keywordsWithData > 0 &&
-                    reportProjectIdRef.current !== project.id) {
+                // Try to generate a new report if:
+                // 1. We have keywords with data
+                // 2. Report doesn't already exist (loadReportForProject didn't find it)
+                // 3. Either reportGenerated is true OR we have completed pipelines
+                if (hasKeywordsWithData &&
+                    reportProjectIdRef.current !== project.id &&
+                    (savedProgress?.reportGenerated || hasCompletedPipelines)) {
                     setIsLoadingReport(true);
                     try {
                         const reportRes = await apiRequest("POST", `/api/custom-search/generate-report`, {
@@ -867,7 +986,10 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     projectId: project.id,
                     reportGenerated: savedProgress?.reportGenerated,
                     currentStage: savedProgress?.currentStage,
-                    hasSavedProgress: !!savedProgress
+                    hasSavedProgress: !!savedProgress,
+                    hasCompletedPipelines: hasCompletedPipelines,
+                    hasKeywordsWithData: hasKeywordsWithData,
+                    hasReportData: !!reportData
                 });
             }
         } catch (error) {
@@ -1165,7 +1287,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
+                const error = new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                (error as any).status = response.status;
+                (error as any).errorData = errorData;
+                throw error;
             }
 
             // Handle Server-Sent Events
@@ -1230,12 +1356,16 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             },
                                             {
                                                 onSuccess: () => {
+                                                    // Invalidate payment status to refresh credit balance
+                                                    queryClient.invalidateQueries({ queryKey: ["/api/payment/status"] });
                                                     toast({
                                                         title: "Competitors Found!",
                                                         description: `Found and saved ${eventData.competitors.length} competitors.`,
                                                     });
                                                 },
                                                 onError: () => {
+                                                    // Still invalidate payment status even if save fails
+                                                    queryClient.invalidateQueries({ queryKey: ["/api/payment/status"] });
                                                     // Still show success toast even if save fails (auto-save will retry)
                                                     toast({
                                                         title: "Competitors Found!",
@@ -1245,6 +1375,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             }
                                         );
                                     } else {
+                                        // Invalidate payment status to refresh credit balance
+                                        queryClient.invalidateQueries({ queryKey: ["/api/payment/status"] });
                                         toast({
                                             title: "Competitors Found!",
                                             description: `Found ${eventData.competitors.length} competitors.`,
@@ -1266,15 +1398,22 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
             return { competitors: competitorsList };
         },
-        onError: (error) => {
-            toast({
-                title: "Error",
-                description:
-                    error instanceof Error
-                        ? error.message
-                        : "Failed to find competitors",
-                variant: "destructive",
-            });
+        onError: (error: any) => {
+            // Check if it's a payment/credit error
+            if (error?.status === 402) {
+                const creditsRequired = error?.errorData?.creditsRequired ?? 1;
+                setCreditModalData({ creditsRequired, featureName: "Generate Competitors" });
+                setShowCreditModal(true);
+            } else {
+                toast({
+                    title: "Error",
+                    description:
+                        error instanceof Error
+                            ? error.message
+                            : "Failed to find competitors",
+                    variant: "destructive",
+                });
+            }
         },
     });
 
@@ -1455,6 +1594,23 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             return;
         }
 
+        // Check credits before proceeding
+        const creditsAvailable = paymentStatus?.credits ?? 0;
+        const creditsRequired = 1;
+        const hasPaid = paymentStatus?.hasPaid ?? false;
+
+        if (!hasPaid) {
+            setCreditModalData({ creditsRequired, featureName: "Generate Competitors" });
+            setShowCreditModal(true);
+            return;
+        }
+
+        if (creditsAvailable < creditsRequired) {
+            setCreditModalData({ creditsRequired, featureName: "Generate Competitors" });
+            setShowCreditModal(true);
+            return;
+        }
+
         // Ensure project exists before proceeding
         const projectId = await ensureProjectExists();
         if (!projectId) {
@@ -1560,6 +1716,9 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     stopPolling();
                     setIsFindingKeywordsFromWebsite(false);
                     setIsGeneratingKeywords(false);
+
+                    // Invalidate payment status to refresh credit balance after pipeline completion
+                    queryClient.invalidateQueries({ queryKey: ["/api/payment/status"] });
 
                     // Reload report if we were waiting for pipelines to complete
                     if (projectId === currentProjectId && !reportData) {
@@ -1736,6 +1895,25 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
         }
 
+        // Check credits before proceeding (only for new pipelines, not resuming)
+        if (!resume) {
+            const creditsAvailable = paymentStatus?.credits ?? 0;
+            const creditsRequired = 2;
+            const hasPaid = paymentStatus?.hasPaid ?? false;
+
+            if (!hasPaid) {
+                setCreditModalData({ creditsRequired, featureName: "Get Keywords from Website" });
+                setShowCreditModal(true);
+                return;
+            }
+
+            if (creditsAvailable < creditsRequired) {
+                setCreditModalData({ creditsRequired, featureName: "Get Keywords from Website" });
+                setShowCreditModal(true);
+                return;
+            }
+        }
+
         // Ensure project exists before proceeding
         const projectId = await ensureProjectExists();
         if (!projectId) {
@@ -1819,12 +1997,19 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
                 const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
 
-                toast({
-                    title: "Error Starting Pipeline",
-                    description: errorMessage,
-                    variant: "destructive",
-                    duration: 10000,
-                });
+                // Check if it's a payment/credit error
+                if (response.status === 402) {
+                    const creditsRequired = errorData.creditsRequired ?? 2;
+                    setCreditModalData({ creditsRequired, featureName: "Get Keywords from Website" });
+                    setShowCreditModal(true);
+                } else {
+                    toast({
+                        title: "Error Starting Pipeline",
+                        description: errorMessage,
+                        variant: "destructive",
+                        duration: 10000,
+                    });
+                }
 
                 // Don't stop polling or reset flags - other pipelines may still be running
                 return;
@@ -1886,16 +2071,23 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 loadReportForProject(projectId);
             }
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error starting pipeline:", error);
-            const errorMessage = error instanceof Error ? error.message : "Failed to start pipeline";
-
-            toast({
-                title: "Error Starting Pipeline",
-                description: errorMessage,
-                variant: "destructive",
-                duration: 10000,
-            });
+            
+            // Check if it's a payment/credit error
+            if (error?.status === 402 || error?.message?.includes("402")) {
+                const creditsRequired = 2;
+                setCreditModalData({ creditsRequired, featureName: "Get Keywords from Website" });
+                setShowCreditModal(true);
+            } else {
+                const errorMessage = error instanceof Error ? error.message : "Failed to start pipeline";
+                toast({
+                    title: "Error Starting Pipeline",
+                    description: errorMessage,
+                    variant: "destructive",
+                    duration: 10000,
+                });
+            }
 
             // Don't stop polling or reset flags - other pipelines may still be running
         }
@@ -2167,6 +2359,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     };
 
     return (
+        <>
         <div className="space-y-6">
             {/* Project Name and Management Buttons */}
             <div className="flex items-center justify-between gap-4 pb-4 border-b border-white/10">
@@ -3006,36 +3199,8 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                 })
                                 : reportData.keywords;
 
-                            // Extract unique source websites from all keywords
-                            const allSourceWebsitesSet = new Set<string>();
-                            reportData.keywords.forEach((k: any) => {
-                                if (k.sourceWebsites && Array.isArray(k.sourceWebsites)) {
-                                    k.sourceWebsites.forEach((site: string) => allSourceWebsitesSet.add(site));
-                                }
-                            });
-                            const allSourceWebsites = Array.from(allSourceWebsitesSet).sort();
-
-                            // Initialize selectedSourceWebsites to all websites if empty
-                            const effectiveSelectedSourceWebsites = selectedSourceWebsites.length === 0 && allSourceWebsites.length > 0
-                                ? allSourceWebsites
-                                : selectedSourceWebsites;
-
-                            // Apply sourceWebsite filter before slicing
-                            const sourceWebsiteFilteredKeywords = effectiveSelectedSourceWebsites.length === 0
-                                ? filteredKeywords // Show all if none selected (shouldn't happen, but handle gracefully)
-                                : filteredKeywords.filter((k: any) => {
-                                    const kwSourceWebsites = k.sourceWebsites || [];
-                                    return kwSourceWebsites.some((site: string) => effectiveSelectedSourceWebsites.includes(site));
-                                });
-
-                            // Count keywords per source website (from original reportData, not filtered)
-                            const keywordCountsByWebsite = new Map<string, number>();
-                            allSourceWebsites.forEach(site => {
-                                const count = reportData.keywords.filter((k: any) =>
-                                    k.sourceWebsites && Array.isArray(k.sourceWebsites) && k.sourceWebsites.includes(site)
-                                ).length;
-                                keywordCountsByWebsite.set(site, count);
-                            });
+                            // No filtering - show all keywords
+                            const sourceWebsiteFilteredKeywords = filteredKeywords;
 
                             const displayedKeywords = sourceWebsiteFilteredKeywords.slice(0, displayedKeywordCount);
                             const hasMoreToShow = displayedKeywordCount < sourceWebsiteFilteredKeywords.length;
@@ -3046,7 +3211,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <h3 className="text-xl font-semibold text-white/90 mb-2">
-                                                    {totalKeywordsWithData} generated keywords
+                                                    {sourceWebsiteFilteredKeywords.length} generated keywords
+                                                    {selectedSourceWebsites.length > 0 && (
+                                                        <span className="text-base text-white/60 font-normal ml-2">
+                                                            (filtered from {totalKeywordsWithData} total)
+                                                        </span>
+                                                    )}
                                                 </h3>
                                                 <p className="text-sm text-white/60">
                                                     Click a keyword to view its trend analysis
@@ -3070,61 +3240,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             </div>
                                         </div>
 
-                                        {/* Source Website Filter */}
-                                        {allSourceWebsites.length > 0 && (
-                                            <div className="flex flex-wrap items-center gap-2 p-3 bg-white/5 rounded-lg border border-white/10">
-                                                <span className="text-sm font-medium text-white/80 mr-2">Source websites:</span>
-                                                {allSourceWebsites.map((site) => {
-                                                    const isSelected = effectiveSelectedSourceWebsites.includes(site);
-                                                    const keywordCount = keywordCountsByWebsite.get(site) || 0;
-                                                    return (
-                                                        <button
-                                                            key={site}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                if (isSelected) {
-                                                                    const newSelected = effectiveSelectedSourceWebsites.filter(s => s !== site);
-                                                                    setSelectedSourceWebsites(newSelected.length === 0 ? allSourceWebsites : newSelected);
-                                                                } else {
-                                                                    setSelectedSourceWebsites([...effectiveSelectedSourceWebsites, site]);
-                                                                }
-                                                                setDisplayedKeywordCount(10);
-                                                            }}
-                                                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${isSelected
-                                                                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                                                : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white/80'
-                                                                }`}
-                                                        >
-                                                            {site} ({keywordCount})
-                                                        </button>
-                                                    );
-                                                })}
-                                                {allSourceWebsites.length > 1 && (
-                                                    <>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setSelectedSourceWebsites(allSourceWebsites);
-                                                                setDisplayedKeywordCount(10);
-                                                            }}
-                                                            className="px-2 py-1.5 text-xs font-medium text-white/60 hover:text-white/80 transition-colors"
-                                                        >
-                                                            Select All
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setSelectedSourceWebsites([]);
-                                                                setDisplayedKeywordCount(10);
-                                                            }}
-                                                            className="px-2 py-1.5 text-xs font-medium text-white/60 hover:text-white/80 transition-colors"
-                                                        >
-                                                            Deselect All
-                                                        </button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        )}
+                                        {/* Website filter is now in the table header */}
 
                                         <KeywordsTable
                                             keywords={displayedKeywords as (Keyword & { sourceWebsites?: string[] })[]}
@@ -3133,7 +3249,6 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                             onLoadMore={hasMoreToShow ? handleLoadMore : undefined}
                                             reportId={currentProjectId || ""}
                                             metricsPending={savedProgress?.metricsComputed === false || savedProgress?.metricsComputed === undefined}
-                                            selectedSourceWebsites={effectiveSelectedSourceWebsites}
                                         />
                                     </div>
 
@@ -3164,11 +3279,11 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                         <h3 className="text-xl font-semibold text-white/90">
                                             Aggregated KPIs
                                         </h3>
-                                        <MetricsCards keywords={displayedKeywords as Keyword[]} />
+                                        <MetricsCards keywords={sourceWebsiteFilteredKeywords as Keyword[]} />
                                     </div>
 
                                     <div className="pt-8">
-                                        <AverageTrendChart keywords={displayedKeywords as Keyword[]} />
+                                        <AverageTrendChart keywords={sourceWebsiteFilteredKeywords as Keyword[]} />
                                     </div>
                                 </div>
                             );
@@ -3315,17 +3430,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     });
                     const allSourceWebsites = Array.from(allSourceWebsitesSet).sort();
 
-                    // Initialize selectedSourceWebsites to all websites if empty
-                    const effectiveSelectedSourceWebsites = selectedSourceWebsites.length === 0 && allSourceWebsites.length > 0
-                        ? allSourceWebsites
-                        : selectedSourceWebsites;
-
-                    // Apply sourceWebsite filter before slicing
-                    const sourceWebsiteFilteredKeywords = effectiveSelectedSourceWebsites.length === 0
-                        ? filteredKeywords // Show all if none selected (shouldn't happen, but handle gracefully)
+                    // Simple filtering: show keywords from selected websites only
+                    // If no websites selected, show all keywords
+                    const sourceWebsiteFilteredKeywords = selectedSourceWebsites.length === 0
+                        ? filteredKeywords // Show all if no websites selected
                         : filteredKeywords.filter((k: any) => {
                             const kwSourceWebsites = k.sourceWebsites || [];
-                            return kwSourceWebsites.some((site: string) => effectiveSelectedSourceWebsites.includes(site));
+                            // Show keyword if it has sourceWebsites that match any selected website
+                            return kwSourceWebsites.length === 0 || kwSourceWebsites.some((site: string) => selectedSourceWebsites.includes(site));
                         });
 
                     // Count keywords per source website (from original reportData, not filtered)
@@ -3371,62 +3483,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     </div>
                                 </div>
 
-                                {/* Source Website Filter */}
-                                {allSourceWebsites.length > 0 && (
-                                    <div className="flex flex-wrap items-center gap-2 p-3 bg-white/5 rounded-lg border border-white/10">
-                                        <span className="text-sm font-medium text-white/80 mr-2">Source websites:</span>
-                                        {allSourceWebsites.map((site) => {
-                                            const isSelected = effectiveSelectedSourceWebsites.includes(site);
-                                            const keywordCount = keywordCountsByWebsite.get(site) || 0;
-                                            return (
-                                                <button
-                                                    key={site}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (isSelected) {
-                                                            const newSelected = effectiveSelectedSourceWebsites.filter(s => s !== site);
-                                                            setSelectedSourceWebsites(newSelected.length === 0 ? allSourceWebsites : newSelected);
-                                                        } else {
-                                                            setSelectedSourceWebsites([...effectiveSelectedSourceWebsites, site]);
-                                                        }
-                                                        setDisplayedKeywordCount(10);
-                                                    }}
-                                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${isSelected
-                                                        ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                                        : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white/80'
-                                                        }`}
-                                                >
-                                                    {site} ({keywordCount})
-                                                </button>
-                                            );
-                                        })}
-                                        {allSourceWebsites.length > 1 && (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSelectedSourceWebsites(allSourceWebsites);
-                                                        setDisplayedKeywordCount(10);
-                                                    }}
-                                                    className="px-2 py-1.5 text-xs font-medium text-white/60 hover:text-white/80 transition-colors"
-                                                >
-                                                    Select All
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSelectedSourceWebsites([]);
-                                                        setDisplayedKeywordCount(10);
-                                                    }}
-                                                    className="px-2 py-1.5 text-xs font-medium text-white/60 hover:text-white/80 transition-colors"
-                                                >
-                                                    Deselect All
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                )}
-
+                                {/* Website filter is now in the table header */}
                                 <KeywordsTable
                                     keywords={displayedKeywords as (Keyword & { sourceWebsites?: string[] })[]}
                                     selectedKeyword={selectedKeyword}
@@ -3434,7 +3491,18 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                                     onLoadMore={hasMoreToShow ? handleLoadMore : undefined}
                                     reportId={currentProjectId || ""}
                                     metricsPending={savedProgress?.metricsComputed === false || savedProgress?.metricsComputed === undefined}
-                                    selectedSourceWebsites={effectiveSelectedSourceWebsites}
+                                    selectedSourceWebsites={selectedSourceWebsites}
+                                    allSourceWebsites={allSourceWebsites.length > 0 ? allSourceWebsites : (queriedWebsites.length > 0 ? queriedWebsites : [])}
+                                    onSourceWebsiteToggle={(site) => {
+                                        // Simple toggle: add if not in array, remove if in array
+                                        if (selectedSourceWebsites.includes(site)) {
+                                            setSelectedSourceWebsites(selectedSourceWebsites.filter(s => s !== site));
+                                        } else {
+                                            setSelectedSourceWebsites([...selectedSourceWebsites, site]);
+                                        }
+                                        setDisplayedKeywordCount(10);
+                                    }}
+                                    keywordCountsByWebsite={keywordCountsByWebsite}
                                 />
                             </div>
 
@@ -3475,5 +3543,16 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                     );
                 })()}
         </div>
+
+        {/* Credit Modal */}
+        {creditModalData && (
+            <CreditModal
+                open={showCreditModal}
+                onOpenChange={setShowCreditModal}
+                creditsRequired={creditModalData.creditsRequired}
+                featureName={creditModalData.featureName}
+            />
+        )}
+        </>
     );
 }
