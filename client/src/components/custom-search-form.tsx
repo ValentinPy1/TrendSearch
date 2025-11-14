@@ -22,6 +22,7 @@ import { AverageTrendChart } from "@/components/average-trend-chart";
 import { Checkbox } from "@/components/ui/checkbox";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
 import { CreditModal } from "@/components/credit-modal";
+import { CreditPurchaseModal } from "@/components/credit-purchase-modal";
 
 interface CustomSearchFormProps { }
 
@@ -125,6 +126,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
     const pitchTextareaRef = useRef<HTMLTextAreaElement | null>(null);
     const [showCreditModal, setShowCreditModal] = useState(false);
     const [creditModalData, setCreditModalData] = useState<{ creditsRequired: number; featureName: string } | null>(null);
+    const [showCreditPurchaseModal, setShowCreditPurchaseModal] = useState(false);
     const { data: paymentStatus } = usePaymentStatus();
 
     const form = useForm<FormData>({
@@ -1401,9 +1403,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         onError: (error: any) => {
             // Check if it's a payment/credit error
             if (error?.status === 402) {
-                const creditsRequired = error?.errorData?.creditsRequired ?? 1;
-                setCreditModalData({ creditsRequired, featureName: "Generate Competitors" });
-                setShowCreditModal(true);
+                const hasPaid = paymentStatus?.hasPaid ?? false;
+                if (hasPaid) {
+                    setShowCreditPurchaseModal(true);
+                } else {
+                    const creditsRequired = error?.errorData?.creditsRequired ?? 1;
+                    setCreditModalData({ creditsRequired, featureName: "Generate Competitors" });
+                    setShowCreditModal(true);
+                }
             } else {
                 toast({
                     title: "Error",
@@ -1606,8 +1613,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
         }
 
         if (creditsAvailable < creditsRequired) {
-            setCreditModalData({ creditsRequired, featureName: "Generate Competitors" });
-            setShowCreditModal(true);
+            setShowCreditPurchaseModal(true);
             return;
         }
 
@@ -1908,8 +1914,7 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             }
 
             if (creditsAvailable < creditsRequired) {
-                setCreditModalData({ creditsRequired, featureName: "Get Keywords from Website" });
-                setShowCreditModal(true);
+                setShowCreditPurchaseModal(true);
                 return;
             }
         }
@@ -1999,9 +2004,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
 
                 // Check if it's a payment/credit error
                 if (response.status === 402) {
-                    const creditsRequired = errorData.creditsRequired ?? 2;
-                    setCreditModalData({ creditsRequired, featureName: "Get Keywords from Website" });
-                    setShowCreditModal(true);
+                    const hasPaid = paymentStatus?.hasPaid ?? false;
+                    if (hasPaid) {
+                        setShowCreditPurchaseModal(true);
+                    } else {
+                        const creditsRequired = errorData.creditsRequired ?? 2;
+                        setCreditModalData({ creditsRequired, featureName: "Get Keywords from Website" });
+                        setShowCreditModal(true);
+                    }
                 } else {
                     toast({
                         title: "Error Starting Pipeline",
@@ -2076,9 +2086,14 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
             
             // Check if it's a payment/credit error
             if (error?.status === 402 || error?.message?.includes("402")) {
-                const creditsRequired = 2;
-                setCreditModalData({ creditsRequired, featureName: "Get Keywords from Website" });
-                setShowCreditModal(true);
+                const hasPaid = paymentStatus?.hasPaid ?? false;
+                if (hasPaid) {
+                    setShowCreditPurchaseModal(true);
+                } else {
+                    const creditsRequired = 2;
+                    setCreditModalData({ creditsRequired, featureName: "Get Keywords from Website" });
+                    setShowCreditModal(true);
+                }
             } else {
                 const errorMessage = error instanceof Error ? error.message : "Failed to start pipeline";
                 toast({
@@ -3553,6 +3568,12 @@ export function CustomSearchForm({ }: CustomSearchFormProps) {
                 featureName={creditModalData.featureName}
             />
         )}
+
+        {/* Credit Purchase Modal */}
+        <CreditPurchaseModal
+            open={showCreditPurchaseModal}
+            onOpenChange={setShowCreditPurchaseModal}
+        />
         </>
     );
 }

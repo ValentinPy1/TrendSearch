@@ -25,13 +25,14 @@ import {
     DialogOverlay,
     DialogPortal,
 } from "@/components/ui/dialog";
-import { LogOut, Loader2, HelpCircle, Sparkles, Coins } from "lucide-react";
+import { LogOut, Loader2, HelpCircle, Sparkles, Coins, MessageSquare } from "lucide-react";
 import type { IdeaWithReport } from "@shared/schema";
 import logoImage from "@assets/image_1761146000585.png";
 import { KeywordFilter } from "@/components/keyword-filters";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
 import { PaywallModal } from "@/components/paywall-modal";
 import { CreditPurchaseModal } from "@/components/credit-purchase-modal";
+import { FeedbackModal } from "@/components/feedback-modal";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -54,6 +55,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     const [showHelp, setShowHelp] = useState(false);
     const [showPaywall, setShowPaywall] = useState(false);
     const [showCreditPurchase, setShowCreditPurchase] = useState(false);
+    const [showFeedbackModal, setShowFeedbackModal] = useState(false);
     const { data: paymentStatus } = usePaymentStatus();
     const hasPaid = paymentStatus?.hasPaid ?? false;
     const credits = paymentStatus?.credits ?? 0;
@@ -409,6 +411,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                         <img src={logoImage} alt="Pioneers AI Lab" className="h-6" />
                     </a>
                     <div className="flex items-center gap-4">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowFeedbackModal(true)}
+                            className="text-white/80 hover:text-white"
+                        >
+                            <MessageSquare className="h-4 w-4 mr-2" />
+                            Give Feedback
+                        </Button>
                         {hasPaid && (
                             <button
                                 onClick={() => setShowCreditPurchase(true)}
@@ -417,9 +428,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                                 <Coins className="h-4 w-4 text-primary" />
                                 <span className="text-sm font-semibold text-white">{credits}</span>
                                 <span className="text-xs text-white/60">credits</span>
-                                {credits < 5 && (
-                                    <span className="ml-1 text-xs text-yellow-400">Low</span>
-                                )}
                             </button>
                         )}
                         {!hasPaid && (
@@ -802,6 +810,12 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     onOpenChange={setShowCreditPurchase}
                 />
             )}
+
+            {/* Feedback Modal */}
+            <FeedbackModal
+                open={showFeedbackModal}
+                onOpenChange={setShowFeedbackModal}
+            />
         </div>
     );
 }

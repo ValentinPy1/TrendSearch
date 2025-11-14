@@ -26,7 +26,7 @@ export const users = pgTable("users", {
   stripeCustomerId: text("stripe_customer_id"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   paymentDate: timestamp("payment_date"),
-  credits: integer("credits").default(0).notNull(),
+  credits: integer("credits").default(5).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -326,3 +326,20 @@ export type IdeaWithReport = Idea & {
     keywords: Keyword[];
   };
 };
+
+export const feedback = pgTable("feedback", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  feedbackId: varchar("feedback_id"), // External feedback system ID
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFeedbackSchema = createInsertSchema(feedback).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Feedback = typeof feedback.$inferSelect;
+export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;

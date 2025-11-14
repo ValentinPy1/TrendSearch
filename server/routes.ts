@@ -6,7 +6,7 @@ import { storage } from "./storage";
 import { supabaseAdmin } from "./supabase";
 import { stripe } from "./stripe";
 import Stripe from "stripe";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { users, customSearchProjectKeywords } from "@shared/schema";
 import { db } from "./db";
 import { keywordVectorService } from "./keyword-vector-service";
@@ -1336,6 +1336,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({ success: true });
     });
 
+    // Feedback endpoint
+    app.post("/api/feedback", requireAuth, async (req, res) => {
+        try {
+            const { feedbackId, question, answer } = req.body;
+
+            if (!question || !answer) {
+                return res.status(400).json({ message: "Question and answer are required" });
+            }
+
+            // Submit to PostHog survey API if configured
+            const posthogApiKey = process.env.POSTHOG_API_KEY;
+            const posthogHost = process.env.POSTHOG_HOST || "https://app.posthog.com";
+            
+            if (posthogApiKey && feedbackId) {
+                try {
+                    const questionId = "5ed84a1c-1803-4d20-9da0-24dc9a0e0d0f";
+                    const surveyResponseUrl = `${posthogHost}/api/projects/${process.env.POSTHOG_PROJECT_ID || 'default'}/surveys/${feedbackId}/responses/`;
+                    
+                    await fetch(surveyResponseUrl, {
+                        method: "POST",
+                        headers: {
+                            "Authorization": `Bearer ${posthogApiKey}`,
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            survey_id: feedbackId,
+                            question_id: questionId,
+                            question: question,
+                            answer: answer,
+                            person: {
+                                distinct_id: req.user.id,
+                                email: req.user.email,
+                            },
+                        }),
+                    });
+                } catch (posthogError) {
+                    console.error("PostHog API submission error:", posthogError);
+                    // Continue to save in database even if PostHog fails
+                }
+            }
+
+            // Store in our database for backup
+            const feedback = await storage.createFeedback({
+                userId: req.user.id,
+                feedbackId: feedbackId || null,
+                question,
+                answer,
+            });
+
+            res.json({ feedback });
+        } catch (error) {
+            console.error("Feedback submission error:", error);
+            res.status(500).json({
+                message: error instanceof Error ? error.message : "Failed to submit feedback",
+            });
+        }
+    });
+
     // Payment status endpoint
     app.get("/api/payment/status", requireAuth, async (req, res) => {
         // Refetch user from database to get latest payment status (req.user might be stale)
@@ -1383,45 +1441,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 });
             }
 
-            // Get user ID from metadata
+            // Get user ID and purchase type from metadata
             const userId = session.metadata?.userId;
+            const purchaseType = session.metadata?.purchaseType || "premium"; // Default to premium for backward compatibility
+            const creditsAmount = parseInt(session.metadata?.credits || "20", 10); // Default to 20 for backward compatibility
+            const paymentIntentId = session.payment_intent ? String(session.payment_intent) : null;
+            
             console.log(`[Verify Payment] User ID from metadata: ${userId}, Current user: ${req.user.id}`);
+            console.log(`[Verify Payment] Purchase type: ${purchaseType}, Credits amount: ${creditsAmount}`);
+            console.log(`[Verify Payment] Payment intent ID: ${paymentIntentId}`);
 
             if (!userId || userId !== req.user.id) {
                 console.log(`[Verify Payment] Unauthorized: userId mismatch`);
                 return res.status(403).json({ message: "Unauthorized" });
             }
 
-            // Update user payment status and grant credits
-            await db.update(users)
-                .set({
-                    hasPaid: true,
-                    paymentDate: new Date(),
-                    stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
-                    credits: 20, // Grant 20 credits for premium account
-                })
-                .where(eq(users.id, userId));
-
-            // Verify the update
-            const updatedUser = await storage.getUser(userId);
-
-            if (!updatedUser) {
-                console.error(`❌ Error: User ${userId} not found after update`);
-                return res.status(500).json({ message: "User not found after update" });
+            // Check if this payment has already been processed (idempotency check)
+            const currentUser = await storage.getUser(userId);
+            if (!currentUser) {
+                return res.status(404).json({ message: "User not found" });
             }
 
-            if (updatedUser.hasPaid) {
-                console.log(`✅ Manual payment verification: User ${userId} payment status updated successfully. hasPaid: ${updatedUser.hasPaid}`);
-            } else {
-                console.error(`❌ Error: User ${userId} payment status update failed. hasPaid: ${updatedUser.hasPaid}`);
-                return res.status(500).json({ message: "Payment status update failed" });
+            // Idempotency check: If payment_intent_id matches, this payment was already processed
+            // Note: For multiple purchases, each has a unique payment_intent, so this prevents
+            // duplicate processing of the same payment while allowing new purchases
+            if (paymentIntentId && currentUser.stripePaymentIntentId === paymentIntentId) {
+                console.log(`[Verify Payment] Payment already processed for session ${sessionId} (payment_intent: ${paymentIntentId})`);
+                return res.json({
+                    success: true,
+                    message: "Payment already processed",
+                    alreadyProcessed: true,
+                    hasPaid: currentUser.hasPaid,
+                    credits: currentUser.credits
+                });
             }
 
-            res.json({
-                success: true,
-                message: "Payment verified and status updated",
-                hasPaid: updatedUser.hasPaid
-            });
+            try {
+                if (purchaseType === "credits") {
+                    // Add credits and store payment_intent_id atomically to prevent race conditions
+                    // This ensures idempotency: if called twice with same payment_intent, only first call processes
+                    if (paymentIntentId) {
+                        // Use a single update to add credits and set payment_intent_id atomically
+                        // WHERE clause ensures we only update if payment_intent_id doesn't already match
+                        // This prevents duplicate processing even in race conditions
+                        const result = await db
+                            .update(users)
+                            .set({ 
+                                credits: sql`${users.credits} + ${creditsAmount}`,
+                                stripePaymentIntentId: paymentIntentId
+                            })
+                            .where(sql`${users.id} = ${userId} AND (${users.stripePaymentIntentId} IS NULL OR ${users.stripePaymentIntentId} != ${paymentIntentId})`)
+                            .returning();
+                        
+                        if (!result[0]) {
+                            // No rows updated means payment was already processed
+                            console.log(`[Verify Payment] Payment already processed (no rows updated) for session ${sessionId}`);
+                            const existingUser = await storage.getUser(userId);
+                            return res.json({
+                                success: true,
+                                message: "Payment already processed",
+                                alreadyProcessed: true,
+                                credits: existingUser?.credits ?? 0
+                            });
+                        }
+                    } else {
+                        // Fallback if no payment_intent_id (shouldn't happen with Stripe)
+                        await storage.addCredits(userId, creditsAmount);
+                    }
+                    
+                    console.log(`✅ Manual payment verification: User ${userId} credits purchase completed - ${creditsAmount} credits added`);
+                    
+                    // Verify the update
+                    const updatedUser = await storage.getUser(userId);
+                    if (!updatedUser) {
+                        console.error(`❌ Error: User ${userId} not found after update`);
+                        return res.status(500).json({ message: "User not found after update" });
+                    }
+                    
+                    console.log(`✅ Verified: User ${userId} credits updated successfully, total credits: ${updatedUser.credits ?? 0}`);
+                    
+                    res.json({
+                        success: true,
+                        message: "Credits added successfully",
+                        credits: updatedUser.credits
+                    });
+                } else {
+                    // Premium purchase: set hasPaid and grant credits
+                    await db.update(users)
+                        .set({
+                            hasPaid: true,
+                            paymentDate: new Date(),
+                            stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
+                            credits: creditsAmount, // Grant credits based on selected option
+                        })
+                        .where(eq(users.id, userId));
+
+                    console.log(`✅ Manual payment verification: User ${userId} premium purchase completed - hasPaid set to true, ${creditsAmount} credits granted`);
+
+                    // Verify the update
+                    const updatedUser = await storage.getUser(userId);
+
+                    if (!updatedUser) {
+                        console.error(`❌ Error: User ${userId} not found after update`);
+                        return res.status(500).json({ message: "User not found after update" });
+                    }
+
+                    if (updatedUser.hasPaid) {
+                        console.log(`✅ Verified: User ${userId} payment status updated successfully, credits: ${updatedUser.credits ?? 0}`);
+                    } else {
+                        console.error(`❌ Error: User ${userId} payment status update failed. hasPaid: ${updatedUser.hasPaid}`);
+                        return res.status(500).json({ message: "Payment status update failed" });
+                    }
+
+                    res.json({
+                        success: true,
+                        message: "Payment verified and status updated",
+                        hasPaid: updatedUser.hasPaid,
+                        credits: updatedUser.credits
+                    });
+                }
+            } catch (dbError) {
+                console.error("Failed to update user payment status:", dbError);
+                return res.status(500).json({ message: "Failed to update payment status" });
+            }
         } catch (error) {
             console.error("Payment verification error:", error);
             res.status(500).json({

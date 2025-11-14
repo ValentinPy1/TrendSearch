@@ -30,6 +30,8 @@ DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 # Frontend (Vite)
 VITE_SUPABASE_URL=https://xxxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...
+VITE_PUBLIC_POSTHOG_KEY=phc_...  # Optional: for feedback and analytics
+VITE_PUBLIC_POSTHOG_HOST=https://app.posthog.com  # Optional: for feedback and analytics
 ```
 
 ## Getting Your Supabase Credentials
@@ -174,6 +176,55 @@ GOOGLE_SEARCH_ENGINE_ID=your_search_engine_id
 
 **Note:** Google Custom Search API has a free tier of 100 queries per day. Beyond that, it's a paid service.
 
+### PostHog Configuration (Optional)
+
+For user feedback collection and analytics, you can configure PostHog:
+
+- `POSTHOG_API_KEY` - Your PostHog API key (Personal API Key from PostHog settings)
+- `POSTHOG_HOST` - Your PostHog host URL (defaults to `https://app.posthog.com` for cloud, or your self-hosted URL)
+- `POSTHOG_PROJECT_ID` - Your PostHog project ID (optional, defaults to 'default')
+
+**Frontend Environment Variables:**
+
+- `VITE_PUBLIC_POSTHOG_KEY` - Your PostHog project API key (Project API Key, safe to expose in client-side code)
+- `VITE_PUBLIC_POSTHOG_HOST` - Your PostHog host URL (same as `POSTHOG_HOST`)
+
+These can be set in your `.env` file:
+
+```env
+# PostHog (for feedback and analytics)
+POSTHOG_API_KEY=phx_your_personal_api_key_here
+POSTHOG_HOST=https://app.posthog.com  # or your self-hosted URL
+POSTHOG_PROJECT_ID=your_project_id  # optional
+
+# Frontend (Vite)
+VITE_PUBLIC_POSTHOG_KEY=phc_your_project_api_key_here
+VITE_PUBLIC_POSTHOG_HOST=https://app.posthog.com  # or your self-hosted URL
+```
+
+## Getting Your PostHog Credentials
+
+1. Go to your PostHog dashboard (https://app.posthog.com or your self-hosted instance)
+2. **For Personal API Key (Backend):**
+   - Navigate to **Settings > Personal API Keys**
+   - Click **Create personal API key**
+   - Give it a name (e.g., "Backend API")
+   - Copy the key → `POSTHOG_API_KEY` (starts with `phx_`)
+3. **For Project API Key (Frontend):**
+   - Navigate to **Project Settings > API Keys**
+   - Copy the **Project API Key** → `VITE_PUBLIC_POSTHOG_KEY` (starts with `phc_`)
+4. **For Project ID (Optional):**
+   - Navigate to **Project Settings**
+   - Copy the **Project ID** → `POSTHOG_PROJECT_ID`
+5. **For Host URL:**
+   - If using PostHog Cloud: `https://app.posthog.com`
+   - If self-hosting: Your PostHog instance URL (e.g., `https://posthog.yourdomain.com`)
+
+**Note:** PostHog is used for:
+- Collecting user feedback through surveys
+- Analytics and event tracking
+- The feedback system will work without PostHog (it will store feedback in your database), but PostHog integration enables better feedback management and analytics.
+
 ### Supabase MCP Configuration (Optional)
 
 For Cursor AI integration with Supabase, you can configure a Model Context Protocol (MCP) server:
@@ -198,5 +249,7 @@ SUPABASE_ACCESS_TOKEN=your_personal_access_token
 - The `STRIPE_PUBLISHABLE_KEY` can be used in client-side code (but not needed for this implementation)
 - The `DATA_FOR_SEO_LOGIN`, `DATA_FOR_SEO_PASSWORD`, and `DATA_FOR_SEO_CRED_B64` should only be used on the server side
 - The `GOOGLE_SEARCH_API_KEY` and `GOOGLE_SEARCH_ENGINE_ID` should only be used on the server side
+- The `POSTHOG_API_KEY` should only be used on the server side
+- The `VITE_PUBLIC_POSTHOG_KEY` is safe to expose in client-side code (it's a project API key)
 - The `SUPABASE_ACCESS_TOKEN` is used for MCP authentication and should be kept secure (not committed to version control)
 

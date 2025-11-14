@@ -1,7 +1,7 @@
 import { eq, desc, inArray, sql, or, and } from "drizzle-orm";
 import { db } from "./db";
 import {
-    users, ideas, reports, keywords, customSearchProjects, globalKeywords, customSearchProjectKeywords, pipelineExecutions,
+    users, ideas, reports, keywords, customSearchProjects, globalKeywords, customSearchProjectKeywords, pipelineExecutions, feedback,
     type User, type InsertUser,
     type Idea, type InsertIdea,
     type Report, type InsertReport,
@@ -11,7 +11,8 @@ import {
     type GlobalKeyword, type InsertGlobalKeyword,
     type CustomSearchProjectKeyword, type InsertCustomSearchProjectKeyword,
     type KeywordGenerationProgress,
-    type PipelineExecution, type InsertPipelineExecution
+    type PipelineExecution, type InsertPipelineExecution,
+    type Feedback, type InsertFeedback
 } from "@shared/schema";
 
 export interface IStorage {
@@ -74,6 +75,9 @@ export interface IStorage {
     getUserCredits(userId: string): Promise<number>;
     addCredits(userId: string, amount: number): Promise<User>;
 
+    // Feedback methods
+    createFeedback(feedback: InsertFeedback): Promise<Feedback>;
+
     // Health check
     healthCheck(): Promise<{ connected: boolean; tablesExist: boolean }>;
 }
@@ -95,7 +99,10 @@ export class DatabaseStorage implements IStorage {
     }
 
     async createUser(insertUser: InsertUser): Promise<User> {
-        const result = await db.insert(users).values(insertUser).returning();
+        const result = await db.insert(users).values({
+            ...insertUser,
+            credits: 3, // Give 5 credits by default on account creation
+        } as typeof users.$inferInsert).returning();
         return result[0];
     }
 
@@ -194,11 +201,11 @@ export class DatabaseStorage implements IStorage {
             }
             return true;
         });
-        
+
         if (allKeywords.length > 0 && filteredKeywords.length === 0) {
             console.warn(`[Storage] All ${allKeywords.length} keywords were filtered out for report ${reportId}`);
         }
-        
+
         return filteredKeywords;
     }
 
@@ -233,12 +240,12 @@ export class DatabaseStorage implements IStorage {
 
     async getCustomSearchProjectsPaginated(userId: string, page: number, limit: number): Promise<{ projects: CustomSearchProject[]; total: number }> {
         const offset = (page - 1) * limit;
-        
+
         // Split into two queries for better performance:
         // 1. Fast COUNT query (uses index, doesn't need to fetch data)
         // 2. Fast SELECT query with LIMIT (only fetches what we need)
         // This is faster than window function which scans all rows
-        
+
         // Run queries in parallel for better performance
         const queryStartTime = Date.now();
         const [totalResult, projects] = await Promise.all([
@@ -255,11 +262,11 @@ export class DatabaseStorage implements IStorage {
                 .offset(offset)
         ]);
         const queryTime = Date.now() - queryStartTime;
-        
+
         console.log(`[Storage] Both queries completed in parallel: ${queryTime}ms`);
-        
+
         const total = Number(totalResult[0]?.count || 0);
-        
+
         return { projects, total };
     }
 
@@ -327,11 +334,11 @@ export class DatabaseStorage implements IStorage {
         const keywordTexts = insertKeywords.map(kw => kw.keyword);
         const existingKeywords = await this.getGlobalKeywordsByTexts(keywordTexts);
         const existingKeywordsSet = new Set(existingKeywords.map(kw => kw.keyword.toLowerCase()));
-        
+
         const newKeywords = insertKeywords.filter(kw => !existingKeywordsSet.has(kw.keyword.toLowerCase()));
-        
+
         if (newKeywords.length === 0) return [];
-        
+
         // Insert only new keywords
         const result = await db
             .insert(globalKeywords)
@@ -367,7 +374,7 @@ export class DatabaseStorage implements IStorage {
             .from(customSearchProjectKeywords)
             .innerJoin(globalKeywords, eq(customSearchProjectKeywords.globalKeywordId, globalKeywords.id))
             .where(eq(customSearchProjectKeywords.customSearchProjectId, projectId));
-        
+
         return result.map(r => ({
             ...r.keyword,
             sourceWebsites: (r.sourceWebsites as string[]) || [],
@@ -422,10 +429,10 @@ export class DatabaseStorage implements IStorage {
         // Optimize: Use sequential updates in smaller batches instead of parallel updates
         // This reduces lock contention and is faster for bulk operations
         const batchSize = 50; // Process 50 updates at a time
-        
+
         for (let i = 0; i < updates.length; i += batchSize) {
             const batch = updates.slice(i, i + batchSize);
-            
+
             // Use a transaction for each batch
             await db.transaction(async (tx) => {
                 // Process updates sequentially within the transaction (faster than parallel for bulk)
@@ -463,7 +470,7 @@ export class DatabaseStorage implements IStorage {
         if (status) {
             conditions.push(eq(pipelineExecutions.status, status));
         }
-        
+
         return await db
             .select()
             .from(pipelineExecutions)
@@ -512,14 +519,14 @@ export class DatabaseStorage implements IStorage {
                 sql`${pipelineExecutions.customSearchProjectId} = ${projectId} 
                     AND ${pipelineExecutions.status} = 'complete'`
             );
-        
+
         const uniqueWebsites = new Set<string>();
         completedExecutions.forEach(exec => {
             if (exec.normalizedWebsite) {
                 uniqueWebsites.add(exec.normalizedWebsite);
             }
         });
-        
+
         return Array.from(uniqueWebsites);
     }
 
@@ -529,11 +536,11 @@ export class DatabaseStorage implements IStorage {
             .set({ credits: sql`GREATEST(0, ${users.credits} - ${amount})` })
             .where(eq(users.id, userId))
             .returning();
-        
+
         if (!result[0]) {
             throw new Error(`User ${userId} not found`);
         }
-        
+
         return result[0];
     }
 
@@ -551,11 +558,16 @@ export class DatabaseStorage implements IStorage {
             .set({ credits: sql`${users.credits} + ${amount}` })
             .where(eq(users.id, userId))
             .returning();
-        
+
         if (!result[0]) {
             throw new Error(`User ${userId} not found`);
         }
-        
+
+        return result[0];
+    }
+
+    async createFeedback(insertFeedback: InsertFeedback): Promise<Feedback> {
+        const result = await db.insert(feedback).values(insertFeedback).returning();
         return result[0];
     }
 
