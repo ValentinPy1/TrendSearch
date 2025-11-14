@@ -48,9 +48,9 @@ VITE_SUPABASE_ANON_KEY=eyJ...
 - `STRIPE_PUBLISHABLE_KEY` - Your Stripe publishable key (test mode: `pk_test_...`)
 - `STRIPE_WEBHOOK_SECRET` - Your Stripe webhook signing secret (from Stripe Dashboard)
 - `STRIPE_PREMIUM_20_PRICE_ID` - Your Stripe Price ID for Premium + 20 credits (€9.99)
-- `STRIPE_PREMIUM_100_PRICE_ID` - Your Stripe Price ID for Premium + 100 credits (€14.99)
+- `STRIPE_PREMIUM_80_PRICE_ID` - Your Stripe Price ID for Premium + 80 credits (€14.99)
 - `STRIPE_CREDITS_40_PRICE_ID` - Your Stripe Price ID for 40 credits (€9.99)
-- `STRIPE_CREDITS_100_PRICE_ID` - Your Stripe Price ID for 100 credits (€14.99)
+- `STRIPE_CREDITS_80_PRICE_ID` - Your Stripe Price ID for 80 credits (€14.99)
 
 These can be set in your `.env` file:
 
@@ -60,9 +60,9 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_PUBLISHABLE_KEY=pk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PREMIUM_20_PRICE_ID=price_...  # Premium + 20 credits (€9.99)
-STRIPE_PREMIUM_100_PRICE_ID=price_...  # Premium + 100 credits (€14.99)
+STRIPE_PREMIUM_80_PRICE_ID=price_...  # Premium + 80 credits (€14.99)
 STRIPE_CREDITS_40_PRICE_ID=price_...  # 40 credits (€9.99)
-STRIPE_CREDITS_100_PRICE_ID=price_...  # 100 credits (€14.99)
+STRIPE_CREDITS_80_PRICE_ID=price_...  # 80 credits (€14.99)
 ```
 
 ## Getting Your Stripe Credentials
@@ -82,13 +82,13 @@ STRIPE_CREDITS_100_PRICE_ID=price_...  # 100 credits (€14.99)
      - Set price to €9.99
      - Make sure the price is **Active**
      - Copy the **Price ID** → `STRIPE_PREMIUM_20_PRICE_ID` (starts with `price_`)
-   - **Premium + 100 Credits (€14.99)**:
+   - **Premium + 80 Credits (€14.99)**:
      - Create another product or add another price
-     - Name: "Premium + 100 Credits" or similar
+     - Name: "Premium + 80 Credits" or similar
      - Set it as a **One-time payment**
      - Set price to €14.99
      - Make sure the price is **Active**
-     - Copy the **Price ID** → `STRIPE_PREMIUM_100_PRICE_ID` (starts with `price_`)
+     - Copy the **Price ID** → `STRIPE_PREMIUM_80_PRICE_ID` (starts with `price_`)
    - **40 Credits (€9.99)**:
      - Create another product or add another price
      - Name: "40 Credits" or similar
@@ -96,13 +96,13 @@ STRIPE_CREDITS_100_PRICE_ID=price_...  # 100 credits (€14.99)
      - Set price to €9.99
      - Make sure the price is **Active**
      - Copy the **Price ID** → `STRIPE_CREDITS_40_PRICE_ID` (starts with `price_`)
-   - **100 Credits (€14.99)**:
+   - **80 Credits (€14.99)**:
      - Create another product or add another price
-     - Name: "100 Credits" or similar
+     - Name: "80 Credits" or similar
      - Set it as a **One-time payment**
      - Set price to €14.99
      - Make sure the price is **Active**
-     - Copy the **Price ID** → `STRIPE_CREDITS_100_PRICE_ID` (starts with `price_`)
+     - Copy the **Price ID** → `STRIPE_CREDITS_80_PRICE_ID` (starts with `price_`)
    
    **Important:** All prices must be **Active** in Stripe. Inactive prices will cause errors.
 6. Set up webhook:

@@ -19,8 +19,8 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
     const { data: paymentStatus } = usePaymentStatus();
     const creditsAvailable = paymentStatus?.credits ?? 0;
     const hasPaid = paymentStatus?.hasPaid ?? false;
-    const [selectedCreditOption, setSelectedCreditOption] = useState<"credits_40" | "credits_100">("credits_40");
-    const [selectedPremiumOption, setSelectedPremiumOption] = useState<"premium_20" | "premium_100">("premium_20");
+    const [selectedCreditOption, setSelectedCreditOption] = useState<"credits_40" | "credits_80">("credits_40");
+    const [selectedPremiumOption, setSelectedPremiumOption] = useState<"premium_20" | "premium_80">("premium_20");
 
     const createCheckoutMutation = useMutation({
         mutationFn: async (option: string) => {
@@ -65,9 +65,9 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
             credits: 20,
         },
         {
-            option: "premium_100" as const,
+            option: "premium_80" as const,
             price: "€14.99",
-            credits: 100,
+            credits: 80,
             popular: true,
         },
     ];
@@ -79,9 +79,9 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
             credits: 40,
         },
         {
-            option: "credits_100" as const,
+            option: "credits_80" as const,
             price: "€14.99",
-            credits: 100,
+            credits: 80,
             popular: true,
         },
     ];

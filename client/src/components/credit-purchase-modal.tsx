@@ -16,10 +16,10 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
     const { toast } = useToast();
     const { data: paymentStatus } = usePaymentStatus();
     const credits = paymentStatus?.credits ?? 0;
-    const [selectedOption, setSelectedOption] = useState<"credits_40" | "credits_100">("credits_40");
+    const [selectedOption, setSelectedOption] = useState<"credits_40" | "credits_80">("credits_40");
 
     const createCheckoutMutation = useMutation({
-        mutationFn: async (option: "credits_40" | "credits_100") => {
+        mutationFn: async (option: "credits_40" | "credits_80") => {
             const res = await apiRequest("POST", "/api/stripe/create-checkout", {
                 option: option
             });
@@ -57,9 +57,9 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
             credits: 40,
         },
         {
-            option: "credits_100" as const,
+            option: "credits_80" as const,
             price: "€14.99",
-            credits: 100,
+            credits: 80,
             popular: true,
         },
     ];

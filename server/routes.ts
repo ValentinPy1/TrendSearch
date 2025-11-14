@@ -1434,11 +1434,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     app.post("/api/stripe/create-checkout", requireAuth, async (req, res) => {
         try {
             const user = req.user;
-            const { option } = req.body; // "premium_20", "premium_100", "credits_40", "credits_100"
+            const { option } = req.body; // "premium_20", "premium_80", "credits_40", "credits_80"
 
             if (!option) {
                 return res.status(400).json({
-                    message: "Option parameter is required. Valid options: premium_20, premium_100, credits_40, credits_100"
+                    message: "Option parameter is required. Valid options: premium_20, premium_80, credits_40, credits_80"
                 });
             }
 
@@ -1448,7 +1448,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             if (!['premium', 'credits'].includes(type) || isNaN(credits)) {
                 return res.status(400).json({
-                    message: "Invalid option. Valid options: premium_20, premium_100, credits_40, credits_100"
+                    message: "Invalid option. Valid options: premium_20, premium_80, credits_40, credits_80"
                 });
             }
 
@@ -1463,9 +1463,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Map options to price IDs via environment variables
             const priceIdMap: Record<string, string> = {
                 'premium_20': process.env.STRIPE_PREMIUM_20_PRICE_ID || '',
-                'premium_100': process.env.STRIPE_PREMIUM_100_PRICE_ID || '',
+                'premium_80': process.env.STRIPE_PREMIUM_80_PRICE_ID || '',
                 'credits_40': process.env.STRIPE_CREDITS_40_PRICE_ID || '',
-                'credits_100': process.env.STRIPE_CREDITS_100_PRICE_ID || '',
+                'credits_80': process.env.STRIPE_CREDITS_80_PRICE_ID || '',
             };
 
             const priceId = priceIdMap[option];

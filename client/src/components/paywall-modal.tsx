@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Sparkles, Building2, Filter, Search, TrendingUp, BarChart3, Zap, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Sparkles, Building2, Filter, Search, TrendingUp, Zap, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -15,10 +15,10 @@ interface PaywallModalProps {
 export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps) {
     const { toast } = useToast();
     const [expandedFeatures, setExpandedFeatures] = useState<Set<number>>(new Set());
-    const [selectedOption, setSelectedOption] = useState<"premium_20" | "premium_100">("premium_20");
+    const [selectedOption, setSelectedOption] = useState<"premium_20" | "premium_80">("premium_20");
 
     const createCheckoutMutation = useMutation({
-        mutationFn: async (option: "premium_20" | "premium_100") => {
+        mutationFn: async (option: "premium_20" | "premium_80") => {
             const res = await apiRequest("POST", "/api/stripe/create-checkout", {
                 option: option
             });
@@ -57,9 +57,9 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
             popular: false,
         },
         {
-            option: "premium_100" as const,
+            option: "premium_80" as const,
             price: "€14.99",
-            credits: 100,
+            credits: 80,
             popular: true,
         },
     ];
@@ -100,21 +100,15 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
         {
             icon: Zap,
             title: "Credits Included",
-            description: "Get credits to use for competitor generation (1 credit) and keyword extraction (2 credits). Credits are deducted only when operations complete successfully. Choose between 20 or 100 credits."
-        },
-        {
-            icon: BarChart3,
-            title: "Advanced Analytics",
-            description: "Deep dive into opportunity scores, bid efficiency, TAC/SAC metrics, and growth patterns. Get comprehensive insights to optimize your keyword strategy."
+            description: "Get credits to use for competitor generation (1 credit) and keyword extraction (2 credits). Credits are deducted only when operations complete successfully. Choose between 20 or 80 credits."
         }
     ];
 
     const toggleFeature = (index: number) => {
         setExpandedFeatures(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(index)) {
-                newSet.delete(index);
-            } else {
+            const newSet = new Set<number>();
+            // If clicking on an already expanded item, close it. Otherwise, expand only this one.
+            if (!prev.has(index)) {
                 newSet.add(index);
             }
             return newSet;
@@ -125,11 +119,6 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-lg">
                 <DialogHeader className="text-center pb-2">
-                    <div className="flex items-center justify-center mb-2">
-                        <div className="p-3 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 border-2 border-primary/30">
-                            <Sparkles className="h-6 w-6 text-primary" />
-                        </div>
-                    </div>
                     <DialogTitle className="text-xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
                         Unlock Premium Features
                     </DialogTitle>
