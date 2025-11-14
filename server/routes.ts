@@ -1434,7 +1434,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     app.post("/api/stripe/create-checkout", requireAuth, async (req, res) => {
         try {
             const user = req.user;
-            const { type = "premium" } = req.body; // "premium" or "credits"
+            const { option } = req.body; // "premium_20", "premium_100", "credits_40", "credits_100"
+
+            if (!option) {
+                return res.status(400).json({
+                    message: "Option parameter is required. Valid options: premium_20, premium_100, credits_40, credits_100"
+                });
+            }
+
+            // Parse option
+            const [type, creditAmount] = option.split('_');
+            const credits = parseInt(creditAmount, 10);
+
+            if (!['premium', 'credits'].includes(type) || isNaN(credits)) {
+                return res.status(400).json({
+                    message: "Invalid option. Valid options: premium_20, premium_100, credits_40, credits_100"
+                });
+            }
 
             // For premium: check if user already paid
             if (type === "premium" && user.hasPaid) {
@@ -1444,17 +1460,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 });
             }
 
-            // Determine price ID based on type
-            let priceId: string;
-            if (type === "credits") {
-                priceId = process.env.STRIPE_CREDITS_PRICE_ID || "price_1STJJAP3RKjma8FgHswJMmoh";
-            } else {
-                priceId = process.env.STRIPE_PRICE_ID || "price_1STJINP3RKjma8Fgx6YuZSGj";
-            }
+            // Map options to price IDs via environment variables
+            const priceIdMap: Record<string, string> = {
+                'premium_20': process.env.STRIPE_PREMIUM_20_PRICE_ID || '',
+                'premium_100': process.env.STRIPE_PREMIUM_100_PRICE_ID || '',
+                'credits_40': process.env.STRIPE_CREDITS_40_PRICE_ID || '',
+                'credits_100': process.env.STRIPE_CREDITS_100_PRICE_ID || '',
+            };
 
+            const priceId = priceIdMap[option];
             if (!priceId) {
                 return res.status(500).json({
-                    message: "Stripe price ID not configured"
+                    message: `Price ID for option "${option}" is not configured. Please set the corresponding environment variable.`
                 });
             }
 
@@ -1474,6 +1491,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 metadata: {
                     userId: user.id,
                     purchaseType: type, // "premium" or "credits"
+                    credits: credits.toString(), // Store credit amount
+                    option: option, // Store the full option for reference
                 },
             });
 
@@ -1528,6 +1547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Get user ID and purchase type from metadata
             const userId = session.metadata?.userId;
             const purchaseType = session.metadata?.purchaseType || "premium"; // Default to premium for backward compatibility
+            const creditsAmount = parseInt(session.metadata?.credits || "20", 10); // Default to 20 for backward compatibility
             
             if (!userId) {
                 console.error("No userId in checkout session metadata");
@@ -1536,25 +1556,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             try {
                 if (purchaseType === "credits") {
-                    // Add 20 credits for credit purchase
-                    await storage.addCredits(userId, 20);
-                    console.log(`✅ Credits purchase completed for user ${userId} - 20 credits added`);
+                    // Add credits for credit purchase
+                    await storage.addCredits(userId, creditsAmount);
+                    console.log(`✅ Credits purchase completed for user ${userId} - ${creditsAmount} credits added`);
                     
                     // Verify the update
                     const updatedUser = await storage.getUser(userId);
                     console.log(`✅ Verified: User ${userId} credits updated successfully, total credits: ${updatedUser?.credits ?? 0}`);
                 } else {
-                    // Premium purchase: set hasPaid and grant 20 credits
+                    // Premium purchase: set hasPaid and grant credits
                     await db.update(users)
                         .set({
                             hasPaid: true,
                             paymentDate: new Date(),
                             stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,
-                            credits: 20, // Grant 20 credits for premium account
+                            credits: creditsAmount, // Grant credits based on selected option
                         })
                         .where(eq(users.id, userId));
 
-                    console.log(`✅ Premium payment completed for user ${userId} - hasPaid set to true, 20 credits granted`);
+                    console.log(`✅ Premium payment completed for user ${userId} - hasPaid set to true, ${creditsAmount} credits granted`);
 
                     // Verify the update was successful
                     const updatedUser = await storage.getUser(userId);

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 
 interface AuthPageProps {
   onAuthSuccess: (user: { id: string; email: string }) => void;
@@ -28,7 +29,11 @@ const loginSchema = z.object({
 });
 
 export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
-  const [isLogin, setIsLogin] = useState(true);
+  const [, setLocation] = useLocation();
+  // Default to signup if coming from landing page (check URL params)
+  const urlParams = new URLSearchParams(window.location.search);
+  const shouldSignup = urlParams.get('signup') === 'true' || urlParams.get('mode') === 'signup';
+  const [isLogin, setIsLogin] = useState(!shouldSignup);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -168,6 +173,13 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
+        <button
+          onClick={() => setLocation("/")}
+          className="flex items-center gap-2 text-white/60 hover:text-white transition-colors mb-4"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="text-sm">Back to home</span>
+        </button>
         <div className="text-center">
           <h1 className="text-6xl font-bold bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent mb-4">Trends Search</h1>
           <p className="text-lg text-white/60">

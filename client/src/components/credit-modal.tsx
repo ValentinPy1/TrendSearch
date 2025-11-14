@@ -19,11 +19,13 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
     const { data: paymentStatus } = usePaymentStatus();
     const creditsAvailable = paymentStatus?.credits ?? 0;
     const hasPaid = paymentStatus?.hasPaid ?? false;
+    const [selectedCreditOption, setSelectedCreditOption] = useState<"credits_40" | "credits_100">("credits_40");
+    const [selectedPremiumOption, setSelectedPremiumOption] = useState<"premium_20" | "premium_100">("premium_20");
 
     const createCheckoutMutation = useMutation({
-        mutationFn: async (purchaseType: "premium" | "credits") => {
+        mutationFn: async (option: string) => {
             const res = await apiRequest("POST", "/api/stripe/create-checkout", {
-                type: purchaseType
+                option: option
             });
             return res.json();
         },
@@ -49,12 +51,40 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
     });
 
     const handlePremiumCheckout = () => {
-        createCheckoutMutation.mutate("premium");
+        createCheckoutMutation.mutate(selectedPremiumOption);
     };
 
     const handleCreditsCheckout = () => {
-        createCheckoutMutation.mutate("credits");
+        createCheckoutMutation.mutate(selectedCreditOption);
     };
+
+    const premiumOptions = [
+        {
+            option: "premium_20" as const,
+            price: "€9.99",
+            credits: 20,
+        },
+        {
+            option: "premium_100" as const,
+            price: "€14.99",
+            credits: 100,
+            popular: true,
+        },
+    ];
+
+    const creditOptions = [
+        {
+            option: "credits_40" as const,
+            price: "€9.99",
+            credits: 40,
+        },
+        {
+            option: "credits_100" as const,
+            price: "€14.99",
+            credits: 100,
+            popular: true,
+        },
+    ];
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -92,22 +122,80 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
                     </div>
 
                     {!hasPaid && (
-                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-                            <p className="text-sm text-white/90">
-                                Upgrade to premium to get 20 credits and unlock all premium features!
-                            </p>
+                        <div className="space-y-3">
+                            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
+                                <p className="text-sm text-white/90 font-semibold mb-2">
+                                    Upgrade to Premium + Get Credits
+                                </p>
+                                <p className="text-xs text-white/70 mb-3">
+                                    Unlock all premium features and get credits included!
+                                </p>
+                                <div className="space-y-2">
+                                    {premiumOptions.map((opt) => (
+                                        <button
+                                            key={opt.option}
+                                            onClick={() => setSelectedPremiumOption(opt.option)}
+                                            className={`w-full text-left rounded-lg border-2 p-2.5 transition-all ${
+                                                selectedPremiumOption === opt.option
+                                                    ? "border-primary bg-primary/10"
+                                                    : "border-white/10 bg-white/5 hover:border-white/20"
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-medium text-white">
+                                                        Premium + {opt.credits} Credits
+                                                    </span>
+                                                    {opt.popular && (
+                                                        <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
+                                                            Popular
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className="text-sm font-bold text-white">{opt.price}</span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     )}
 
                     {hasPaid && creditsAvailable < creditsRequired && (
                         <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center justify-between mb-3">
                                 <span className="text-sm text-white/80 font-semibold">Refuel Credits</span>
-                                <span className="text-xs text-white/60">$4.99</span>
                             </div>
                             <p className="text-xs text-white/60 mb-3">
-                                Purchase 20 more credits to continue using premium features.
+                                Purchase more credits to continue using premium features.
                             </p>
+                            <div className="space-y-2 mb-3">
+                                {creditOptions.map((opt) => (
+                                    <button
+                                        key={opt.option}
+                                        onClick={() => setSelectedCreditOption(opt.option)}
+                                        className={`w-full text-left rounded-lg border-2 p-2.5 transition-all ${
+                                            selectedCreditOption === opt.option
+                                                ? "border-primary bg-primary/10"
+                                                : "border-white/10 bg-white/5 hover:border-white/20"
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-medium text-white">
+                                                    {opt.credits} Credits
+                                                </span>
+                                                {opt.popular && (
+                                                    <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
+                                                        Popular
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span className="text-sm font-bold text-white">{opt.price}</span>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
                             <Button
                                 onClick={handleCreditsCheckout}
                                 disabled={createCheckoutMutation.isPending}
@@ -122,7 +210,7 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
                                 ) : (
                                     <>
                                         <Coins className="mr-2 h-4 w-4" />
-                                        Purchase 20 Credits
+                                        Purchase Credits
                                     </>
                                 )}
                             </Button>
@@ -151,7 +239,7 @@ export function CreditModal({ open, onOpenChange, creditsRequired, featureName }
                                 ) : (
                                     <>
                                         <Sparkles className="mr-2 h-4 w-4" />
-                                        Upgrade Premium ($9.99)
+                                        Upgrade Premium
                                     </>
                                 )}
                             </Button>

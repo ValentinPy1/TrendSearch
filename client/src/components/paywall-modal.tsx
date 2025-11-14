@@ -15,11 +15,12 @@ interface PaywallModalProps {
 export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps) {
     const { toast } = useToast();
     const [expandedFeatures, setExpandedFeatures] = useState<Set<number>>(new Set());
+    const [selectedOption, setSelectedOption] = useState<"premium_20" | "premium_100">("premium_20");
 
     const createCheckoutMutation = useMutation({
-        mutationFn: async (purchaseType: "premium" | "credits" = "premium") => {
+        mutationFn: async (option: "premium_20" | "premium_100") => {
             const res = await apiRequest("POST", "/api/stripe/create-checkout", {
-                type: purchaseType
+                option: option
             });
             return res.json();
         },
@@ -45,8 +46,23 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
     });
 
     const handleCheckout = () => {
-        createCheckoutMutation.mutate("premium");
+        createCheckoutMutation.mutate(selectedOption);
     };
+
+    const premiumOptions = [
+        {
+            option: "premium_20" as const,
+            price: "€9.99",
+            credits: 20,
+            popular: false,
+        },
+        {
+            option: "premium_100" as const,
+            price: "€14.99",
+            credits: 100,
+            popular: true,
+        },
+    ];
 
     const featureName = feature === "sector-browsing" 
         ? "Sector Browsing" 
@@ -83,8 +99,8 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
         },
         {
             icon: Zap,
-            title: "20 Credits Included",
-            description: "Get 20 credits to use for competitor generation (1 credit) and keyword extraction (2 credits). Credits are deducted only when operations complete successfully."
+            title: "Credits Included",
+            description: "Get credits to use for competitor generation (1 credit) and keyword extraction (2 credits). Credits are deducted only when operations complete successfully. Choose between 20 or 100 credits."
         },
         {
             icon: BarChart3,
@@ -118,7 +134,7 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
                         Unlock Premium Features
                     </DialogTitle>
                     <DialogDescription className="text-sm pt-1">
-                        One-time payment • Unlimited access • 20 credits included
+                        One-time payment • Unlimited access • Credits included
                     </DialogDescription>
                 </DialogHeader>
                 
@@ -180,8 +196,46 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
                         </div>
                     </div>
 
+                    {/* Premium Options */}
+                    <div className="space-y-2 pt-2">
+                        <h3 className="text-sm font-semibold text-white mb-2">Choose Your Plan:</h3>
+                        {premiumOptions.map((opt) => (
+                            <button
+                                key={opt.option}
+                                onClick={() => setSelectedOption(opt.option)}
+                                className={`w-full text-left rounded-lg border-2 p-3 transition-all ${
+                                    selectedOption === opt.option
+                                        ? "border-primary bg-primary/10"
+                                        : "border-white/10 bg-white/5 hover:border-white/20"
+                                }`}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-semibold text-white">
+                                                Premium + {opt.credits} Credits
+                                            </span>
+                                            {opt.popular && (
+                                                <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                                                    Popular
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-white/60 mt-0.5">
+                                            Unlimited access to all premium features
+                                        </p>
+                                    </div>
+                                    <div className="text-right ml-4">
+                                        <div className="text-lg font-bold text-white">{opt.price}</div>
+                                        <div className="text-xs text-white/60">EUR</div>
+                                    </div>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+
                     {/* CTA Buttons */}
-                    <div className="flex gap-3 pt-1">
+                    <div className="flex gap-3 pt-2">
                         <Button
                             variant="outline"
                             onClick={() => onOpenChange(false)}

@@ -10,6 +10,7 @@ import { supabase } from "./lib/supabase";
 import { Loader2 } from "lucide-react";
 import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
+import LandingPage from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 import PaymentSuccess from "@/pages/payment-success";
 import PaymentCancelled from "@/pages/payment-cancelled";
@@ -106,11 +107,18 @@ function App() {
               <Switch>
                 <Route path="/payment-success" component={PaymentSuccess} />
                 <Route path="/payment-cancelled" component={PaymentCancelled} />
-                <Route path="/">
+                <Route path="/auth">
                   {user ? (
                     <Dashboard user={user} onLogout={handleLogout} />
                   ) : (
                     <AuthPage onAuthSuccess={setUser} />
+                  )}
+                </Route>
+                <Route path="/">
+                  {user ? (
+                    <Dashboard user={user} onLogout={handleLogout} />
+                  ) : (
+                    <LandingPage />
                   )}
                 </Route>
                 <Route component={NotFound} />
