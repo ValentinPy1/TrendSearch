@@ -188,7 +188,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
     const [companyFilterQuery, setCompanyFilterQuery] = useState("");
     const [companySortBy, setCompanySortBy] = useState<SortOption>("opportunityScore");
     const [showPaywall, setShowPaywall] = useState(false);
-    const [viewMode, setViewMode] = useState<"card" | "table">("card");
+    const [viewMode, setViewMode] = useState<"card" | "table">("table");
     const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
     const [companyViewMode, setCompanyViewMode] = useState<"card" | "table">("card");
     const [companySortDirection, setCompanySortDirection] = useState<"asc" | "desc">("desc");
