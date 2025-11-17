@@ -151,9 +151,16 @@ class KeywordVectorService {
             this.extractor = null;
             this.initialized = false;
 
-            console.log('[KeywordVectorService] Loading keywords from Supabase...');
+            // Determine data path: Railway volume mount or local data directory
+            const volumeMountPath = process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data';
+            const dataPath = fs.existsSync(volumeMountPath) ? volumeMountPath : path.join(process.cwd(), 'data');
+            const keywordsFilePath = path.join(dataPath, 'keywords.json');
+            const keywordsMetadataPath = path.join(dataPath, 'keywords-metadata.json');
 
-            // Initialize postgres client for raw SQL queries
+            console.log(`[KeywordVectorService] Data path: ${dataPath}`);
+            console.log(`[KeywordVectorService] Keywords file: ${keywordsFilePath}`);
+
+            // Initialize postgres client (needed for volume population or vector searches)
             if (!process.env.DATABASE_URL) {
                 throw new Error('DATABASE_URL environment variable is required');
             }
@@ -168,74 +175,96 @@ class KeywordVectorService {
             });
             pgClientCreated = true;
 
-            // Load keywords from database with increased timeout
-            // Use pgClient directly for better timeout control
-            // Remove ORDER BY to speed up query (not needed for Set lookups)
-            // Use transaction to set statement_timeout for this query only
-            const keywordRows = await this.pgClient.begin(async (sql) => {
-                await sql`SET LOCAL statement_timeout = '5min'`;
-                return await sql`
-                    SELECT 
-                        keyword,
-                        search_volume,
-                        competition,
-                        low_top_of_page_bid,
-                        high_top_of_page_bid,
-                        cpc,
-                        monthly_data,
-                        growth_3m,
-                        growth_yoy,
-                        volatility,
-                        trend_strength,
-                        avg_top_page_bid,
-                        bid_efficiency,
-                        tac,
-                        sac,
-                        opportunity_score
-                    FROM keyword_embeddings
-                `;
-            });
+            // Check if keywords file exists in volume/local storage
+            if (fs.existsSync(keywordsFilePath)) {
+                console.log('[KeywordVectorService] Loading keywords from local storage...');
+                const keywordsData = JSON.parse(fs.readFileSync(keywordsFilePath, 'utf-8'));
+                this.keywords = keywordsData.keywords || keywordsData; // Support both formats
+                console.log(`[KeywordVectorService] Loaded ${this.keywords.length} keywords from local storage`);
+            } else {
+                console.log('[KeywordVectorService] Local keywords file not found, downloading from Supabase...');
+                console.log('[KeywordVectorService] This is a one-time operation. Keywords will be cached for future startups.');
 
-            // Convert database rows to KeywordData format
-            this.keywords = keywordRows.map((row: any) => {
-                const keyword: KeywordData = {
-                    keyword: row.keyword,
-                    search_volume: row.search_volume,
-                    competition: row.competition,
-                    low_top_of_page_bid: row.low_top_of_page_bid ? Number(row.low_top_of_page_bid) : undefined,
-                    high_top_of_page_bid: row.high_top_of_page_bid ? Number(row.high_top_of_page_bid) : undefined,
-                    cpc: row.cpc ? Number(row.cpc) : undefined,
-                    growth_3m: row.growth_3m ? Number(row.growth_3m) : undefined,
-                    growth_YoY: row.growth_yoy ? Number(row.growth_yoy) : undefined,
-                    volatility: row.volatility ? Number(row.volatility) : undefined,
-                    trend_strength: row.trend_strength ? Number(row.trend_strength) : undefined,
-                    avg_top_page_bid: row.avg_top_page_bid ? Number(row.avg_top_page_bid) : undefined,
-                    bid_efficiency: row.bid_efficiency ? Number(row.bid_efficiency) : undefined,
-                    TAC: row.tac ? Number(row.tac) : undefined,
-                    SAC: row.sac ? Number(row.sac) : undefined,
-                    opportunity_score: row.opportunity_score ? Number(row.opportunity_score) : undefined,
-                };
-
-                // Convert monthly_data JSONB to individual month columns if needed
-                if (row.monthly_data && Array.isArray(row.monthly_data)) {
-                    row.monthly_data.forEach((item: { month: string; volume: number }) => {
-                        if (item.month && item.volume !== null && item.volume !== undefined) {
-                            (keyword as any)[item.month] = item.volume;
-                        }
-                    });
+                // Ensure data directory exists
+                if (!fs.existsSync(dataPath)) {
+                    fs.mkdirSync(dataPath, { recursive: true });
                 }
 
-                return keyword;
-            });
+                // Download keywords from Supabase (excluding monthly_data to reduce size)
+                // monthly_data is only needed for specific queries, not for initialization
+                const keywordRows = await this.pgClient.begin(async (sql) => {
+                    await sql`SET LOCAL statement_timeout = '5min'`;
+                    return await sql`
+                        SELECT 
+                            keyword,
+                            search_volume,
+                            competition,
+                            low_top_of_page_bid,
+                            high_top_of_page_bid,
+                            cpc,
+                            growth_3m,
+                            growth_yoy,
+                            volatility,
+                            trend_strength,
+                            avg_top_page_bid,
+                            bid_efficiency,
+                            tac,
+                            sac,
+                            opportunity_score
+                        FROM keyword_embeddings
+                    `;
+                });
 
-            console.log(`[KeywordVectorService] Loaded ${this.keywords.length} keywords from Supabase`);
+                // Convert database rows to KeywordData format
+                this.keywords = keywordRows.map((row: any) => {
+                    const keyword: KeywordData = {
+                        keyword: row.keyword,
+                        search_volume: row.search_volume,
+                        competition: row.competition,
+                        low_top_of_page_bid: row.low_top_of_page_bid ? Number(row.low_top_of_page_bid) : undefined,
+                        high_top_of_page_bid: row.high_top_of_page_bid ? Number(row.high_top_of_page_bid) : undefined,
+                        cpc: row.cpc ? Number(row.cpc) : undefined,
+                        growth_3m: row.growth_3m ? Number(row.growth_3m) : undefined,
+                        growth_YoY: row.growth_yoy ? Number(row.growth_yoy) : undefined,
+                        volatility: row.volatility ? Number(row.volatility) : undefined,
+                        trend_strength: row.trend_strength ? Number(row.trend_strength) : undefined,
+                        avg_top_page_bid: row.avg_top_page_bid ? Number(row.avg_top_page_bid) : undefined,
+                        bid_efficiency: row.bid_efficiency ? Number(row.bid_efficiency) : undefined,
+                        TAC: row.tac ? Number(row.tac) : undefined,
+                        SAC: row.sac ? Number(row.sac) : undefined,
+                        opportunity_score: row.opportunity_score ? Number(row.opportunity_score) : undefined,
+                    };
+                    return keyword;
+                });
+
+                // Save to volume/local storage for future startups
+                console.log(`[KeywordVectorService] Saving ${this.keywords.length} keywords to local storage...`);
+                fs.writeFileSync(keywordsFilePath, JSON.stringify({
+                    version: '1.0.0',
+                    created_at: new Date().toISOString(),
+                    total_keywords: this.keywords.length,
+                    keywords: this.keywords
+                }, null, 2));
+
+                // Save metadata file
+                fs.writeFileSync(keywordsMetadataPath, JSON.stringify({
+                    version: '1.0.0',
+                    created_at: new Date().toISOString(),
+                    total_keywords: this.keywords.length,
+                    source: 'supabase',
+                    note: 'monthly_data excluded to reduce file size'
+                }, null, 2));
+
+                const fileSizeMB = (fs.statSync(keywordsFilePath).size / 1024 / 1024).toFixed(2);
+                console.log(`[KeywordVectorService] Saved keywords to ${keywordsFilePath} (${fileSizeMB} MB)`);
+            }
 
             // Build Set for fast exact match lookups
             this.keywordSet = new Set(this.keywords.map(k => k.keyword.toLowerCase().trim()));
             console.log(`[KeywordVectorService] Built keyword Set for fast lookups (${this.keywordSet.size} keywords)`);
 
             // Load precomputed opportunity metrics (if available)
-            this.loadPrecomputedMetrics();
+            this.loadPrecomputedMetrics(dataPath);
 
             // Initialize sentence transformer for query encoding
             console.log('[KeywordVectorService] Initializing sentence transformer for queries...');
@@ -267,9 +296,12 @@ class KeywordVectorService {
     /**
      * Load precomputed opportunity metrics and processed keyword data from JSON file (if exists)
      */
-    private loadPrecomputedMetrics(): void {
+    private loadPrecomputedMetrics(dataPath?: string): void {
         try {
-            const metricsPath = path.join(process.cwd(), 'data', 'precomputed_opportunity_metrics.json');
+            // Use provided dataPath or default to process.cwd()/data
+            const basePath = dataPath || path.join(process.cwd(), 'data');
+            const metricsPath = path.join(basePath, 'precomputed_opportunity_metrics.json');
+            
             if (fs.existsSync(metricsPath)) {
                 const dataContent = fs.readFileSync(metricsPath, 'utf-8');
                 const allData: any = JSON.parse(dataContent);
@@ -297,7 +329,7 @@ class KeywordVectorService {
                 console.log(`[KeywordVectorService] Loaded precomputed metrics for ${this.precomputedMetrics.size} keywords`);
                 console.log(`[KeywordVectorService] Loaded preprocessed data for ${this.preprocessedKeywords.size} keywords`);
             } else {
-                console.log(`[KeywordVectorService] Precomputed data not found at ${metricsPath} (run: npx tsx scripts/precompute-opportunity-metrics.ts)`);
+                console.log(`[KeywordVectorService] Precomputed data not found at ${metricsPath} (optional - will compute on-the-fly if needed)`);
                 this.precomputedMetrics = null;
                 this.preprocessedKeywords = null;
             }
