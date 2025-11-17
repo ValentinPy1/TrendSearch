@@ -2,6 +2,7 @@ import express from "express";
 import type { Express } from "express";
 import { createServer } from "http";
 import type { Server } from "http";
+import { randomUUID } from "crypto";
 import { storage } from "./storage";
 import { supabaseAdmin } from "./supabase";
 import { stripe } from "./stripe";
@@ -2003,8 +2004,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
 
                 // Attach opportunity metrics to the keyword object
+                // Generate a temporary ID if the keyword doesn't have one
+                // (Keywords from vector service don't have IDs since they're not stored in DB)
                 return {
                     ...kw,
+                    id: kw.id || `temp-${randomUUID()}`,
                     volatility: metrics.volatility,
                     trendStrength: metrics.trendStrength,
                     bidEfficiency: metrics.bidEfficiency,
@@ -2211,8 +2215,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
 
                 // Attach opportunity metrics to the keyword object
+                // Generate a temporary ID if the keyword doesn't have one
+                // (Keywords from vector service don't have IDs since they're not stored in DB)
                 return {
                     ...kw,
+                    id: kw.id || `temp-${randomUUID()}`,
                     volatility: metrics.volatility,
                     trendStrength: metrics.trendStrength,
                     bidEfficiency: metrics.bidEfficiency,

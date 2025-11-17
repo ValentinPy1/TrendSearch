@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
@@ -11,11 +12,92 @@ import {
     ArrowRight,
     Play,
     Zap,
-    Shield
+    Shield,
+    Pause,
+    Maximize,
+    Minimize
 } from "lucide-react";
+import logoImage from "@assets/image_1761146000585.png";
 
 export default function LandingPage() {
     const [, setLocation] = useLocation();
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const videoContainerRef = useRef<HTMLDivElement>(null);
+
+    const [isVideo2Playing, setIsVideo2Playing] = useState(false);
+    const [isFullscreen2, setIsFullscreen2] = useState(false);
+    const video2Ref = useRef<HTMLVideoElement>(null);
+    const videoContainer2Ref = useRef<HTMLDivElement>(null);
+
+    const [isVideo3Playing, setIsVideo3Playing] = useState(false);
+    const [isFullscreen3, setIsFullscreen3] = useState(false);
+    const video3Ref = useRef<HTMLVideoElement>(null);
+    const videoContainer3Ref = useRef<HTMLDivElement>(null);
+
+    const toggleFullscreen = async () => {
+        if (!videoContainerRef.current) return;
+
+        try {
+            if (!document.fullscreenElement) {
+                await videoContainerRef.current.requestFullscreen();
+                setIsFullscreen(true);
+            } else {
+                await document.exitFullscreen();
+                setIsFullscreen(false);
+            }
+        } catch (error) {
+            console.error("Error toggling fullscreen:", error);
+        }
+    };
+
+    const toggleFullscreen2 = async () => {
+        if (!videoContainer2Ref.current) return;
+
+        try {
+            if (!document.fullscreenElement) {
+                await videoContainer2Ref.current.requestFullscreen();
+                setIsFullscreen2(true);
+            } else {
+                await document.exitFullscreen();
+                setIsFullscreen2(false);
+            }
+        } catch (error) {
+            console.error("Error toggling fullscreen:", error);
+        }
+    };
+
+    const toggleFullscreen3 = async () => {
+        if (!videoContainer3Ref.current) return;
+
+        try {
+            if (!document.fullscreenElement) {
+                await videoContainer3Ref.current.requestFullscreen();
+                setIsFullscreen3(true);
+            } else {
+                await document.exitFullscreen();
+                setIsFullscreen3(false);
+            }
+        } catch (error) {
+            console.error("Error toggling fullscreen:", error);
+        }
+    };
+
+    // Listen for fullscreen changes
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            const isFullscreenActive = !!document.fullscreenElement;
+            setIsFullscreen(isFullscreenActive && document.fullscreenElement === videoContainerRef.current);
+            setIsFullscreen2(isFullscreenActive && document.fullscreenElement === videoContainer2Ref.current);
+            setIsFullscreen3(isFullscreenActive && document.fullscreenElement === videoContainer3Ref.current);
+        };
+
+        document.addEventListener("fullscreenchange", handleFullscreenChange);
+        return () => {
+            document.removeEventListener("fullscreenchange", handleFullscreenChange);
+        };
+    }, []);
 
     return (
         <div className="min-h-screen">
@@ -24,9 +106,11 @@ export default function LandingPage() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         <div className="flex items-center">
-                            <span className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                                Trends Search
-                            </span>
+                            <img
+                                src={logoImage}
+                                alt="Pioneers AI Lab"
+                                className="h-8"
+                            />
                         </div>
                         <div className="flex items-center gap-4">
                             <Button
@@ -111,12 +195,60 @@ export default function LandingPage() {
                 <div className="max-w-7xl mx-auto space-y-16">
                     {/* Feature 1 - YC Keywords Search */}
                     <div className="grid md:grid-cols-2 gap-8 items-center">
-                        <div className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-white/10 to-white/5 border border-white/10 hover:border-primary/30 transition-colors">
-                            <div className="absolute inset-0 flex items-center justify-center">
+                        <div
+                            ref={videoContainerRef}
+                            className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-white/10 to-white/5 border border-white/10 hover:border-primary/30 transition-colors group"
+                        >
+                            <video
+                                ref={videoRef}
+                                src="/YC Keywords explorer.mp4"
+                                className="w-full h-full object-cover"
+                                loop
+                                muted
+                                playsInline
+                                onPlay={() => setIsVideoPlaying(true)}
+                                onPause={() => setIsVideoPlaying(false)}
+                            />
+                            <button
+                                onClick={() => {
+                                    if (videoRef.current) {
+                                        if (isVideoPlaying) {
+                                            videoRef.current.pause();
+                                        } else {
+                                            videoRef.current.play();
+                                        }
+                                    }
+                                }}
+                                className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isVideoPlaying
+                                    ? 'opacity-0 group-hover:opacity-100 bg-black/10'
+                                    : 'opacity-100 bg-black/20'
+                                    }`}
+                            >
                                 <div className="w-16 h-16 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20 hover:bg-primary/20 hover:border-primary/40 transition-all cursor-pointer">
-                                    <Play className="h-8 w-8 text-white ml-1" />
+                                    {isVideoPlaying ? (
+                                        <Pause className="h-8 w-8 text-white" />
+                                    ) : (
+                                        <Play className="h-8 w-8 text-white ml-1" />
+                                    )}
                                 </div>
-                            </div>
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleFullscreen();
+                                }}
+                                className={`absolute bottom-4 right-4 p-2 rounded-lg bg-black/60 hover:bg-black/80 backdrop-blur-sm border border-white/20 hover:border-primary/40 transition-opacity duration-300 cursor-pointer z-10 ${isFullscreen || !isVideoPlaying
+                                    ? 'opacity-100'
+                                    : 'opacity-0 group-hover:opacity-100'
+                                    }`}
+                                aria-label="Toggle fullscreen"
+                            >
+                                {isFullscreen ? (
+                                    <Minimize className="h-5 w-5 text-white" />
+                                ) : (
+                                    <Maximize className="h-5 w-5 text-white" />
+                                )}
+                            </button>
                         </div>
                         <div className="space-y-4">
                             <h3 className="text-2xl font-semibold text-white">YC Keywords Explorer</h3>
@@ -134,23 +266,119 @@ export default function LandingPage() {
                                 Browse through all YC sectors and explore companies within each sector. Rank them by volume, economics, trend, or opportunity for related keywords. Use YC pitches as starting points for keywords explorer to dive deeper into keyword opportunities.
                             </p>
                         </div>
-                        <div className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-white/10 to-white/5 border border-white/10 hover:border-secondary/30 transition-colors order-1 md:order-2">
-                            <div className="absolute inset-0 flex items-center justify-center">
+                        <div
+                            ref={videoContainer2Ref}
+                            className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-white/10 to-white/5 border border-white/10 hover:border-secondary/30 transition-colors order-1 md:order-2 group"
+                        >
+                            <video
+                                ref={video2Ref}
+                                src="/SectorBrowsing.mp4"
+                                className="w-full h-full object-cover"
+                                loop
+                                muted
+                                playsInline
+                                onPlay={() => setIsVideo2Playing(true)}
+                                onPause={() => setIsVideo2Playing(false)}
+                            />
+                            <button
+                                onClick={() => {
+                                    if (video2Ref.current) {
+                                        if (isVideo2Playing) {
+                                            video2Ref.current.pause();
+                                        } else {
+                                            video2Ref.current.play();
+                                        }
+                                    }
+                                }}
+                                className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isVideo2Playing
+                                    ? 'opacity-0 group-hover:opacity-100 bg-black/10'
+                                    : 'opacity-100 bg-black/20'
+                                    }`}
+                            >
                                 <div className="w-16 h-16 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20 hover:bg-secondary/20 hover:border-secondary/40 transition-all cursor-pointer">
-                                    <Play className="h-8 w-8 text-white ml-1" />
+                                    {isVideo2Playing ? (
+                                        <Pause className="h-8 w-8 text-white" />
+                                    ) : (
+                                        <Play className="h-8 w-8 text-white ml-1" />
+                                    )}
                                 </div>
-                            </div>
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleFullscreen2();
+                                }}
+                                className={`absolute bottom-4 right-4 p-2 rounded-lg bg-black/60 hover:bg-black/80 backdrop-blur-sm border border-white/20 hover:border-secondary/40 transition-opacity duration-300 cursor-pointer z-10 ${isFullscreen2 || !isVideo2Playing
+                                    ? 'opacity-100'
+                                    : 'opacity-0 group-hover:opacity-100'
+                                    }`}
+                                aria-label="Toggle fullscreen"
+                            >
+                                {isFullscreen2 ? (
+                                    <Minimize className="h-5 w-5 text-white" />
+                                ) : (
+                                    <Maximize className="h-5 w-5 text-white" />
+                                )}
+                            </button>
                         </div>
                     </div>
 
                     {/* Feature 3 - Custom Search */}
                     <div className="grid md:grid-cols-2 gap-8 items-center">
-                        <div className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-white/10 to-white/5 border border-white/10 hover:border-primary/30 transition-colors">
-                            <div className="absolute inset-0 flex items-center justify-center">
+                        <div
+                            ref={videoContainer3Ref}
+                            className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-white/10 to-white/5 border border-white/10 hover:border-primary/30 transition-colors group"
+                        >
+                            <video
+                                ref={video3Ref}
+                                src="/CompetitorRadar.mp4"
+                                className="w-full h-full object-cover"
+                                loop
+                                muted
+                                playsInline
+                                onPlay={() => setIsVideo3Playing(true)}
+                                onPause={() => setIsVideo3Playing(false)}
+                            />
+                            <button
+                                onClick={() => {
+                                    if (video3Ref.current) {
+                                        if (isVideo3Playing) {
+                                            video3Ref.current.pause();
+                                        } else {
+                                            video3Ref.current.play();
+                                        }
+                                    }
+                                }}
+                                className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isVideo3Playing
+                                    ? 'opacity-0 group-hover:opacity-100 bg-black/10'
+                                    : 'opacity-100 bg-black/20'
+                                    }`}
+                            >
                                 <div className="w-16 h-16 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20 hover:bg-primary/20 hover:border-primary/40 transition-all cursor-pointer">
-                                    <Play className="h-8 w-8 text-white ml-1" />
+                                    {isVideo3Playing ? (
+                                        <Pause className="h-8 w-8 text-white" />
+                                    ) : (
+                                        <Play className="h-8 w-8 text-white ml-1" />
+                                    )}
                                 </div>
-                            </div>
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleFullscreen3();
+                                }}
+                                className={`absolute bottom-4 right-4 p-2 rounded-lg bg-black/60 hover:bg-black/80 backdrop-blur-sm border border-white/20 hover:border-primary/40 transition-opacity duration-300 cursor-pointer z-10 ${isFullscreen3 || !isVideo3Playing
+                                    ? 'opacity-100'
+                                    : 'opacity-0 group-hover:opacity-100'
+                                    }`}
+                                aria-label="Toggle fullscreen"
+                            >
+                                {isFullscreen3 ? (
+                                    <Minimize className="h-5 w-5 text-white" />
+                                ) : (
+                                    <Maximize className="h-5 w-5 text-white" />
+                                )}
+                            </button>
                         </div>
                         <div className="space-y-4">
                             <h3 className="text-2xl font-semibold text-white">Competitor Radar</h3>

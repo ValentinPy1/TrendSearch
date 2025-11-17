@@ -222,14 +222,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         },
     });
 
-    const handleDeleteKeyword = (keywordId: string) => {
-        // Validate keywordId - don't proceed if it's undefined, null, or empty
-        if (!keywordId) {
+    const handleDeleteKeyword = (keywordId: string | undefined) => {
+        // Validate keywordId - don't proceed if it's undefined, null, or empty string
+        if (keywordId === undefined || keywordId === null || keywordId === '') {
             console.warn("Attempted to delete keyword with invalid ID:", keywordId);
             return;
         }
 
         // Remove keyword from view (frontend-only, doesn't delete from database)
+        // Use keyword ID if available, otherwise use keyword text as identifier
         setExcludedKeywordIds((prev) => new Set([...Array.from(prev), keywordId]));
 
         // If the deleted keyword was selected, select the first non-excluded keyword
@@ -241,14 +242,19 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             ]);
 
             const remainingVisibleKeywords = selectedIdea.report.keywords.filter(
-                (k) => !newExcludedIds.has(k.id),
+                (k) => {
+                    // Check both ID and keyword text (for keywords without IDs)
+                    const identifier = k.id || k.keyword;
+                    return !newExcludedIds.has(identifier);
+                },
             );
 
             if (selectedKeyword) {
-                const currentKeywordExcluded =
-                    selectedIdea.report.keywords.find(
-                        (k) => k.keyword === selectedKeyword,
-                    )?.id === keywordId;
+                const currentKeyword = selectedIdea.report.keywords.find(
+                    (k) => k.keyword === selectedKeyword,
+                );
+                const currentKeywordIdentifier = currentKeyword?.id || currentKeyword?.keyword;
+                const currentKeywordExcluded = currentKeywordIdentifier === keywordId;
 
                 if (currentKeywordExcluded && remainingVisibleKeywords.length > 0) {
                     setSelectedKeyword(remainingVisibleKeywords[0].keyword);
@@ -562,12 +568,20 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                             displayedKeywordCount,
                         );
                         const displayedKeywords = preFilteredKeywords.filter(
-                            (k) => !excludedKeywordIds.has(k.id),
+                            (k) => {
+                                // Check both ID and keyword text (for keywords without IDs)
+                                const identifier = k.id || k.keyword;
+                                return !excludedKeywordIds.has(identifier);
+                            },
                         );
 
                         // Check if there are more keywords to show (not counting excluded ones)
                         const allVisibleKeywords = selectedIdea.report.keywords.filter(
-                            (k) => !excludedKeywordIds.has(k.id),
+                            (k) => {
+                                // Check both ID and keyword text (for keywords without IDs)
+                                const identifier = k.id || k.keyword;
+                                return !excludedKeywordIds.has(identifier);
+                            },
                         );
                         const hasMoreToShow =
                             displayedKeywordCount < allVisibleKeywords.length;

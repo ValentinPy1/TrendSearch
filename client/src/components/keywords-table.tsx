@@ -339,19 +339,21 @@ export function KeywordsTable({
                 required: true,
                 tooltip: "Search terms related to your idea",
                 format: (value, keyword) => {
-                    // Capture the keyword ID in a const to ensure correct closure
-                    const keywordId = keyword.id;
+                    // Capture the keyword ID or use keyword text as fallback identifier
+                    const keywordId = keyword.id || keyword.keyword;
                     return (
                         <div className="flex items-center gap-2">
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-6 w-6 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="h-6 w-6 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                type="button"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    // Only delete if we have a valid keyword ID
-                                    if (keywordId) {
-                                        onDeleteKeyword?.(keywordId);
+                                    e.preventDefault();
+                                    // Call delete handler with ID or keyword text as fallback
+                                    if (onDeleteKeyword) {
+                                        onDeleteKeyword(keywordId);
                                     }
                                 }}
                             >
