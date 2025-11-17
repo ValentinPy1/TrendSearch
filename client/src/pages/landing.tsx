@@ -2,6 +2,12 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
 import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
     ArrowRight,
     Play,
     Zap,
@@ -52,7 +58,7 @@ export default function LandingPage() {
 
                         {/* Headline */}
                         <div className="space-y-4">
-                            <h1 className="text-6xl md:text-7xl lg:text-8xl font-bold text-white leading-[1.1] tracking-tight">
+                            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-[1.1] tracking-tight">
                                 Stop Building Products
                                 <br />
                                 <span className="bg-gradient-to-r from-primary via-secondary to-primary bg-clip-text text-transparent animate-gradient">
@@ -63,8 +69,7 @@ export default function LandingPage() {
 
                         {/* Subheadline */}
                         <p className="text-xl md:text-2xl text-white/80 max-w-3xl mx-auto leading-relaxed font-light">
-                            Find and validate your startup ideas in <strong className="text-white font-semibold">seconds</strong> with real Google Ads data.
-                            Discover trending opportunities, analyze market demand, and build products people actually want.
+                            Discover high-potential startup ideas in <strong className="text-white font-semibold">seconds</strong> from 80,000+ real YC startup keywords with 15+ differents metrics. Including trends, economics, and opportunity scores.
                         </p>
 
                         {/* CTA Buttons */}
@@ -74,7 +79,7 @@ export default function LandingPage() {
                                 className="text-lg px-10 py-7 h-auto group rounded-full shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 hover:scale-105"
                                 onClick={() => setLocation("/auth?signup=true")}
                             >
-                                Start Validating Ideas
+                                Start Discovering Ideas
                                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                             </Button>
                         </div>
@@ -104,7 +109,7 @@ export default function LandingPage() {
             {/* Features Section */}
             <section className="py-24 px-4">
                 <div className="max-w-7xl mx-auto space-y-16">
-                    {/* Feature 1 - Video Left */}
+                    {/* Feature 1 - YC Keywords Search */}
                     <div className="grid md:grid-cols-2 gap-8 items-center">
                         <div className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-white/10 to-white/5 border border-white/10 hover:border-primary/30 transition-colors">
                             <div className="absolute inset-0 flex items-center justify-center">
@@ -114,19 +119,19 @@ export default function LandingPage() {
                             </div>
                         </div>
                         <div className="space-y-4">
-                            <h3 className="text-2xl font-semibold text-white">AI Idea Generation</h3>
+                            <h3 className="text-2xl font-semibold text-white">YC Keywords Explorer</h3>
                             <p className="text-white/70">
-                                Generate focused microSaaS ideas with AI. Perfect for when you're stuck or need inspiration.
+                                Enter any idea or pitch and instantly discover the most relevant keywords from 80,000+ YC startup keywords. Evaluate volume, trends, economics, competition, and opportunities for each keyword. Get an aggregate report of all selected keywords and use filters to find keywords with specific metrics, perfect for data-backed brainstorming.
                             </p>
                         </div>
                     </div>
 
-                    {/* Feature 2 - Video Right */}
+                    {/* Feature 2 - Sector Browsing */}
                     <div className="grid md:grid-cols-2 gap-8 items-center">
                         <div className="space-y-4 order-2 md:order-1 md:text-right">
-                            <h3 className="text-2xl font-semibold text-white">Semantic Keyword Search</h3>
+                            <h3 className="text-2xl font-semibold text-white">Sector Watcher</h3>
                             <p className="text-white/70">
-                                Find relevant keywords using vector-based semantic search. Understands context, not just exact matches.
+                                Browse through all YC sectors and explore companies within each sector. Rank them by volume, economics, trend, or opportunity for related keywords. Use YC pitches as starting points for keywords explorer to dive deeper into keyword opportunities.
                             </p>
                         </div>
                         <div className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-white/10 to-white/5 border border-white/10 hover:border-secondary/30 transition-colors order-1 md:order-2">
@@ -138,7 +143,7 @@ export default function LandingPage() {
                         </div>
                     </div>
 
-                    {/* Feature 3 - Video Left */}
+                    {/* Feature 3 - Custom Search */}
                     <div className="grid md:grid-cols-2 gap-8 items-center">
                         <div className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-white/10 to-white/5 border border-white/10 hover:border-primary/30 transition-colors">
                             <div className="absolute inset-0 flex items-center justify-center">
@@ -148,12 +153,88 @@ export default function LandingPage() {
                             </div>
                         </div>
                         <div className="space-y-4">
-                            <h3 className="text-2xl font-semibold text-white">Real Trend Data</h3>
+                            <h3 className="text-2xl font-semibold text-white">Competitor Radar</h3>
                             <p className="text-white/70">
-                                See 12 months of search volume trends. Understand if markets are growing or declining.
+                                Find competitors in your space, then automatically generate the keywords they're targeting. Get the same comprehensive metrics, volume, trends, economics, competition, and opportunity scores, to either compete on the same demand or identify untapped gaps in the market.
                             </p>
                         </div>
                     </div>
+                </div>
+            </section>
+
+            {/* FAQ Section */}
+            <section className="py-24 px-4 border-t border-white/10">
+                <div className="max-w-4xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+                            Frequently Asked Questions
+                        </h2>
+                        <p className="text-lg text-white/70">
+                            Everything you need to know about Trends Search
+                        </p>
+                    </div>
+
+                    <Accordion type="single" collapsible className="w-full space-y-4">
+                        <AccordionItem value="item-1" className="border border-white/10 rounded-lg px-6 bg-white/5">
+                            <AccordionTrigger className="text-white hover:no-underline py-6">
+                                <span className="text-left font-semibold">What is Trends Search?</span>
+                            </AccordionTrigger>
+                            <AccordionContent className="text-white/70 pb-6">
+                                Trends Search is a data-driven brainstorming tool designed for entrepreneurs looking for startup ideas. Generate ideas and discover related keywords to determine whether your concept is in a blue ocean (untapped market) or red ocean (competitive market).
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem value="item-2" className="border border-white/10 rounded-lg px-6 bg-white/5">
+                            <AccordionTrigger className="text-white hover:no-underline py-6">
+                                <span className="text-left font-semibold">How does it work?</span>
+                            </AccordionTrigger>
+                            <AccordionContent className="text-white/70 pb-6">
+                                <p className="mb-3">If you already have ideas, type them into the YC keyword explorer search bar (keep it concise). You'll instantly find semantically related keywords with comprehensive metrics, including an aggregated opportunity score, 40 or more indicates a very good opportunity.</p>
+                                <p>Don't have an idea yet? Let our AI generate one for you, or browse through sectors to discover trending keyword spaces.</p>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem value="item-3" className="border border-white/10 rounded-lg px-6 bg-white/5">
+                            <AccordionTrigger className="text-white hover:no-underline py-6">
+                                <span className="text-left font-semibold">Where does the data come from?</span>
+                            </AccordionTrigger>
+                            <AccordionContent className="text-white/70 pb-6">
+                                <p className="mb-3">We scraped all 6,000+ Y Combinator startups and generated 80,000+ keywords from them. You can explore these keywords directly using the YC keywords explorer.</p>
+                                <p>We've also aggregated keyword analytics by individual companies and by overall sectors to help you spot general opportunities. Explore these aggregated insights through our sector browsing feature.</p>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem value="item-4" className="border border-white/10 rounded-lg px-6 bg-white/5">
+                            <AccordionTrigger className="text-white hover:no-underline py-6">
+                                <span className="text-left font-semibold">What metrics are included for each keyword?</span>
+                            </AccordionTrigger>
+                            <AccordionContent className="text-white/70 pb-6">
+                                <p className="mb-3">Each keyword includes 15+ different metrics, organized into two categories:</p>
+                                <p className="mb-2"><strong className="text-white">First-order metrics</strong> (pulled directly from Google Ads): Historical and current search volumes, competition index, CPC, and top page bid.</p>
+                                <p><strong className="text-white">Secondary metrics</strong> (computed from primary data): 3-month and YoY trends, volatility, trend strength, bid efficiency, total advertiser costs, serviceable advertiser costs, and opportunity score.</p>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem value="item-5" className="border border-white/10 rounded-lg px-6 bg-white/5">
+                            <AccordionTrigger className="text-white hover:no-underline py-6">
+                                <span className="text-left font-semibold">How much does it cost?</span>
+                            </AccordionTrigger>
+                            <AccordionContent className="text-white/70 pb-6">
+                                <p className="mb-3">The YC keywords explorer is completely free with unlimited search, no credit card required.</p>
+                                <p>Advanced features that require costly API requests (like custom keyword generation) are available through a premium account to help us cover operational expenses.</p>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem value="item-6" className="border border-white/10 rounded-lg px-6 bg-white/5">
+                            <AccordionTrigger className="text-white hover:no-underline py-6">
+                                <span className="text-left font-semibold">Are keywords up to date?</span>
+                            </AccordionTrigger>
+                            <AccordionContent className="text-white/70 pb-6">
+                                <p className="mb-3">Yes! We update all keywords monthly to ensure they're always current and accurate.</p>
+                                <p>For dedicated, on-demand keywords, use the Competitors Radar feature. Simply input your landing page URL or a competitor's landing page, and we'll generate fresh keywords instantly.</p>
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
                 </div>
             </section>
 
@@ -165,7 +246,7 @@ export default function LandingPage() {
                         className="text-lg px-12 py-8 h-auto group rounded-full shadow-xl shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 hover:scale-105"
                         onClick={() => setLocation("/auth?signup=true")}
                     >
-                        Create Free Account
+                        Explore keywords
                         <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                     </Button>
                 </div>

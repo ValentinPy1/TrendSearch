@@ -223,6 +223,12 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     });
 
     const handleDeleteKeyword = (keywordId: string) => {
+        // Validate keywordId - don't proceed if it's undefined, null, or empty
+        if (!keywordId) {
+            console.warn("Attempted to delete keyword with invalid ID:", keywordId);
+            return;
+        }
+
         // Remove keyword from view (frontend-only, doesn't delete from database)
         setExcludedKeywordIds((prev) => new Set([...Array.from(prev), keywordId]));
 

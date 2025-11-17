@@ -338,19 +338,25 @@ export function KeywordsTable({
                 sortable: true,
                 required: true,
                 tooltip: "Search terms related to your idea",
-                format: (value, keyword) => (
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteKeyword?.(keyword.id);
-                            }}
-                        >
-                            <Trash2 className="h-3 w-3" />
-                        </Button>
+                format: (value, keyword) => {
+                    // Capture the keyword ID in a const to ensure correct closure
+                    const keywordId = keyword.id;
+                    return (
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Only delete if we have a valid keyword ID
+                                    if (keywordId) {
+                                        onDeleteKeyword?.(keywordId);
+                                    }
+                                }}
+                            >
+                                <Trash2 className="h-3 w-3" />
+                            </Button>
                         <span>{keyword.keyword}</span>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Button
@@ -385,7 +391,8 @@ export function KeywordsTable({
                             </Button>
                         </div>
                     </div>
-                ),
+                    );
+                },
             },
             similarityScore: {
                 id: "similarityScore",

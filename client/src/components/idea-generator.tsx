@@ -205,7 +205,7 @@ export function IdeaGenerator({
     useEffect(() => {
         // Only show loading components when generating report (search mode)
         // Don't show them when just generating an idea
-        const isGenerating = generateReportMutation.isPending || 
+        const isGenerating = generateReportMutation.isPending ||
             (generateIdeaMutation.isPending && isSearchMode);
         onGeneratingChange?.(isGenerating);
     }, [
@@ -256,9 +256,9 @@ export function IdeaGenerator({
     useEffect(() => {
         if (generateIdeaMutation.isSuccess && generateIdeaMutation.data && isSearchMode) {
             // This was triggered by search, so generate report
-            generateReportMutation.mutate({ 
-                ideaId: generateIdeaMutation.data.idea.id, 
-                filters 
+            generateReportMutation.mutate({
+                ideaId: generateIdeaMutation.data.idea.id,
+                filters
             });
             setIsSearchMode(false); // Reset flag
         }
@@ -275,14 +275,25 @@ export function IdeaGenerator({
         <div className="space-y-6">
             <div className="space-y-8 pt-12">
                 <div className="text-center max-w-3xl mx-auto">
-                    <h2 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent mb-6">
-                        Trends Search
-                    </h2>
-                    <p className="text-base text-white/80 leading-relaxed">
-                        Discover trending opportunities or research your own ideas. Get instant insights
-                        from 80,000+ real keywords with search volume, competition, and
-                        growth trends.
-                    </p>
+                    {activeTab === "custom" ? (
+                        <>
+                            <h2 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent mb-6 leading-tight pb-1">
+                                Competitor Keywords Radar
+                            </h2>
+                            <p className="text-base text-white/80 leading-relaxed">
+                                Pinpoint rival startups or incumbents, then instantly surface the keywords they rank on, complete with volume, competition, trendlines, and opportunity scores so you can target the same demand or spot gaps.
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            <h2 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent mb-6 leading-tight pb-1">
+                                YC Keywords Explorer
+                            </h2>
+                            <p className="text-base text-white/80 leading-relaxed">
+                                Discover high-potential ideas or validate your own in seconds with insights from 80,000+ real YC keywords, each with 15 differents metrics, including search volume, competition, growth trends, opportunity score, and more.
+                            </p>
+                        </>
+                    )}
                 </div>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -291,13 +302,13 @@ export function IdeaGenerator({
                             value="standard"
                             className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
                         >
-                            Standard Search
+                            Keyword Explorer
                         </TabsTrigger>
                         <TabsTrigger
                             value="custom"
                             className="bg-transparent text-white/60 data-[state=active]:text-white data-[state=active]:bg-transparent px-0 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-white/40 hover:text-white/80 transition-colors"
                         >
-                            Custom Search
+                            Competitor Radar
                         </TabsTrigger>
                     </TabsList>
 
