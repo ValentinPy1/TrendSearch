@@ -1,0 +1,7 @@
+# Nixpacks configuration for Railway
+# Railway will use Node.js 20 from package.json engines field
+# This file ensures Node.js 20 is used explicitly
+
+[providers]
+node = "20"
+
