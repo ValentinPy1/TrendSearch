@@ -16,7 +16,9 @@
     "audit:metrics": "npx clinic doctor -- node --import tsx scripts/audit-compute-metrics.ts",
     "audit:metrics:bubbleprof": "npx clinic bubbleprof -- node --import tsx scripts/audit-compute-metrics.ts",
     "audit:metrics:flame": "npx clinic flame -- node --import tsx scripts/audit-compute-metrics.ts",
-    "list:projects": "tsx scripts/list-projects.ts"
+    "list:projects": "tsx scripts/list-projects.ts",
+    "upload:railway": "tsx scripts/upload-to-railway.ts",
+    "create:minimal-sectors": "tsx scripts/create-minimal-sectors-metrics.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

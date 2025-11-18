@@ -458,7 +458,12 @@ class KeywordVectorService {
             };
 
             // Convert monthly_data JSONB to individual month columns if needed
+            // Also keep the original monthly_data for processKeywords to use
             if (row.monthly_data && Array.isArray(row.monthly_data)) {
+                // Store monthly_data in the keyword object for processKeywords
+                (keyword as any).monthly_data = row.monthly_data;
+                
+                // Also convert to month columns for backward compatibility
                 row.monthly_data.forEach((item: { month: string; volume: number }) => {
                     if (item.month && item.volume !== null && item.volume !== undefined) {
                         (keyword as any)[item.month] = item.volume;
@@ -593,7 +598,12 @@ class KeywordVectorService {
             };
 
             // Convert monthly_data JSONB to individual month columns if needed
+            // Also keep the original monthly_data for processKeywords to use
             if (row.monthly_data && Array.isArray(row.monthly_data)) {
+                // Store monthly_data in the keyword object for processKeywords
+                (keyword as any).monthly_data = row.monthly_data;
+                
+                // Also convert to month columns for backward compatibility
                 row.monthly_data.forEach((item: { month: string; volume: number }) => {
                     if (item.month && item.volume !== null && item.volume !== undefined) {
                         (keyword as any)[item.month] = item.volume;

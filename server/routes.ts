@@ -362,14 +362,54 @@ function processKeywords(rawKeywords: any[]) {
         // Convert monthly data from CSV format to our format with correct month labels
         // Recharts displays data in the order provided, so keep chronological order
         // Store all 48 months - client will filter based on premium status
-        const monthlyData = allMonths.map(({ key, label }) => {
-            return {
-                month: label,
-                volume: Math.floor(
-                    (kw[key as keyof typeof kw] as number) || kw.search_volume || 0,
-                ),
-            };
-        });
+        
+        // Check if monthly_data is already in JSONB format (from Supabase)
+        let monthlyData: Array<{ month: string; volume: number }>;
+        if (kw.monthly_data && Array.isArray(kw.monthly_data)) {
+            // Monthly data is in JSONB format from Supabase
+            // Convert to our format with correct month labels
+            const monthlyDataMap = new Map(
+                kw.monthly_data.map((item: { month: string; volume: number }) => [
+                    item.month, 
+                    item.volume
+                ])
+            );
+            
+            monthlyData = allMonths.map(({ key, label }) => {
+                // Try to match by key (e.g., "2021_11") or label (e.g., "Nov 2021")
+                const volume = monthlyDataMap.get(key) || 
+                              monthlyDataMap.get(label) ||
+                              // Try to find by matching month/year pattern
+                              Array.from(monthlyDataMap.entries()).find(([month]) => {
+                                  // Match "2021_11" format
+                                  if (month === key) return true;
+                                  // Match "Nov 2021" format
+                                  if (month === label) return true;
+                                  // Try to parse and match
+                                  const monthMatch = month.match(/(\w+)\s+(\d{4})/);
+                                  const labelMatch = label.match(/(\w+)\s+(\d{4})/);
+                                  if (monthMatch && labelMatch) {
+                                      return monthMatch[1] === labelMatch[1] && monthMatch[2] === labelMatch[2];
+                                  }
+                                  return false;
+                              })?.[1];
+                
+                return {
+                    month: label,
+                    volume: Math.floor(volume || kw.search_volume || 0),
+                };
+            });
+        } else {
+            // Monthly data is in CSV column format (e.g., kw["2021_11"])
+            monthlyData = allMonths.map(({ key, label }) => {
+                return {
+                    month: label,
+                    volume: Math.floor(
+                        (kw[key as keyof typeof kw] as number) || kw.search_volume || 0,
+                    ),
+                };
+            });
+        }
 
         // Calculate growth from chronologically ordered monthlyData
         // 3M Growth: Compare last month (Sep 2025) to 3 months ago (Jun 2025)
@@ -2428,6 +2468,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("[Delete Keyword Error]:", error);
             res.status(500).json({
                 message: "Failed to delete keyword",
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    });
+
+    // Admin endpoint: Upload data files to Railway volume
+    // This allows manually uploading files like sectors_aggregated_metrics.json
+    // when Railway SSH doesn't support SCP/sFTP
+    app.post("/api/admin/upload-data-file", requireAuth, async (req, res) => {
+        try {
+            // Check for admin token in environment variable (optional extra security)
+            const adminToken = process.env.ADMIN_UPLOAD_TOKEN;
+            if (adminToken) {
+                const providedToken = req.headers['x-admin-token'] as string;
+                if (providedToken !== adminToken) {
+                    return res.status(403).json({ message: "Admin token required" });
+                }
+            }
+
+            const { filename, content } = req.body;
+
+            if (!filename || !content) {
+                return res.status(400).json({
+                    message: "Missing required fields: filename and content (base64 encoded)",
+                });
+            }
+
+            // Validate filename to prevent directory traversal
+            if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+                return res.status(400).json({ message: "Invalid filename" });
+            }
+
+            // Only allow specific data files
+            const allowedFiles = [
+                'sectors_aggregated_metrics.json',
+                'paramV4.json',
+                'microsaas-principles.txt',
+                'sectors.json',
+            ];
+
+            if (!allowedFiles.includes(filename)) {
+                return res.status(400).json({
+                    message: `File not allowed. Allowed files: ${allowedFiles.join(', ')}`,
+                });
+            }
+
+            const { getDataPath } = await import("./data-path");
+            const dataPath = getDataPath();
+            const filePath = path.join(dataPath, filename);
+
+            // Decode base64 content
+            let fileContent: string;
+            try {
+                fileContent = Buffer.from(content, 'base64').toString('utf-8');
+            } catch (error) {
+                return res.status(400).json({ message: "Invalid base64 content" });
+            }
+
+            // Validate JSON if it's a JSON file
+            if (filename.endsWith('.json')) {
+                try {
+                    JSON.parse(fileContent);
+                } catch (error) {
+                    return res.status(400).json({ message: "Invalid JSON content" });
+                }
+            }
+
+            // Ensure data directory exists
+            if (!fs.existsSync(dataPath)) {
+                fs.mkdirSync(dataPath, { recursive: true });
+            }
+
+            // Write file
+            fs.writeFileSync(filePath, fileContent, 'utf-8');
+
+            const fileSizeMB = fs.statSync(filePath).size / 1024 / 1024;
+            console.log(`[Admin] Uploaded ${filename} to ${filePath} (${fileSizeMB.toFixed(2)} MB)`);
+
+            res.json({
+                message: `File ${filename} uploaded successfully`,
+                path: filePath,
+                sizeMB: fileSizeMB.toFixed(2),
+            });
+        } catch (error) {
+            console.error("[Admin Upload Error]:", error);
+            res.status(500).json({
+                message: "Failed to upload file",
                 error: error instanceof Error ? error.message : String(error),
             });
         }
@@ -5913,6 +6040,20 @@ Return ONLY the JSON array, no other text. Example format:
                 }
             };
 
+            // Ensure keyword vector service is initialized before starting
+            logger.info("Checking keyword vector service initialization", { projectId });
+            try {
+                await keywordVectorService.initialize();
+                logger.info("Keyword vector service is ready", { projectId });
+            } catch (error) {
+                logger.error("Keyword vector service initialization failed", error, { projectId });
+                if (isClientConnected) {
+                    res.write(`data: ${JSON.stringify({ type: 'error', error: "Keyword service not available. Please try again in a moment." })}\n\n`);
+                    res.end();
+                }
+                return;
+            }
+
             // Generate keywords (with resume support if provided)
             const resumeState = resumeFromProgress || project?.keywordGenerationProgress || undefined;
             logger.info("Starting keyword collection", {
@@ -6000,7 +6141,14 @@ Return ONLY the JSON array, no other text. Example format:
                 }
             }
         } catch (error) {
-            logger.error("Error generating keywords", error, { projectId: req.body.projectId });
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorStack = error instanceof Error ? error.stack : undefined;
+            
+            logger.error("Error generating keywords", error, { 
+                projectId: req.body.projectId,
+                errorMessage,
+                errorStack: errorStack?.substring(0, 500), // Log first 500 chars of stack
+            });
 
             // Save error state if we have a project
             if (projectIdForError && lastProgress) {
@@ -6022,11 +6170,27 @@ Return ONLY the JSON array, no other text. Example format:
 
             if (isClientConnected) {
                 try {
-                    res.write(`data: ${JSON.stringify({ type: 'error', error: error instanceof Error ? error.message : "Unknown error" })}\n\n`);
+                    // Provide user-friendly error message
+                    let userMessage = errorMessage;
+                    if (errorMessage.includes('ENOENT') || errorMessage.includes('no such file')) {
+                        userMessage = "Required data files are missing. Please contact support.";
+                    } else if (errorMessage.includes('OpenAI') || errorMessage.includes('API')) {
+                        userMessage = "AI service error. Please try again.";
+                    } else if (errorMessage.includes('initialize') || errorMessage.includes('initialization')) {
+                        userMessage = "Service is still initializing. Please try again in a moment.";
+                    }
+                    
+                    res.write(`data: ${JSON.stringify({ type: 'error', error: userMessage })}\n\n`);
                     res.end();
                 } catch (writeError) {
                     logger.warn("Failed to send error to client", { projectId: projectIdForError, error: writeError });
                 }
+            } else {
+                // If client disconnected, still log the error for debugging
+                logger.warn("Error occurred but client already disconnected", { 
+                    projectId: projectIdForError,
+                    errorMessage 
+                });
             }
         }
     });

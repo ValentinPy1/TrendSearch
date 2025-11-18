@@ -129,6 +129,8 @@ vite.config.ts.*
 *.rar
 *.7z
 data/sectors_aggregated_metrics.json
+# Allow minimal version to be committed
+!data/sectors_aggregated_metrics.minimal.json
 
 new_keywords
 log.txt
