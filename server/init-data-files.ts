@@ -12,9 +12,27 @@ export async function initializeDataFiles(): Promise<void> {
         const destinationDataPath = getDataPath();
 
         // Determine source data path (from repo)
-        // In production build, source files are in the same location as the built server
-        // We need to find the data directory relative to the server files
-        const sourceDataPath = path.join(process.cwd(), 'data');
+        // In production build, files might be in dist/data/ or in the repo root data/
+        // Check multiple possible locations
+        let sourceDataPath: string | null = null;
+        const possiblePaths = [
+            path.join(process.cwd(), 'dist', 'data'), // Production build location
+            path.join(process.cwd(), 'data'), // Development/repo root location
+            path.resolve(process.cwd(), '..', 'data'), // Alternative location
+        ];
+        
+        for (const possiblePath of possiblePaths) {
+            if (fs.existsSync(possiblePath)) {
+                sourceDataPath = possiblePath;
+                break;
+            }
+        }
+        
+        if (!sourceDataPath) {
+            console.warn(`[DataInit] Warning: Could not find source data directory in any of these locations: ${possiblePaths.join(', ')}`);
+            console.warn(`[DataInit] Data files will need to be manually added to the volume.`);
+            return; // Exit early if we can't find source files
+        }
 
         console.log(`[DataInit] Destination data path: ${destinationDataPath}`);
         console.log(`[DataInit] Source data path: ${sourceDataPath}`);
