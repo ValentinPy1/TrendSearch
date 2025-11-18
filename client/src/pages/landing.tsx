@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
@@ -15,9 +15,16 @@ import {
     Shield,
     Pause,
     Maximize,
-    Minimize
+    Minimize,
+    Search,
+    Loader2,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import logoImage from "@assets/image_1761146000585.png";
+import type { Keyword } from "@shared/schema";
 
 export default function LandingPage() {
     const [, setLocation] = useLocation();
@@ -35,6 +42,18 @@ export default function LandingPage() {
     const [isFullscreen3, setIsFullscreen3] = useState(false);
     const video3Ref = useRef<HTMLVideoElement>(null);
     const videoContainer3Ref = useRef<HTMLDivElement>(null);
+
+    // Search state
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState<Keyword[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [hasSearched, setHasSearched] = useState(false);
+
+    // Sort state
+    type SortField = "keyword" | "volume" | "competition" | "cpc" | "growthYoy" | "opportunityScore";
+    type SortDirection = "asc" | "desc" | null;
+    const [sortField, setSortField] = useState<SortField | null>(null);
+    const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
     const toggleFullscreen = async () => {
         if (!videoContainerRef.current) return;
@@ -99,6 +118,191 @@ export default function LandingPage() {
         };
     }, []);
 
+    const handleSearch = async () => {
+        if (!searchQuery.trim()) return;
+
+        setIsSearching(true);
+        setHasSearched(true);
+        try {
+            const response = await fetch("/api/public/search-keywords", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ query: searchQuery.trim() }),
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to search keywords");
+            }
+
+            const data = await response.json();
+            setSearchResults(data.keywords || []);
+        } catch (error) {
+            console.error("Error searching keywords:", error);
+            setSearchResults([]);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            handleSearch();
+        }
+    };
+
+    // Gradient helper functions (matching keywords-table.tsx)
+    const getRedGradientText = (value: number) => {
+        const normalizedValue = Math.min(1, Math.max(0, value / 100));
+        const lightness = 100 - normalizedValue * 40;
+        return { color: `hsl(0, 80%, ${lightness}%)` };
+    };
+
+    const getPurpleGradientText = (value: number, max: number) => {
+        const normalizedValue = Math.min(1, value / max);
+        const lightness = 100 - normalizedValue * 40;
+        return { color: `hsl(250, 80%, ${lightness}%)` };
+    };
+
+    const getOrangeGradientText = (value: number, max: number = 100) => {
+        const normalizedValue = Math.min(1, Math.max(0, value / max));
+
+        // Interpolate from white (at 0) to yellow (at 100)
+        // White: hsl(0, 0%, 100%) -> Yellow: hsl(50, 100%, 60%)
+        if (normalizedValue === 0) {
+            return { color: `hsl(0, 0%, 100%)` }; // Pure white at 0
+        }
+
+        // At 0: white (0% saturation, 100% lightness)
+        // At 100: yellow (50 hue, 100% saturation, 60% lightness)
+        const hue = 50;
+        const saturation = normalizedValue * 100; // 0% to 100%
+        const lightness = 100 - (normalizedValue * 40); // 100% to 60%
+
+        return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
+    };
+
+    const getTrendGradientText = (value: number) => {
+        if (value >= 0) {
+            const normalizedValue = Math.min(1, value / 200);
+            const lightness = 100 - normalizedValue * 50;
+            return { color: `hsl(142, 70%, ${lightness}%)` };
+        } else {
+            const normalizedValue = Math.min(1, Math.abs(value) / 100);
+            const lightness = 100 - normalizedValue * 50;
+            return { color: `hsl(0, 80%, ${lightness}%)` };
+        }
+    };
+
+    const formatTwoSignificantDigits = (value: number): string => {
+        if (value === 0 || isNaN(value) || !isFinite(value)) {
+            return "";
+        }
+
+        // Round to 2 significant digits
+        const order = Math.floor(Math.log10(Math.abs(value)));
+        const rounded = Math.round(value / Math.pow(10, order - 1)) * Math.pow(10, order - 1);
+
+        // Format with millions (M) if >= 1,000,000
+        if (rounded >= 1000000) {
+            const inMillions = rounded / 1000000;
+            // Round to 2 significant digits for the millions value
+            const millionsOrder = Math.floor(Math.log10(Math.abs(inMillions)));
+            const roundedMillions = Math.round(inMillions / Math.pow(10, millionsOrder - 1)) * Math.pow(10, millionsOrder - 1);
+            return `${roundedMillions.toLocaleString('en-US', { maximumFractionDigits: 1 })}M`;
+        }
+
+        // Format with thousands (k) if >= 1,000
+        if (rounded >= 1000) {
+            const inThousands = rounded / 1000;
+            // Round to 2 significant digits for the thousands value
+            const thousandsOrder = Math.floor(Math.log10(Math.abs(inThousands)));
+            const roundedThousands = Math.round(inThousands / Math.pow(10, thousandsOrder - 1)) * Math.pow(10, thousandsOrder - 1);
+            return `${roundedThousands.toLocaleString('en-US', { maximumFractionDigits: 1 })}k`;
+        }
+
+        // Format with thousands separators for smaller values
+        if (rounded >= 1) {
+            return Math.round(rounded).toLocaleString('en-US');
+        } else {
+            // For small values, show up to 2 decimal places if needed
+            return rounded.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        }
+    };
+
+    const handleSort = (field: SortField) => {
+        if (sortField === field) {
+            if (sortDirection === "desc") {
+                setSortDirection("asc");
+            } else if (sortDirection === "asc") {
+                setSortDirection(null);
+                setSortField(null);
+            } else {
+                setSortDirection("desc");
+            }
+        } else {
+            setSortField(field);
+            setSortDirection("desc");
+        }
+    };
+
+    const SortIcon = ({ field }: { field: SortField }) => {
+        if (sortField !== field) {
+            return <ArrowUpDown className="h-4 w-4 ml-1 text-white/40" />;
+        }
+        if (sortDirection === "asc") {
+            return <ArrowUp className="h-4 w-4 ml-1 text-primary" />;
+        }
+        return <ArrowDown className="h-4 w-4 ml-1 text-primary" />;
+    };
+
+    // Sort the search results
+    const sortedResults = useMemo(() => {
+        if (!sortField || !sortDirection) {
+            return searchResults;
+        }
+
+        return [...searchResults].sort((a, b) => {
+            let aVal: any;
+            let bVal: any;
+
+            switch (sortField) {
+                case "keyword":
+                    aVal = a.keyword?.toLowerCase() || "";
+                    bVal = b.keyword?.toLowerCase() || "";
+                    break;
+                case "volume":
+                    aVal = a.volume || 0;
+                    bVal = b.volume || 0;
+                    break;
+                case "competition":
+                    aVal = a.competition || 0;
+                    bVal = b.competition || 0;
+                    break;
+                case "cpc":
+                    aVal = parseFloat(a.cpc?.toString() || "0");
+                    bVal = parseFloat(b.cpc?.toString() || "0");
+                    break;
+                case "growthYoy":
+                    aVal = parseFloat(a.growthYoy?.toString() || "0");
+                    bVal = parseFloat(b.growthYoy?.toString() || "0");
+                    break;
+                case "opportunityScore":
+                    aVal = parseFloat(a.opportunityScore?.toString() || "0");
+                    bVal = parseFloat(b.opportunityScore?.toString() || "0");
+                    break;
+            }
+
+            if (sortDirection === "asc") {
+                return aVal > bVal ? 1 : -1;
+            } else {
+                return aVal < bVal ? 1 : -1;
+            }
+        });
+    }, [searchResults, sortField, sortDirection]);
+
     return (
         <div className="min-h-screen">
             {/* Navigation Header */}
@@ -156,35 +360,188 @@ export default function LandingPage() {
                             Discover high-potential startup ideas in <strong className="text-white font-semibold">seconds</strong> from 80,000+ real YC startup keywords with 15+ differents metrics. Including trends, economics, and opportunity scores.
                         </p>
 
-                        {/* CTA Buttons */}
-                        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
-                            <Button
-                                size="lg"
-                                className="text-lg px-10 py-7 h-auto group rounded-full shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 hover:scale-105"
-                                onClick={() => setLocation("/auth?signup=true")}
-                            >
-                                Start Discovering Ideas
-                                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                            </Button>
-                        </div>
-
-                        {/* Trust Signal */}
-                        <div className="pt-6">
-                            <div className="inline-flex items-center gap-6 px-6 py-3 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm">
-                                <div className="flex items-center gap-2 text-sm text-white/70">
-                                    <Shield className="h-4 w-4 text-primary" />
-                                    <span>No credit card</span>
-                                </div>
-                                <div className="h-4 w-px bg-white/20"></div>
-                                <div className="flex items-center gap-2 text-sm text-white/70">
-                                    <Zap className="h-4 w-4 text-secondary" />
-                                    <span>Instant access</span>
-                                </div>
-                                <div className="h-4 w-px bg-white/20"></div>
-                                <div className="text-sm text-white/70">
-                                    <span className="font-semibold text-white">80K+</span> keywords
-                                </div>
+                        {/* Search Bar */}
+                        <div className="max-w-2xl mx-auto pt-8">
+                            <div className="relative flex items-center gap-0">
+                                <Input
+                                    placeholder="Write a short pitch here and press enter to find semantically related keywords."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-14 rounded-l-full rounded-r-none border-r-0"
+                                />
+                                <Button
+                                    type="button"
+                                    onClick={handleSearch}
+                                    disabled={isSearching || !searchQuery.trim()}
+                                    className="h-14 pl-6 pr-8 bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-r-full rounded-l-none border-l-0 flex items-center justify-center"
+                                >
+                                    {isSearching ? (
+                                        <Loader2 className="h-5 w-5 animate-spin" />
+                                    ) : (
+                                        <Search className="h-5 w-5" />
+                                    )}
+                                </Button>
                             </div>
+
+                            {/* Search Results Table */}
+                            {hasSearched && (
+                                <div className="mt-6">
+                                    {isSearching ? (
+                                        <div className="text-center py-8 text-white/60">
+                                            <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                                            <p>Searching keywords...</p>
+                                        </div>
+                                    ) : searchResults.length > 0 ? (
+                                        <div className="bg-white/5 border border-white/10 rounded-lg overflow-hidden">
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full">
+                                                    <thead>
+                                                        <tr className="border-b border-white/10">
+                                                            <th
+                                                                className="text-left px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                onClick={() => handleSort("keyword")}
+                                                            >
+                                                                <div className="flex items-center">
+                                                                    Keyword
+                                                                    <SortIcon field="keyword" />
+                                                                </div>
+                                                            </th>
+                                                            <th
+                                                                className="text-right px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                onClick={() => handleSort("volume")}
+                                                            >
+                                                                <div className="flex items-center justify-end">
+                                                                    Volume
+                                                                    <SortIcon field="volume" />
+                                                                </div>
+                                                            </th>
+                                                            <th
+                                                                className="text-right px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                onClick={() => handleSort("competition")}
+                                                            >
+                                                                <div className="flex items-center justify-end">
+                                                                    Competition
+                                                                    <SortIcon field="competition" />
+                                                                </div>
+                                                            </th>
+                                                            <th
+                                                                className="text-right px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                onClick={() => handleSort("cpc")}
+                                                            >
+                                                                <div className="flex items-center justify-end">
+                                                                    CPC
+                                                                    <SortIcon field="cpc" />
+                                                                </div>
+                                                            </th>
+                                                            <th
+                                                                className="text-right px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                onClick={() => handleSort("growthYoy")}
+                                                            >
+                                                                <div className="flex items-center justify-end">
+                                                                    YoY Trend
+                                                                    <SortIcon field="growthYoy" />
+                                                                </div>
+                                                            </th>
+                                                            <th
+                                                                className="text-right px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                onClick={() => handleSort("opportunityScore")}
+                                                            >
+                                                                <div className="flex items-center justify-end">
+                                                                    Opportunity
+                                                                    <SortIcon field="opportunityScore" />
+                                                                </div>
+                                                            </th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {sortedResults.map((keyword, index) => {
+                                                            // Calculate max CPC for gradient (relative to all results)
+                                                            const maxCpc = Math.max(
+                                                                ...sortedResults
+                                                                    .map((k) => parseFloat(k.cpc?.toString() || "0"))
+                                                                    .filter((v) => !isNaN(v) && v > 0),
+                                                                1 // Default to 1 if no valid CPCs
+                                                            );
+
+                                                            return (
+                                                                <tr
+                                                                    key={keyword.id || index}
+                                                                    className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                                                                >
+                                                                    <td className="px-4 py-3 text-white/90 font-medium">{keyword.keyword}</td>
+                                                                    <td className="px-4 py-3 text-right text-white/70">
+                                                                        {keyword.volume !== null && keyword.volume !== undefined
+                                                                            ? formatTwoSignificantDigits(keyword.volume)
+                                                                            : "—"}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right">
+                                                                        {keyword.competition !== null && keyword.competition !== undefined ? (
+                                                                            <span className="font-medium" style={getRedGradientText(keyword.competition)}>
+                                                                                {keyword.competition}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-white/50">—</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right">
+                                                                        {keyword.cpc && parseFloat(keyword.cpc.toString()) > 0 ? (
+                                                                            <span className="font-medium" style={getPurpleGradientText(parseFloat(keyword.cpc.toString()), maxCpc)}>
+                                                                                ${parseFloat(keyword.cpc.toString()).toFixed(2)}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-white/50">—</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right">
+                                                                        {keyword.growthYoy !== null && keyword.growthYoy !== undefined && keyword.growthYoy !== "" ? (
+                                                                            <span className="font-medium" style={getTrendGradientText(parseFloat(keyword.growthYoy.toString()))}>
+                                                                                {parseFloat(keyword.growthYoy.toString()) >= 0 ? "+" : ""}
+                                                                                {Math.round(parseFloat(keyword.growthYoy.toString()))}%
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-white/50">—</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right">
+                                                                        {keyword.opportunityScore !== null && keyword.opportunityScore !== undefined ? (
+                                                                            <span className="font-medium" style={getOrangeGradientText(parseFloat(keyword.opportunityScore.toString()), 25)}>
+                                                                                {Math.round(parseFloat(keyword.opportunityScore.toString()))}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-white/50">—</span>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                    <tfoot>
+                                                        <tr>
+                                                            <td colSpan={6} className="px-4 py-3 border-t border-white/10">
+                                                                <div className="flex justify-center">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        className="text-sm px-4 py-2 h-auto group text-purple-400 hover:text-purple-300 hover:bg-white/5 transition-all"
+                                                                        onClick={() => setLocation("/auth?signup=true")}
+                                                                    >
+                                                                        See more keywords and metrics
+                                                                        <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                                                                    </Button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8 text-white/60">
+                                            <p>No keywords found. Try a different search query.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -474,7 +831,7 @@ export default function LandingPage() {
                         className="text-lg px-12 py-8 h-auto group rounded-full shadow-xl shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 hover:scale-105"
                         onClick={() => setLocation("/auth?signup=true")}
                     >
-                        Explore keywords
+                        Find Opportunities
                         <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                     </Button>
                 </div>
@@ -482,4 +839,3 @@ export default function LandingPage() {
         </div>
     );
 }
-

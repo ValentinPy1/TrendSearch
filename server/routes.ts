@@ -1133,6 +1133,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
     });
 
+    // Public keyword search endpoint (for landing page)
+    app.post("/api/public/search-keywords", async (req, res) => {
+        try {
+            const { query } = req.body;
+
+            if (!query || typeof query !== 'string' || query.trim().length === 0) {
+                return res.status(400).json({ error: "Query is required" });
+            }
+
+            // Limit to 5 keywords for landing page
+            const { keywords: keywordData } = await getKeywordsFromVectorDB(
+                query.trim(),
+                5, // Limit to 5 keywords
+                [], // No filters
+            );
+
+            // Attach opportunity metrics to all keywords before returning
+            const keywordsWithMetrics = keywordData.map((kw) => {
+                // Use precomputed metrics if available, otherwise calculate on-the-fly
+                let metrics: any = null;
+                if ((kw as any).precomputedMetrics) {
+                    metrics = (kw as any).precomputedMetrics;
+                } else {
+                    // Calculate opportunity metrics on-the-fly
+                    metrics = calculateOpportunityScore({
+                        volume: kw.volume || 0,
+                        competition: kw.competition || 0,
+                        cpc: parseFloat(kw.cpc?.toString() || "0"),
+                        topPageBid: parseFloat(kw.topPageBid?.toString() || "0"),
+                        growthYoy: parseFloat(kw.growthYoy?.toString() || "0"),
+                        monthlyData: kw.monthlyData || [],
+                    });
+                }
+
+                // Attach opportunity metrics to the keyword object
+                return {
+                    ...kw,
+                    opportunityScore: metrics.opportunityScore,
+                    trendStrength: metrics.trendStrength,
+                    volatility: metrics.volatility,
+                    bidEfficiency: metrics.bidEfficiency,
+                    tac: metrics.tac,
+                    sac: metrics.sac,
+                };
+            });
+
+            res.json({ keywords: keywordsWithMetrics });
+        } catch (error) {
+            console.error("Error searching keywords:", error);
+            res.status(500).json({ error: "Failed to search keywords" });
+        }
+    });
+
     // Auth middleware - verify Supabase JWT token
     const requireAuth = async (req: any, res: any, next: any) => {
         try {

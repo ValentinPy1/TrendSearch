@@ -818,7 +818,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                         if (normalizedValue === 0) {
                                             return { color: `hsl(0, 0%, 100%)` };
                                         }
-                                        const hue = 142;
+                                        const hue = 50;
                                         const saturation = normalizedValue * 100;
                                         const lightness = 100 - (normalizedValue * 40);
                                         return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
@@ -1140,7 +1140,7 @@ export function SectorBrowser({ open, onOpenChange, onSelectItem }: SectorBrowse
                                                             if (normalizedValue === 0) {
                                                                 return { color: `hsl(0, 0%, 100%)` };
                                                             }
-                                                            const hue = 142;
+                                                            const hue = 50;
                                                             const saturation = normalizedValue * 100;
                                                             const lightness = 100 - (normalizedValue * 40);
                                                             return { color: `hsl(${hue}, ${saturation}%, ${lightness}%)` };

@@ -185,15 +185,15 @@ export function KeywordsTable({
     const getOrangeGradientText = (value: number, max: number = 100) => {
         const normalizedValue = Math.min(1, Math.max(0, value / max));
 
-        // Interpolate from white (at 0) to green (at 100)
-        // White: hsl(0, 0%, 100%) -> Green: hsl(142, 100%, 60%)
+        // Interpolate from white (at 0) to yellow (at 100)
+        // White: hsl(0, 0%, 100%) -> Yellow: hsl(50, 100%, 60%)
         if (normalizedValue === 0) {
             return { color: `hsl(0, 0%, 100%)` }; // Pure white at 0
         }
 
         // At 0: white (0% saturation, 100% lightness)
-        // At 100: green (142 hue, 100% saturation, 60% lightness)
-        const hue = 142;
+        // At 100: yellow (50 hue, 100% saturation, 60% lightness)
+        const hue = 50;
         const saturation = normalizedValue * 100; // 0% to 100%
         const lightness = 100 - (normalizedValue * 40); // 100% to 60%
 
