@@ -7,6 +7,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { keywordVectorService } from "./keyword-vector-service";
+import { initializeDataFiles } from "./init-data-files";
 
 const app = express();
 
@@ -50,6 +51,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+    // Initialize data files (copy static files to Railway volume if needed)
+    console.log('[Server] Initializing data files...');
+    await initializeDataFiles();
+
     const server = await registerRoutes(app);
 
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

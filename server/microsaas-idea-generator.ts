@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import OpenAI from 'openai';
+import { getDataPath } from './data-path';
 
 interface ParamV4Data {
   user_types: Record<string, string>;
@@ -21,13 +22,15 @@ class MicroSaaSIdeaGenerator {
 
   private async loadData() {
     if (!this.paramData) {
-      const paramPath = path.join(process.cwd(), 'data', 'paramV4.json');
+      const dataPath = getDataPath();
+      const paramPath = path.join(dataPath, 'paramV4.json');
       const paramContent = await fs.readFile(paramPath, 'utf-8');
       this.paramData = JSON.parse(paramContent);
     }
 
     if (!this.microSaaSPrinciples) {
-      const principlesPath = path.join(process.cwd(), 'data', 'microsaas-principles.txt');
+      const dataPath = getDataPath();
+      const principlesPath = path.join(dataPath, 'microsaas-principles.txt');
       this.microSaaSPrinciples = await fs.readFile(principlesPath, 'utf-8');
     }
   }
