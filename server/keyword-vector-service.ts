@@ -457,16 +457,18 @@ class KeywordVectorService {
                 similarityScore: Number(row.similarity),
             };
 
-            // Convert monthly_data JSONB to individual month columns if needed
-            // Also keep the original monthly_data for processKeywords to use
+            // Convert monthly_data JSONB to individual month columns
+            // This is the primary format that processKeywords expects
             if (row.monthly_data && Array.isArray(row.monthly_data)) {
-                // Store monthly_data in the keyword object for processKeywords
+                // Store monthly_data in the keyword object for processKeywords (as backup)
                 (keyword as any).monthly_data = row.monthly_data;
                 
-                // Also convert to month columns for backward compatibility
+                // Convert to month columns (e.g., keyword["2021_11"] = 1000)
+                // This is the format that processKeywords checks first
                 row.monthly_data.forEach((item: { month: string; volume: number }) => {
-                    if (item.month && item.volume !== null && item.volume !== undefined) {
-                        (keyword as any)[item.month] = item.volume;
+                    if (item && item.month && item.volume !== null && item.volume !== undefined) {
+                        // Store as month column (e.g., "2021_11")
+                        (keyword as any)[item.month] = Number(item.volume);
                     }
                 });
             }
@@ -597,16 +599,18 @@ class KeywordVectorService {
                 similarityScore: Number(row.similarity),
             };
 
-            // Convert monthly_data JSONB to individual month columns if needed
-            // Also keep the original monthly_data for processKeywords to use
+            // Convert monthly_data JSONB to individual month columns
+            // This is the primary format that processKeywords expects
             if (row.monthly_data && Array.isArray(row.monthly_data)) {
-                // Store monthly_data in the keyword object for processKeywords
+                // Store monthly_data in the keyword object for processKeywords (as backup)
                 (keyword as any).monthly_data = row.monthly_data;
                 
-                // Also convert to month columns for backward compatibility
+                // Convert to month columns (e.g., keyword["2021_11"] = 1000)
+                // This is the format that processKeywords checks first
                 row.monthly_data.forEach((item: { month: string; volume: number }) => {
-                    if (item.month && item.volume !== null && item.volume !== undefined) {
-                        (keyword as any)[item.month] = item.volume;
+                    if (item && item.month && item.volume !== null && item.volume !== undefined) {
+                        // Store as month column (e.g., "2021_11")
+                        (keyword as any)[item.month] = Number(item.volume);
                     }
                 });
             }

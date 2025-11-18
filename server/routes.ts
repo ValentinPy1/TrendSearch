@@ -363,52 +363,53 @@ function processKeywords(rawKeywords: any[]) {
         // Recharts displays data in the order provided, so keep chronological order
         // Store all 48 months - client will filter based on premium status
         
-        // Check if monthly_data is already in JSONB format (from Supabase)
+        // Process monthly data - check multiple sources in order of preference
+        // 1. Month columns (set by findSimilarKeywords from Supabase monthly_data)
+        // 2. monthly_data JSONB array (from Supabase)
+        // 3. Fallback to search_volume only if no monthly data exists
+        
         let monthlyData: Array<{ month: string; volume: number }>;
-        if (kw.monthly_data && Array.isArray(kw.monthly_data)) {
-            // Monthly data is in JSONB format from Supabase
-            // Convert to our format with correct month labels
-            const monthlyDataMap = new Map(
-                kw.monthly_data.map((item: { month: string; volume: number }) => [
-                    item.month, 
-                    item.volume
-                ])
-            );
-            
+        
+        // Check if month columns exist (e.g., kw["2021_11"]) - these are set by findSimilarKeywords
+        const hasMonthColumns = allMonths.some(({ key }) => {
+            const value = kw[key as keyof typeof kw];
+            return value !== undefined && value !== null;
+        });
+        
+        if (hasMonthColumns) {
+            // Use month columns directly (most reliable - already converted by findSimilarKeywords)
             monthlyData = allMonths.map(({ key, label }) => {
-                // Try to match by key (e.g., "2021_11") or label (e.g., "Nov 2021")
-                const volume = monthlyDataMap.get(key) || 
-                              monthlyDataMap.get(label) ||
-                              // Try to find by matching month/year pattern
-                              Array.from(monthlyDataMap.entries()).find(([month]) => {
-                                  // Match "2021_11" format
-                                  if (month === key) return true;
-                                  // Match "Nov 2021" format
-                                  if (month === label) return true;
-                                  // Try to parse and match
-                                  const monthMatch = month.match(/(\w+)\s+(\d{4})/);
-                                  const labelMatch = label.match(/(\w+)\s+(\d{4})/);
-                                  if (monthMatch && labelMatch) {
-                                      return monthMatch[1] === labelMatch[1] && monthMatch[2] === labelMatch[2];
-                                  }
-                                  return false;
-                              })?.[1];
-                
+                const volume = kw[key as keyof typeof kw] as number;
                 return {
                     month: label,
-                    volume: Math.floor(volume || kw.search_volume || 0),
+                    volume: Math.floor(volume !== undefined && volume !== null ? volume : (kw.search_volume || 0)),
+                };
+            });
+        } else if (kw.monthly_data && Array.isArray(kw.monthly_data) && kw.monthly_data.length > 0) {
+            // Monthly data is in JSONB format from Supabase
+            // Format: [{month: "2021_11", volume: 1000}, ...]
+            const monthlyDataMap = new Map<string, number>();
+            kw.monthly_data.forEach((item: { month: string; volume: number }) => {
+                if (item.month && item.volume !== null && item.volume !== undefined) {
+                    monthlyDataMap.set(item.month, Number(item.volume));
+                }
+            });
+            
+            monthlyData = allMonths.map(({ key, label }) => {
+                const volume = monthlyDataMap.get(key);
+                return {
+                    month: label,
+                    volume: volume !== undefined && volume !== null 
+                        ? Math.floor(volume) 
+                        : (kw.search_volume || 0),
                 };
             });
         } else {
-            // Monthly data is in CSV column format (e.g., kw["2021_11"])
-            monthlyData = allMonths.map(({ key, label }) => {
-                return {
-                    month: label,
-                    volume: Math.floor(
-                        (kw[key as keyof typeof kw] as number) || kw.search_volume || 0,
-                    ),
-                };
-            });
+            // No monthly data available - use search_volume for all months (will appear flat)
+            monthlyData = allMonths.map(({ label }) => ({
+                month: label,
+                volume: Math.floor(kw.search_volume || 0),
+            }));
         }
 
         // Calculate growth from chronologically ordered monthlyData
