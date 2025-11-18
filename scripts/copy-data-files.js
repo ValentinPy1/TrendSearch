@@ -4,8 +4,12 @@
  * This ensures data files are available in production
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const sourceDir = path.join(process.cwd(), 'data');
 const destDir = path.join(process.cwd(), 'dist', 'data');
