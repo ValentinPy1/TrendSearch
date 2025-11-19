@@ -3441,6 +3441,11 @@ Return ONLY the JSON array, no other text. Example format:
                 return res.status(403).json({ message: "Forbidden" });
             }
 
+            // Prevent caching so legacy polling always gets fresh data
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+            res.setHeader("Pragma", "no-cache");
+            res.setHeader("Expires", "0");
+
             // Set up Server-Sent Events for progress updates
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
@@ -5518,6 +5523,11 @@ Return ONLY the JSON array, no other text. Example format:
                 return res.status(403).json({ message: "Forbidden" });
             }
 
+            // Prevent caching so clients always get fresh status
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+            res.setHeader("Pragma", "no-cache");
+            res.setHeader("Expires", "0");
+
             // Get all running executions for this project
             const runningExecutions = await storage.getPipelineExecutionsByProject(projectId, 'running');
             
@@ -5552,6 +5562,11 @@ Return ONLY the JSON array, no other text. Example format:
     app.get("/api/custom-search/pipeline-execution/:executionId", requireAuth, requirePayment, async (req, res) => {
         try {
             const { executionId } = req.params;
+
+            // Prevent caching so clients always get fresh status
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+            res.setHeader("Pragma", "no-cache");
+            res.setHeader("Expires", "0");
 
             if (!executionId) {
                 return res.status(400).json({ message: "executionId is required" });

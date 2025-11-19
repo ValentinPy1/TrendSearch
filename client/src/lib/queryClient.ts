@@ -27,6 +27,7 @@ export async function apiRequest(
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
+    cache: "no-store",
   });
 
   await throwIfResNotOk(res);
@@ -51,6 +52,7 @@ export const getQueryFn: <T>(options: {
     
     const res = await fetch(queryKey.join("/") as string, {
       headers,
+      cache: "no-store",
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
