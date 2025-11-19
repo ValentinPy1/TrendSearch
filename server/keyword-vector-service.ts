@@ -457,20 +457,33 @@ class KeywordVectorService {
                 similarityScore: Number(row.similarity),
             };
 
-            // Convert monthly_data JSONB to individual month columns
+            // Convert monthly_data JSONB/text to individual month columns
             // This is the primary format that processKeywords expects
-            if (row.monthly_data && Array.isArray(row.monthly_data)) {
-                // Store monthly_data in the keyword object for processKeywords (as backup)
-                (keyword as any).monthly_data = row.monthly_data;
-                
-                // Convert to month columns (e.g., keyword["2021_11"] = 1000)
-                // This is the format that processKeywords checks first
-                row.monthly_data.forEach((item: { month: string; volume: number }) => {
-                    if (item && item.month && item.volume !== null && item.volume !== undefined) {
-                        // Store as month column (e.g., "2021_11")
-                        (keyword as any)[item.month] = Number(item.volume);
+            if (row.monthly_data) {
+                let monthlyDataArray: Array<{ month: string; volume: number }> | null = null;
+                if (Array.isArray(row.monthly_data)) {
+                    monthlyDataArray = row.monthly_data;
+                } else if (typeof row.monthly_data === 'string') {
+                    try {
+                        monthlyDataArray = JSON.parse(row.monthly_data);
+                    } catch (error) {
+                        console.warn('[KeywordVectorService] Failed to parse monthly_data JSON string:', error);
                     }
-                });
+                }
+
+                if (monthlyDataArray && Array.isArray(monthlyDataArray)) {
+                    // Store monthly_data in the keyword object for processKeywords (as backup)
+                    (keyword as any).monthly_data = monthlyDataArray;
+
+                    // Convert to month columns (e.g., keyword["2021_11"] = 1000)
+                    // This is the format that processKeywords checks first
+                    monthlyDataArray.forEach((item: { month: string; volume: number }) => {
+                        if (item && item.month && item.volume !== null && item.volume !== undefined) {
+                            // Store as month column (e.g., "2021_11")
+                            (keyword as any)[item.month] = Number(item.volume);
+                        }
+                    });
+                }
             }
 
             // Attach precomputed metrics if available
@@ -599,20 +612,33 @@ class KeywordVectorService {
                 similarityScore: Number(row.similarity),
             };
 
-            // Convert monthly_data JSONB to individual month columns
+            // Convert monthly_data JSONB/text to individual month columns
             // This is the primary format that processKeywords expects
-            if (row.monthly_data && Array.isArray(row.monthly_data)) {
-                // Store monthly_data in the keyword object for processKeywords (as backup)
-                (keyword as any).monthly_data = row.monthly_data;
-                
-                // Convert to month columns (e.g., keyword["2021_11"] = 1000)
-                // This is the format that processKeywords checks first
-                row.monthly_data.forEach((item: { month: string; volume: number }) => {
-                    if (item && item.month && item.volume !== null && item.volume !== undefined) {
-                        // Store as month column (e.g., "2021_11")
-                        (keyword as any)[item.month] = Number(item.volume);
+            if (row.monthly_data) {
+                let monthlyDataArray: Array<{ month: string; volume: number }> | null = null;
+                if (Array.isArray(row.monthly_data)) {
+                    monthlyDataArray = row.monthly_data;
+                } else if (typeof row.monthly_data === 'string') {
+                    try {
+                        monthlyDataArray = JSON.parse(row.monthly_data);
+                    } catch (error) {
+                        console.warn('[KeywordVectorService] Failed to parse monthly_data JSON string:', error);
                     }
-                });
+                }
+
+                if (monthlyDataArray && Array.isArray(monthlyDataArray)) {
+                    // Store monthly_data in the keyword object for processKeywords (as backup)
+                    (keyword as any).monthly_data = monthlyDataArray;
+
+                    // Convert to month columns (e.g., keyword["2021_11"] = 1000)
+                    // This is the format that processKeywords checks first
+                    monthlyDataArray.forEach((item: { month: string; volume: number }) => {
+                        if (item && item.month && item.volume !== null && item.volume !== undefined) {
+                            // Store as month column (e.g., "2021_11")
+                            (keyword as any)[item.month] = Number(item.volume);
+                        }
+                    });
+                }
             }
 
             return keyword;

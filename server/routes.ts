@@ -369,6 +369,19 @@ function processKeywords(rawKeywords: any[]) {
         // 3. Fallback to search_volume only if no monthly data exists
         
         let monthlyData: Array<{ month: string; volume: number }>;
+        let parsedMonthlyData: Array<{ month: string; volume: number }> | null = null;
+
+        if (kw.monthly_data) {
+            if (Array.isArray(kw.monthly_data)) {
+                parsedMonthlyData = kw.monthly_data as Array<{ month: string; volume: number }>;
+            } else if (typeof kw.monthly_data === 'string') {
+                try {
+                    parsedMonthlyData = JSON.parse(kw.monthly_data);
+                } catch (error) {
+                    console.warn('[processKeywords] Failed to parse monthly_data JSON string:', error);
+                }
+            }
+        }
         
         // Check if month columns exist (e.g., kw["2021_11"]) - these are set by findSimilarKeywords
         const hasMonthColumns = allMonths.some(({ key }) => {
@@ -385,11 +398,11 @@ function processKeywords(rawKeywords: any[]) {
                     volume: Math.floor(volume !== undefined && volume !== null ? volume : (kw.search_volume || 0)),
                 };
             });
-        } else if (kw.monthly_data && Array.isArray(kw.monthly_data) && kw.monthly_data.length > 0) {
+        } else if (parsedMonthlyData && parsedMonthlyData.length > 0) {
             // Monthly data is in JSONB format from Supabase
             // Format: [{month: "2021_11", volume: 1000}, ...]
             const monthlyDataMap = new Map<string, number>();
-            kw.monthly_data.forEach((item: { month: string; volume: number }) => {
+            parsedMonthlyData.forEach((item: { month: string; volume: number }) => {
                 if (item.month && item.volume !== null && item.volume !== undefined) {
                     monthlyDataMap.set(item.month, Number(item.volume));
                 }
@@ -404,6 +417,12 @@ function processKeywords(rawKeywords: any[]) {
                         : (kw.search_volume || 0),
                 };
             });
+        } else if (parsedMonthlyData && parsedMonthlyData.length === 0) {
+            // Empty monthly_data array/string - use search_volume
+            monthlyData = allMonths.map(({ label }) => ({
+                month: label,
+                volume: Math.floor(kw.search_volume || 0),
+            }));
         } else {
             // No monthly data available - use search_volume for all months (will appear flat)
             monthlyData = allMonths.map(({ label }) => ({
