@@ -48,18 +48,18 @@ export function TrendChart({
   const timeRangeText = hasPaid ? "4-year" : "12-month";
 
   return (
-    <GlassmorphicCard className="p-8">
-      <div className="space-y-6">
+    <GlassmorphicCard className="p-4 sm:p-6 md:p-8">
+      <div className="space-y-4 sm:space-y-6">
         <div>
-          <h3 className="text-xl font-semibold text-white mb-2">
+          <h3 className="text-lg sm:text-xl font-semibold text-white mb-2 break-words">
             {keyword.keyword}
           </h3>
-          <p className="text-sm text-white/60">
+          <p className="text-xs sm:text-sm text-white/60">
             {timeRangeText} search volume history
           </p>
         </div>
 
-        <div className="h-96">
+        <div className="h-64 sm:h-80 md:h-96">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={displayData}>
               <defs>

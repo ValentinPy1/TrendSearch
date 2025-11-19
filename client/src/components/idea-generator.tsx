@@ -313,12 +313,40 @@ export function IdeaGenerator({
                     </TabsList>
 
                     <TabsContent value="standard" className="space-y-6 tab-content" forceMount>
-                        <div className="flex items-center gap-0">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-0">
+                            <div className="flex gap-2 sm:hidden">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setShowSectorBrowser(true)}
+                                    className="h-14 flex-1 bg-purple-600/20 border-purple-500/50 text-white hover:bg-purple-600/30 hover:border-purple-400 transition-colors whitespace-nowrap rounded-full"
+                                    data-testid="button-browse-sectors-mobile"
+                                >
+                                    <Building2 className="h-5 w-5 stroke-[2.5] mr-2" />
+                                    Browse Sectors
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleSearch}
+                                    disabled={
+                                        generateReportMutation.isPending ||
+                                        generateIdeaMutation.isPending
+                                    }
+                                    className="h-14 px-6 bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-full flex items-center justify-center"
+                                    data-testid="button-search-mobile"
+                                >
+                                    {generateReportMutation.isPending || generateIdeaMutation.isPending ? (
+                                        <Loader2 className="h-5 w-5 animate-spin" />
+                                    ) : (
+                                        <Search className="h-5 w-5" />
+                                    )}
+                                </Button>
+                            </div>
                             <Button
                                 type="button"
                                 variant="outline"
                                 onClick={() => setShowSectorBrowser(true)}
-                                className="h-14 pl-6 pr-4 bg-purple-600/20 border-purple-500/50 text-white hover:bg-purple-600/30 hover:border-purple-400 transition-colors whitespace-nowrap rounded-l-full rounded-r-none"
+                                className="hidden sm:flex h-14 pl-6 pr-4 bg-purple-600/20 border-purple-500/50 text-white hover:bg-purple-600/30 hover:border-purple-400 transition-colors whitespace-nowrap rounded-l-full rounded-r-none"
                                 data-testid="button-browse-sectors"
                             >
                                 <Building2 className="h-5 w-5 stroke-[2.5] mr-2" />
@@ -327,7 +355,7 @@ export function IdeaGenerator({
                             <div className="relative flex-1">
                                 <Input
                                     placeholder="Write a short pitch here and press enter to find semantically related keywords."
-                                    className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-32 rounded-none border-l-0 border-r-0"
+                                    className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 h-14 px-6 pr-32 sm:pr-32 rounded-full sm:rounded-none border sm:border-l-0 sm:border-r-0"
                                     data-testid="input-idea"
                                     onKeyDown={handleKeyDown}
                                     {...form.register("idea")}
@@ -372,7 +400,7 @@ export function IdeaGenerator({
                                     generateReportMutation.isPending ||
                                     generateIdeaMutation.isPending
                                 }
-                                className="h-14 pl-6 pr-8 bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-r-full rounded-l-none border-l-0 flex items-center justify-center"
+                                className="hidden sm:flex h-14 pl-6 pr-8 bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-r-full rounded-l-none border-l-0 items-center justify-center"
                                 data-testid="button-search"
                             >
                                 {generateReportMutation.isPending || generateIdeaMutation.isPending ? (

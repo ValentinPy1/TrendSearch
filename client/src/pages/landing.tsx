@@ -316,19 +316,23 @@ export default function LandingPage() {
                                 className="h-8"
                             />
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2 sm:gap-4">
                             <Button
                                 variant="ghost"
                                 onClick={() => setLocation("/auth")}
-                                className="text-white/80 hover:text-white rounded-full"
+                                className="text-white/80 hover:text-white rounded-full px-3 sm:px-4"
+                                size="sm"
                             >
-                                Sign In
+                                <span className="hidden sm:inline">Sign In</span>
+                                <span className="sm:hidden">Sign In</span>
                             </Button>
                             <Button
                                 onClick={() => setLocation("/auth?signup=true")}
-                                className="bg-primary hover:bg-primary/90 rounded-full"
+                                className="bg-primary hover:bg-primary/90 rounded-full px-3 sm:px-4"
+                                size="sm"
                             >
-                                Get Started
+                                <span className="hidden sm:inline">Get Started</span>
+                                <span className="sm:hidden">Start</span>
                             </Button>
                         </div>
                     </div>
@@ -336,9 +340,9 @@ export default function LandingPage() {
             </nav>
 
             {/* Hero Section */}
-            <section className="relative pt-40 pb-32 px-4 overflow-hidden">
+            <section className="relative pt-24 sm:pt-32 md:pt-40 pb-16 sm:pb-24 md:pb-32 px-4 overflow-hidden">
                 <div className="max-w-6xl mx-auto">
-                    <div className="text-center space-y-10">
+                    <div className="text-center space-y-6 sm:space-y-8 md:space-y-10">
                         {/* Decorative Element */}
                         <div className="flex justify-center">
                             <div className="h-1 w-24 bg-gradient-to-r from-transparent via-primary to-transparent rounded-full"></div>
@@ -356,7 +360,7 @@ export default function LandingPage() {
                         </div>
 
                         {/* Subheadline */}
-                        <p className="text-xl md:text-2xl text-white/80 max-w-3xl mx-auto leading-relaxed font-light">
+                        <p className="text-lg sm:text-xl md:text-2xl text-white/80 max-w-3xl mx-auto leading-relaxed font-light px-2">
                             Discover high-potential startup ideas in <strong className="text-white font-semibold">seconds</strong> from 80,000+ real YC startup keywords with 15+ differents metrics. Including trends, economics, and opportunity scores.
                         </p>
 
@@ -394,145 +398,147 @@ export default function LandingPage() {
                                         </div>
                                     ) : searchResults.length > 0 ? (
                                         <div className="bg-white/5 border border-white/10 rounded-lg overflow-hidden">
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full">
-                                                    <thead>
-                                                        <tr className="border-b border-white/10">
-                                                            <th
-                                                                className="text-left px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
-                                                                onClick={() => handleSort("keyword")}
-                                                            >
-                                                                <div className="flex items-center">
-                                                                    Keyword
-                                                                    <SortIcon field="keyword" />
-                                                                </div>
-                                                            </th>
-                                                            <th
-                                                                className="text-right px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
-                                                                onClick={() => handleSort("volume")}
-                                                            >
-                                                                <div className="flex items-center justify-end">
-                                                                    Volume
-                                                                    <SortIcon field="volume" />
-                                                                </div>
-                                                            </th>
-                                                            <th
-                                                                className="text-right px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
-                                                                onClick={() => handleSort("competition")}
-                                                            >
-                                                                <div className="flex items-center justify-end">
-                                                                    Competition
-                                                                    <SortIcon field="competition" />
-                                                                </div>
-                                                            </th>
-                                                            <th
-                                                                className="text-right px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
-                                                                onClick={() => handleSort("cpc")}
-                                                            >
-                                                                <div className="flex items-center justify-end">
-                                                                    CPC
-                                                                    <SortIcon field="cpc" />
-                                                                </div>
-                                                            </th>
-                                                            <th
-                                                                className="text-right px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
-                                                                onClick={() => handleSort("growthYoy")}
-                                                            >
-                                                                <div className="flex items-center justify-end">
-                                                                    YoY Trend
-                                                                    <SortIcon field="growthYoy" />
-                                                                </div>
-                                                            </th>
-                                                            <th
-                                                                className="text-right px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
-                                                                onClick={() => handleSort("opportunityScore")}
-                                                            >
-                                                                <div className="flex items-center justify-end">
-                                                                    Opportunity
-                                                                    <SortIcon field="opportunityScore" />
-                                                                </div>
-                                                            </th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {sortedResults.map((keyword, index) => {
-                                                            // Calculate max CPC for gradient (relative to all results)
-                                                            const maxCpc = Math.max(
-                                                                ...sortedResults
-                                                                    .map((k) => parseFloat(k.cpc?.toString() || "0"))
-                                                                    .filter((v) => !isNaN(v) && v > 0),
-                                                                1 // Default to 1 if no valid CPCs
-                                                            );
-
-                                                            return (
-                                                                <tr
-                                                                    key={keyword.id || index}
-                                                                    className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                                            <div className="overflow-x-auto -mx-4 sm:mx-0">
+                                                <div className="inline-block min-w-full align-middle">
+                                                    <table className="w-full min-w-[640px]">
+                                                        <thead>
+                                                            <tr className="border-b border-white/10">
+                                                                <th
+                                                                    className="text-left px-2 sm:px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                    onClick={() => handleSort("keyword")}
                                                                 >
-                                                                    <td className="px-4 py-3 text-white/90 font-medium">{keyword.keyword}</td>
-                                                                    <td className="px-4 py-3 text-right text-white/70">
-                                                                        {keyword.volume !== null && keyword.volume !== undefined
-                                                                            ? formatTwoSignificantDigits(keyword.volume)
-                                                                            : "—"}
-                                                                    </td>
-                                                                    <td className="px-4 py-3 text-right">
-                                                                        {keyword.competition !== null && keyword.competition !== undefined ? (
-                                                                            <span className="font-medium" style={getRedGradientText(keyword.competition)}>
-                                                                                {keyword.competition}
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-white/50">—</span>
-                                                                        )}
-                                                                    </td>
-                                                                    <td className="px-4 py-3 text-right">
-                                                                        {keyword.cpc && parseFloat(keyword.cpc.toString()) > 0 ? (
-                                                                            <span className="font-medium" style={getPurpleGradientText(parseFloat(keyword.cpc.toString()), maxCpc)}>
-                                                                                ${parseFloat(keyword.cpc.toString()).toFixed(2)}
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-white/50">—</span>
-                                                                        )}
-                                                                    </td>
-                                                                    <td className="px-4 py-3 text-right">
-                                                                        {keyword.growthYoy !== null && keyword.growthYoy !== undefined && keyword.growthYoy !== "" ? (
-                                                                            <span className="font-medium" style={getTrendGradientText(parseFloat(keyword.growthYoy.toString()))}>
-                                                                                {parseFloat(keyword.growthYoy.toString()) >= 0 ? "+" : ""}
-                                                                                {Math.round(parseFloat(keyword.growthYoy.toString()))}%
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-white/50">—</span>
-                                                                        )}
-                                                                    </td>
-                                                                    <td className="px-4 py-3 text-right">
-                                                                        {keyword.opportunityScore !== null && keyword.opportunityScore !== undefined ? (
-                                                                            <span className="font-medium" style={getOrangeGradientText(parseFloat(keyword.opportunityScore.toString()), 25)}>
-                                                                                {Math.round(parseFloat(keyword.opportunityScore.toString()))}
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-white/50">—</span>
-                                                                        )}
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                    <tfoot>
-                                                        <tr>
-                                                            <td colSpan={6} className="px-4 py-3 border-t border-white/10">
-                                                                <div className="flex justify-center">
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        className="text-sm px-4 py-2 h-auto group text-purple-400 hover:text-purple-300 hover:bg-white/5 transition-all"
-                                                                        onClick={() => setLocation("/auth?signup=true")}
+                                                                    <div className="flex items-center">
+                                                                        Keyword
+                                                                        <SortIcon field="keyword" />
+                                                                    </div>
+                                                                </th>
+                                                                <th
+                                                                    className="text-right px-2 sm:px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                    onClick={() => handleSort("volume")}
+                                                                >
+                                                                    <div className="flex items-center justify-end">
+                                                                        Volume
+                                                                        <SortIcon field="volume" />
+                                                                    </div>
+                                                                </th>
+                                                                <th
+                                                                    className="text-right px-2 sm:px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                    onClick={() => handleSort("competition")}
+                                                                >
+                                                                    <div className="flex items-center justify-end">
+                                                                        Competition
+                                                                        <SortIcon field="competition" />
+                                                                    </div>
+                                                                </th>
+                                                                <th
+                                                                    className="text-right px-2 sm:px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                    onClick={() => handleSort("cpc")}
+                                                                >
+                                                                    <div className="flex items-center justify-end">
+                                                                        CPC
+                                                                        <SortIcon field="cpc" />
+                                                                    </div>
+                                                                </th>
+                                                                <th
+                                                                    className="text-right px-2 sm:px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                    onClick={() => handleSort("growthYoy")}
+                                                                >
+                                                                    <div className="flex items-center justify-end">
+                                                                        YoY Trend
+                                                                        <SortIcon field="growthYoy" />
+                                                                    </div>
+                                                                </th>
+                                                                <th
+                                                                    className="text-right px-2 sm:px-4 py-3 text-sm font-semibold text-white/90 cursor-pointer hover:bg-white/5 transition-colors"
+                                                                    onClick={() => handleSort("opportunityScore")}
+                                                                >
+                                                                    <div className="flex items-center justify-end">
+                                                                        Opportunity
+                                                                        <SortIcon field="opportunityScore" />
+                                                                    </div>
+                                                                </th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {sortedResults.map((keyword, index) => {
+                                                                // Calculate max CPC for gradient (relative to all results)
+                                                                const maxCpc = Math.max(
+                                                                    ...sortedResults
+                                                                        .map((k) => parseFloat(k.cpc?.toString() || "0"))
+                                                                        .filter((v) => !isNaN(v) && v > 0),
+                                                                    1 // Default to 1 if no valid CPCs
+                                                                );
+
+                                                                return (
+                                                                    <tr
+                                                                        key={keyword.id || index}
+                                                                        className="border-b border-white/5 hover:bg-white/5 transition-colors"
                                                                     >
-                                                                        See more keywords and metrics
-                                                                        <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                                                                    </Button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    </tfoot>
-                                                </table>
+                                                                        <td className="px-2 sm:px-4 py-3 text-white/90 font-medium">{keyword.keyword}</td>
+                                                                        <td className="px-2 sm:px-4 py-3 text-right text-white/70">
+                                                                            {keyword.volume !== null && keyword.volume !== undefined
+                                                                                ? formatTwoSignificantDigits(keyword.volume)
+                                                                                : "—"}
+                                                                        </td>
+                                                                        <td className="px-2 sm:px-4 py-3 text-right">
+                                                                            {keyword.competition !== null && keyword.competition !== undefined ? (
+                                                                                <span className="font-medium" style={getRedGradientText(keyword.competition)}>
+                                                                                    {keyword.competition}
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="text-white/50">—</span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="px-2 sm:px-4 py-3 text-right">
+                                                                            {keyword.cpc && parseFloat(keyword.cpc.toString()) > 0 ? (
+                                                                                <span className="font-medium" style={getPurpleGradientText(parseFloat(keyword.cpc.toString()), maxCpc)}>
+                                                                                    ${parseFloat(keyword.cpc.toString()).toFixed(2)}
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="text-white/50">—</span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="px-2 sm:px-4 py-3 text-right">
+                                                                            {keyword.growthYoy !== null && keyword.growthYoy !== undefined && keyword.growthYoy !== "" ? (
+                                                                                <span className="font-medium" style={getTrendGradientText(parseFloat(keyword.growthYoy.toString()))}>
+                                                                                    {parseFloat(keyword.growthYoy.toString()) >= 0 ? "+" : ""}
+                                                                                    {Math.round(parseFloat(keyword.growthYoy.toString()))}%
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="text-white/50">—</span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="px-2 sm:px-4 py-3 text-right">
+                                                                            {keyword.opportunityScore !== null && keyword.opportunityScore !== undefined ? (
+                                                                                <span className="font-medium" style={getOrangeGradientText(parseFloat(keyword.opportunityScore.toString()), 25)}>
+                                                                                    {Math.round(parseFloat(keyword.opportunityScore.toString()))}
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="text-white/50">—</span>
+                                                                            )}
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                        <tfoot>
+                                                            <tr>
+                                                                <td colSpan={6} className="px-2 sm:px-4 py-3 border-t border-white/10">
+                                                                    <div className="flex justify-center">
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            className="text-sm px-4 py-2 h-auto group text-purple-400 hover:text-purple-300 hover:bg-white/5 transition-all"
+                                                                            onClick={() => setLocation("/auth?signup=true")}
+                                                                        >
+                                                                            See more keywords and metrics
+                                                                            <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                                                                        </Button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        </tfoot>
+                                                    </table>
+                                                </div>
                                             </div>
                                         </div>
                                     ) : (
@@ -548,8 +554,8 @@ export default function LandingPage() {
             </section>
 
             {/* Features Section */}
-            <section className="py-24 px-4">
-                <div className="max-w-7xl mx-auto space-y-16">
+            <section className="py-12 sm:py-16 md:py-24 px-4">
+                <div className="max-w-7xl mx-auto space-y-12 sm:space-y-16">
                     {/* Feature 1 - YC Keywords Search */}
                     <div className="grid md:grid-cols-2 gap-8 items-center">
                         <div
@@ -608,8 +614,8 @@ export default function LandingPage() {
                             </button>
                         </div>
                         <div className="space-y-4">
-                            <h3 className="text-2xl font-semibold text-white">YC Keywords Explorer</h3>
-                            <p className="text-white/70">
+                            <h3 className="text-xl sm:text-2xl font-semibold text-white">YC Keywords Explorer</h3>
+                            <p className="text-sm sm:text-base text-white/70">
                                 Enter any idea or pitch and instantly discover the most relevant keywords from 80,000+ YC startup keywords. Evaluate volume, trends, economics, competition, and opportunities for each keyword. Get an aggregate report of all selected keywords and use filters to find keywords with specific metrics, perfect for data-backed brainstorming.
                             </p>
                         </div>
@@ -618,8 +624,8 @@ export default function LandingPage() {
                     {/* Feature 2 - Sector Browsing */}
                     <div className="grid md:grid-cols-2 gap-8 items-center">
                         <div className="space-y-4 order-2 md:order-1 md:text-right">
-                            <h3 className="text-2xl font-semibold text-white">Sector Watcher</h3>
-                            <p className="text-white/70">
+                            <h3 className="text-xl sm:text-2xl font-semibold text-white">Sector Watcher</h3>
+                            <p className="text-sm sm:text-base text-white/70">
                                 Browse through all YC sectors and explore companies within each sector. Rank them by volume, economics, trend, or opportunity for related keywords. Use YC pitches as starting points for keywords explorer to dive deeper into keyword opportunities.
                             </p>
                         </div>
@@ -738,8 +744,8 @@ export default function LandingPage() {
                             </button>
                         </div>
                         <div className="space-y-4">
-                            <h3 className="text-2xl font-semibold text-white">Competitor Radar</h3>
-                            <p className="text-white/70">
+                            <h3 className="text-xl sm:text-2xl font-semibold text-white">Competitor Radar</h3>
+                            <p className="text-sm sm:text-base text-white/70">
                                 Find competitors in your space, then automatically generate the keywords they're targeting. Get the same comprehensive metrics, volume, trends, economics, competition, and opportunity scores, to either compete on the same demand or identify untapped gaps in the market.
                             </p>
                         </div>
@@ -748,13 +754,13 @@ export default function LandingPage() {
             </section>
 
             {/* FAQ Section */}
-            <section className="py-24 px-4 border-t border-white/10">
+            <section className="py-12 sm:py-16 md:py-24 px-4 border-t border-white/10">
                 <div className="max-w-4xl mx-auto">
-                    <div className="text-center mb-12">
-                        <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+                    <div className="text-center mb-8 sm:mb-12">
+                        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4">
                             Frequently Asked Questions
                         </h2>
-                        <p className="text-lg text-white/70">
+                        <p className="text-base sm:text-lg text-white/70">
                             Everything you need to know about Trends Search
                         </p>
                     </div>
@@ -824,7 +830,7 @@ export default function LandingPage() {
             </section>
 
             {/* Final CTA Section */}
-            <section id="signup" className="py-32 px-4">
+            <section id="signup" className="py-16 sm:py-24 md:py-32 px-4">
                 <div className="max-w-4xl mx-auto flex justify-center">
                     <Button
                         size="lg"

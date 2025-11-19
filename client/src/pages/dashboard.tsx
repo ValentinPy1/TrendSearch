@@ -425,50 +425,51 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     >
                         <img src={logoImage} alt="Pioneers AI Lab" className="h-6" />
                     </a>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 sm:gap-4">
                         <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setShowFeedbackModal(true)}
-                            className="text-white/80 hover:text-white"
+                            className="text-white/80 hover:text-white px-2 sm:px-3"
                         >
-                            <MessageSquare className="h-4 w-4 mr-2" />
-                            Give Feedback
+                            <MessageSquare className="h-4 w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">Give Feedback</span>
                         </Button>
                         {hasPaid && (
                             <button
                                 onClick={() => setShowCreditPurchase(true)}
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-colors cursor-pointer"
+                                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-colors cursor-pointer"
                             >
                                 <Coins className="h-4 w-4 text-primary" />
                                 <span className="text-sm font-semibold text-white">{credits}</span>
-                                <span className="text-xs text-white/60">credits</span>
+                                <span className="hidden sm:inline text-xs text-white/60">credits</span>
                             </button>
                         )}
                         {!hasPaid && (
                             <Button
                                 onClick={() => setShowPaywall(true)}
                                 size="sm"
-                                className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
+                                className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 px-2 sm:px-3"
                             >
-                                <Sparkles className="h-4 w-4 mr-2" />
-                                Upgrade Premium
+                                <Sparkles className="h-4 w-4 sm:mr-2" />
+                                <span className="hidden sm:inline">Upgrade Premium</span>
                             </Button>
                         )}
-                        <span className="text-sm text-white/60">{user.email}</span>
+                        <span className="hidden sm:inline text-sm text-white/60 truncate max-w-[120px] lg:max-w-none">{user.email}</span>
                         <Button
                             variant="ghost"
                             size="icon"
                             onClick={onLogout}
                             data-testid="button-logout"
+                            className="h-9 w-9"
                         >
-                            <LogOut className="h-5 w-5" />
+                            <LogOut className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                     </div>
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-8">
                 <IdeaGenerator
                     onIdeaGenerated={handleIdeaGenerated}
                     onShowHistory={() => setShowHistory(!showHistory)}
@@ -498,14 +499,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 )}
 
                 {!isLoading && !error && isGeneratingReport && (
-                    <div className="space-y-8">
-                        <div className="text-center pt-8 pb-4">
+                    <div className="space-y-4 sm:space-y-8">
+                        <div className="text-center pt-4 sm:pt-8 pb-4">
                             <div className="h-12 bg-white/10 rounded-lg animate-pulse max-w-2xl mx-auto" />
                         </div>
 
-                        <div className="pt-16 space-y-4">
+                        <div className="pt-8 sm:pt-16 space-y-4">
                             <div>
-                                <h3 className="text-xl font-semibold text-white/90 mb-2">
+                                <h3 className="text-lg sm:text-xl font-semibold text-white/90 mb-2">
                                     Top 10 Related Keywords
                                 </h3>
                                 <p className="text-sm text-white/60">
@@ -536,8 +537,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                             </GlassmorphicCard>
                         </div>
 
-                        <div className="pt-16 space-y-4">
-                            <h3 className="text-xl font-semibold text-white/90">
+                        <div className="pt-8 sm:pt-16 space-y-4">
+                            <h3 className="text-lg sm:text-xl font-semibold text-white/90">
                                 Aggregated KPIs
                             </h3>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -588,15 +589,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
                         return (
                             <div className="space-y-4">
-                                <div className="text-center pt-8 pb-4">
-                                    <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
+                                <div className="text-center pt-4 sm:pt-8 pb-4">
+                                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto px-2">
                                         {selectedIdea.generatedIdea}
                                     </h2>
                                 </div>
 
-                                <div className="pt-16 space-y-4">
+                                <div className="pt-8 sm:pt-16 space-y-4">
                                     <div>
-                                        <h3 className="text-xl font-semibold text-white/90 mb-2">
+                                        <h3 className="text-lg sm:text-xl font-semibold text-white/90 mb-2">
                                             Top {displayedKeywords.length} Related Keywords
                                         </h3>
                                         <p className="text-sm text-white/60">
@@ -642,8 +643,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                                         </div>
                                     )}
 
-                                <div className="pt-16 space-y-4">
-                                    <h3 className="text-xl font-semibold text-white/90">
+                                <div className="pt-8 sm:pt-16 space-y-4">
+                                    <h3 className="text-lg sm:text-xl font-semibold text-white/90">
                                         Aggregated KPIs
                                     </h3>
                                     <MetricsCards keywords={displayedKeywords} />
@@ -654,8 +655,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                                 </div>
 
                                 {/* Call to Action */}
-                                <div className="text-center py-8">
-                                    <h3 className="text-2xl font-semibold mb-6 bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent">
+                                <div className="text-center py-6 sm:py-8">
+                                    <h3 className="text-xl sm:text-2xl font-semibold mb-4 sm:mb-6 bg-gradient-to-r from-secondary via-primary to-white bg-clip-text text-transparent px-2">
                                         Found an opportunity?
                                         <br />
                                         Find a cofounder and launch with Pioneers

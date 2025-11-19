@@ -994,8 +994,9 @@ export function KeywordsTable({
                     </PopoverContent>
                 </Popover>
             </div>
-            <div className="overflow-x-auto">
-                <table className="w-full">
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <div className="inline-block min-w-full align-middle">
+                    <table className="w-full min-w-[640px]">
                     <thead>
                         <tr className="border-b border-white/10">
                             {visibleColumnConfigs.map((config) => {
@@ -1015,7 +1016,7 @@ export function KeywordsTable({
                                 return (
                                     <th
                                         key={config.id}
-                                        className={`${alignClass} py-3 px-4 text-sm font-semibold text-white/80 ${config.sortable ? "cursor-pointer hover-elevate" : ""
+                                        className={`${alignClass} py-3 px-2 sm:px-4 text-sm font-semibold text-white/80 ${config.sortable ? "cursor-pointer hover-elevate" : ""
                                             }`}
                                         onClick={() => config.sortable && handleSort(config.field as SortField)}
                                         data-testid={`header-${config.id}`}
@@ -1071,7 +1072,7 @@ export function KeywordsTable({
                                         return (
                                             <td
                                                 key={config.id}
-                                                className={`py-4 px-4 text-sm ${alignClass} ${config.id === "keyword" ? "text-white font-medium" : ""
+                                                className={`py-4 px-2 sm:px-4 text-sm ${alignClass} ${config.id === "keyword" ? "text-white font-medium" : ""
                                                     }`}
                                             >
                                                 {config.format(value, keyword, sortedKeywords)}
@@ -1083,7 +1084,7 @@ export function KeywordsTable({
                         })}
                         {onLoadMore && (
                             <tr className="border-t border-white/10">
-                                <td colSpan={visibleColumns.length} className="py-4 px-4">
+                                <td colSpan={visibleColumns.length} className="py-4 px-2 sm:px-4">
                                     <Button
                                         variant="ghost"
                                         onClick={onLoadMore}
@@ -1107,7 +1108,8 @@ export function KeywordsTable({
                             </tr>
                         )}
                     </tbody>
-                </table>
+                    </table>
+                </div>
             </div>
 
             {/* Metrics Explanation Dialog */}
