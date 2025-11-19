@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft } from "lucide-react";
+import { authEvents } from "@/lib/gtm";
 
 interface AuthPageProps {
   onAuthSuccess: (user: { id: string; email: string }) => void;
@@ -55,6 +56,11 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     },
   });
 
+  // Track page view on mount
+  useEffect(() => {
+    authEvents.pageView(isLogin ? 'login' : 'signup');
+  }, [isLogin]);
+
   const onSubmit = async (data: { firstName?: string; lastName?: string; email: string; password: string }) => {
     setIsLoading(true);
     try {
@@ -98,6 +104,9 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
         const result = await response.json();
         onAuthSuccess(result.user);
+        
+        // Track successful login
+        authEvents.login(data.email);
         
         toast({
           title: "Welcome back!",
@@ -154,15 +163,22 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         const result = await response.json();
         onAuthSuccess(result.user);
         
+        // Track successful signup
+        authEvents.signup(data.email);
+        
         toast({
           title: "Account created!",
           description: "Your account has been created successfully.",
         });
       }
     } catch (error) {
+      // Track auth error
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      authEvents.authError(errorMessage, isLogin ? 'login' : 'signup');
+      
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Something went wrong",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

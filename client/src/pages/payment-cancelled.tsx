@@ -4,12 +4,24 @@ import { useToast } from "@/hooks/use-toast";
 import { GradientOrbs } from "@/components/gradient-orbs";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
 import { XCircle, Loader2 } from "lucide-react";
+import { paymentEvents } from "@/lib/gtm";
 
 export default function PaymentCancelled() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   useEffect(() => {
+    // Track payment cancellation
+    // Try to get purchase type from URL params or localStorage if available
+    const urlParams = new URLSearchParams(window.location.search);
+    const purchaseType = urlParams.get('type') || 'premium';
+    const option = urlParams.get('option') || 'premium_20';
+    
+    paymentEvents.paymentCancelled(
+      purchaseType as 'premium' | 'credits',
+      option
+    );
+    
     toast({
       title: "Payment Cancelled",
       description: "You can try again anytime.",

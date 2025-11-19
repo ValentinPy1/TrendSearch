@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles, Building2, Filter, Search, TrendingUp, Zap, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { paymentEvents } from "@/lib/gtm";
 
 interface PaywallModalProps {
     open: boolean;
@@ -26,6 +27,14 @@ export function PaywallModal({ open, onOpenChange, feature }: PaywallModalProps)
         },
         onSuccess: (data) => {
             if (data.checkoutUrl) {
+                // Track checkout initiation
+                const priceMap: Record<string, number> = {
+                    'premium_20': 9.99,
+                    'premium_80': 14.99,
+                };
+                const value = priceMap[selectedOption] || 0;
+                paymentEvents.checkoutInitiated('premium', selectedOption, value);
+                
                 // Redirect to Stripe Checkout
                 window.location.href = data.checkoutUrl;
             } else {

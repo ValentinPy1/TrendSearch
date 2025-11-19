@@ -7,6 +7,7 @@ import { GradientOrbs } from "@/components/gradient-orbs";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { paymentEvents } from "@/lib/gtm";
 
 export default function PaymentSuccess() {
   const [, setLocation] = useLocation();
@@ -34,6 +35,23 @@ export default function PaymentSuccess() {
             // Also invalidate sector data cache so it can refetch with premium access
             queryClient.invalidateQueries({ queryKey: ["/api/sectors/aggregated"] });
             await refetch();
+            
+            // Track payment success
+            const purchaseType = result.purchaseType || 'premium'; // 'premium' or 'credits'
+            const option = result.option || 'premium_20'; // e.g., 'premium_20', 'credits_40'
+            const priceMap: Record<string, number> = {
+              'premium_20': 9.99,
+              'premium_80': 14.99,
+              'credits_40': 9.99,
+              'credits_80': 14.99,
+            };
+            const value = result.amount || priceMap[option] || 0;
+            paymentEvents.paymentSuccess(
+              purchaseType as 'premium' | 'credits',
+              option,
+              value,
+              sessionId
+            );
             
             setIsVerifying(false);
             toast({
@@ -71,6 +89,16 @@ export default function PaymentSuccess() {
               if (currentStatus?.hasPaid) {
                 // Also invalidate sector data cache so it can refetch with premium access
                 queryClient.invalidateQueries({ queryKey: ["/api/sectors/aggregated"] });
+                
+                // Track payment success (with default values if details not available)
+                // Note: We may not have full purchase details from polling, so use defaults
+                paymentEvents.paymentSuccess(
+                  'premium',
+                  'premium_20',
+                  9.99,
+                  sessionId
+                );
+                
                 setIsVerifying(false);
                 toast({
                   title: "Payment Verified!",

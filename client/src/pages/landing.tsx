@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import logoImage from "@assets/image_1761146000585.png";
 import type { Keyword } from "@shared/schema";
+import { landingPageEvents } from "@/lib/gtm";
 
 export default function LandingPage() {
     const [, setLocation] = useLocation();
@@ -103,6 +104,11 @@ export default function LandingPage() {
         }
     };
 
+    // Track page view on mount
+    useEffect(() => {
+        landingPageEvents.pageView();
+    }, []);
+
     // Listen for fullscreen changes
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -137,7 +143,11 @@ export default function LandingPage() {
             }
 
             const data = await response.json();
-            setSearchResults(data.keywords || []);
+            const keywords = data.keywords || [];
+            setSearchResults(keywords);
+            
+            // Track search event
+            landingPageEvents.search(searchQuery.trim(), keywords.length);
         } catch (error) {
             console.error("Error searching keywords:", error);
             setSearchResults([]);
@@ -319,7 +329,10 @@ export default function LandingPage() {
                         <div className="flex items-center gap-2 sm:gap-4">
                             <Button
                                 variant="ghost"
-                                onClick={() => setLocation("/auth")}
+                                onClick={() => {
+                                    landingPageEvents.ctaClick('sign_in');
+                                    setLocation("/auth");
+                                }}
                                 className="text-white/80 hover:text-white rounded-full px-3 sm:px-4"
                                 size="sm"
                             >
@@ -327,7 +340,10 @@ export default function LandingPage() {
                                 <span className="sm:hidden">Sign In</span>
                             </Button>
                             <Button
-                                onClick={() => setLocation("/auth?signup=true")}
+                                onClick={() => {
+                                    landingPageEvents.ctaClick('get_started');
+                                    setLocation("/auth?signup=true");
+                                }}
                                 className="bg-primary hover:bg-primary/90 rounded-full px-3 sm:px-4"
                                 size="sm"
                             >
@@ -385,6 +401,21 @@ export default function LandingPage() {
                                     ) : (
                                         <Search className="h-5 w-5" />
                                     )}
+                                </Button>
+                            </div>
+
+                            {/* Get Started Button */}
+                            <div className="mt-6 flex justify-center">
+                                <Button
+                                    onClick={() => {
+                                        landingPageEvents.ctaClick('get_started');
+                                        setLocation("/auth?signup=true");
+                                    }}
+                                    size="lg"
+                                    className="bg-primary hover:bg-primary/90 rounded-full px-8 py-6 h-auto text-base font-semibold shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 hover:scale-105"
+                                >
+                                    Get Started
+                                    <ArrowRight className="ml-2 h-5 w-5" />
                                 </Button>
                             </div>
 
@@ -528,7 +559,10 @@ export default function LandingPage() {
                                                                         <Button
                                                                             variant="ghost"
                                                                             className="text-sm px-4 py-2 h-auto group text-purple-400 hover:text-purple-300 hover:bg-white/5 transition-all"
-                                                                            onClick={() => setLocation("/auth?signup=true")}
+                                                                            onClick={() => {
+                                                                                landingPageEvents.ctaClick('get_started');
+                                                                                setLocation("/auth?signup=true");
+                                                                            }}
                                                                         >
                                                                             See more keywords and metrics
                                                                             <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
@@ -835,7 +869,10 @@ export default function LandingPage() {
                     <Button
                         size="lg"
                         className="text-lg px-12 py-8 h-auto group rounded-full shadow-xl shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 hover:scale-105"
-                        onClick={() => setLocation("/auth?signup=true")}
+                        onClick={() => {
+                            landingPageEvents.ctaClick('get_started');
+                            setLocation("/auth?signup=true");
+                        }}
                     >
                         Find Opportunities
                         <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />

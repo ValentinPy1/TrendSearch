@@ -6,6 +6,7 @@ import { Loader2, Coins, Zap } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
+import { paymentEvents } from "@/lib/gtm";
 
 interface CreditPurchaseModalProps {
     open: boolean;
@@ -27,6 +28,14 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
         },
         onSuccess: (data) => {
             if (data.checkoutUrl) {
+                // Track checkout initiation
+                const priceMap: Record<string, number> = {
+                    'credits_40': 9.99,
+                    'credits_80': 14.99,
+                };
+                const value = priceMap[selectedOption] || 0;
+                paymentEvents.checkoutInitiated('credits', selectedOption, value);
+                
                 // Redirect to Stripe Checkout
                 window.location.href = data.checkoutUrl;
             } else {

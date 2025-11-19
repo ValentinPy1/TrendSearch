@@ -35,6 +35,7 @@ import { CreditPurchaseModal } from "@/components/credit-purchase-modal";
 import { FeedbackModal } from "@/components/feedback-modal";
 import { usePostHog } from "posthog-js/react";
 import { DisplaySurveyType } from "posthog-js";
+import { dashboardEvents } from "@/lib/gtm";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -110,6 +111,19 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     } = useQuery<IdeaWithReport[]>({
         queryKey: ["/api/ideas"],
     });
+
+    // Track page view on mount
+    useEffect(() => {
+        dashboardEvents.pageView();
+    }, []);
+
+    // Wrapper for keyword selection with tracking
+    const handleKeywordSelect = (keyword: string | null) => {
+        setSelectedKeyword(keyword);
+        if (keyword) {
+            dashboardEvents.keywordView(keyword);
+        }
+    };
 
     const loadMoreKeywordsMutation = useMutation({
         mutationFn: async (data: { reportId: string; filters?: KeywordFilter[] }) => {
@@ -369,6 +383,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         if (newIdea?.report?.keywords && newIdea.report.keywords.length > 0) {
             setSelectedKeyword(newIdea.report.keywords[0].keyword);
         }
+        
+        // Track idea generation
+        const keywordCount = newIdea.report?.keywords?.length || 0;
+        dashboardEvents.ideaGenerated(newIdea.generatedIdea || '', keywordCount);
+        
         refetch();
     };
 
@@ -447,7 +466,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                         )}
                         {!hasPaid && (
                             <Button
-                                onClick={() => setShowPaywall(true)}
+                                onClick={() => {
+                                    dashboardEvents.upgradeClick('header');
+                                    setShowPaywall(true);
+                                }}
                                 size="sm"
                                 className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 px-2 sm:px-3"
                             >
