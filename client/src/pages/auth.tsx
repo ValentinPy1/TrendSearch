@@ -122,7 +122,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               first_name: data.firstName,
               last_name: data.lastName,
             },
-            emailRedirectTo: window.location.origin, // Optional: for email confirmation
           },
         });
 
@@ -130,24 +129,31 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
           throw new Error(authError.message);
         }
 
-        // Handle email confirmation requirement
-        if (!authData.session) {
-          // Email confirmation is required
-          toast({
-            title: "Check your email!",
-            description: "Please check your email to confirm your account before signing in.",
+        // If no session is returned, try to sign in immediately (email confirmation disabled)
+        let session = authData.session;
+        if (!session) {
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: data.email,
+            password: data.password,
           });
-          // Switch to login mode so user can login after confirming
-          setIsLogin(true);
-          return;
+
+          if (signInError) {
+            throw new Error(signInError.message);
+          }
+
+          if (!signInData.session) {
+            throw new Error("Failed to create session. Please try again.");
+          }
+
+          session = signInData.session;
         }
 
-        // Session exists - create user profile
+        // Create user profile
         const response = await fetch("/api/auth/create-profile", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${authData.session.access_token}`,
+            "Authorization": `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
             firstName: data.firstName,
