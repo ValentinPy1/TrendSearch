@@ -44,7 +44,7 @@ interface EmbeddingsMetadata {
 function convertMonthlyData(keyword: KeywordData): Array<{ month: string; volume: number }> {
     const months: string[] = [];
     const volumes: number[] = [];
-    
+
     // Extract all month columns (2021_11 to 2025_09)
     for (let year = 2021; year <= 2025; year++) {
         for (let month = 1; month <= 12; month++) {
@@ -56,7 +56,7 @@ function convertMonthlyData(keyword: KeywordData): Array<{ month: string; volume
             }
         }
     }
-    
+
     return months.map((month, idx) => ({ month, volume: volumes[idx] }));
 }
 
@@ -78,7 +78,7 @@ async function migrateEmbeddings() {
     console.log(`Found ${metadata.total_keywords} keywords in ${metadata.chunks.length} binary chunks\n`);
 
     // Load keywords from CSV
-    const csvPath = path.join(process.cwd(), 'new_keywords', 'keywords_data.csv');
+    const csvPath = path.join(process.cwd(), 'data/new_keywords', 'keywords_data.csv');
     if (!fs.existsSync(csvPath)) {
         throw new Error(`Keywords CSV not found at ${csvPath}`);
     }
@@ -132,7 +132,7 @@ async function migrateEmbeddings() {
     // Check if table already has data
     const existingCount = await db.execute(sql`SELECT COUNT(*) as count FROM keyword_embeddings`);
     const count = Number((existingCount[0] as any)?.count || 0);
-    
+
     if (count > 0) {
         console.log(`Warning: keyword_embeddings table already contains ${count} records.`);
         console.log('Do you want to continue? This will insert duplicates (use ON CONFLICT to update).');
@@ -194,13 +194,13 @@ async function migrateEmbeddings() {
             // Build placeholders and params
             const params: any[] = [];
             const placeholders: string[] = [];
-            
+
             values.forEach((v, idx) => {
                 const base = idx * 17; // 17 fields per row
                 placeholders.push(
                     `($${base + 1}, $${base + 2}::vector(384), $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15}, $${base + 16}, $${base + 17})`
                 );
-                
+
                 params.push(
                     v.keyword,
                     v.embedding,
@@ -278,7 +278,7 @@ async function migrateEmbeddings() {
             ssl: 'require',
             prepare: false,
         });
-        
+
         const testQuery = await testPgClient.unsafe(
             `SELECT * FROM match_keywords(
                 (SELECT embedding FROM keyword_embeddings LIMIT 1),
