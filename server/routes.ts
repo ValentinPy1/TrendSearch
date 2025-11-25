@@ -1292,13 +1292,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             if (!localUser) {
                 // Auto-create profile if it doesn't exist (first login after email confirmation)
-                const firstName = user.user_metadata?.first_name;
-                const lastName = user.user_metadata?.last_name;
-                if (!firstName || !lastName || firstName.trim().length < 1 || lastName.trim().length < 1) {
-                    return res.status(400).json({
-                        message: "Missing required profile information: first name and last name must be provided."
-                    });
-                }
+                const firstName = (user.user_metadata?.first_name || "").trim();
+                const lastName = (user.user_metadata?.last_name || "").trim();
                 try {
                     localUser = await storage.createUser({
                         supabaseUserId: user.id,

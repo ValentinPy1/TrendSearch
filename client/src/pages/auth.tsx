@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GlassmorphicCard } from "@/components/glassmorphic-card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { authEvents } from "@/lib/gtm";
 
 interface AuthPageProps {
@@ -17,12 +17,16 @@ interface AuthPageProps {
 }
 
 // Form validation schemas
-const signupSchema = z.object({
-    firstName: z.string().min(1, "First name is required"),
-    lastName: z.string().min(1, "Last name is required"),
-    email: z.string().email("Invalid email address"),
-    password: z.string().min(6, "Password must be at least 6 characters"),
-});
+const signupSchema = z
+    .object({
+        email: z.string().email("Invalid email address"),
+        password: z.string().min(6, "Password must be at least 6 characters"),
+        confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
+    })
+    .refine((data) => data.password === data.confirmPassword, {
+        path: ["confirmPassword"],
+        message: "Passwords must match",
+    });
 
 const loginSchema = z.object({
     email: z.string().email("Invalid email address"),
@@ -36,15 +40,18 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     const shouldSignup = urlParams.get('signup') === 'true' || urlParams.get('mode') === 'signup';
     const [isLogin, setIsLogin] = useState(!shouldSignup);
     const [isLoading, setIsLoading] = useState(false);
+    const [isResettingPassword, setIsResettingPassword] = useState(false);
+    const [showLoginPassword, setShowLoginPassword] = useState(false);
+    const [showSignupPassword, setShowSignupPassword] = useState(false);
+    const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
     const { toast } = useToast();
 
-    const signupForm = useForm<{ firstName: string; lastName: string; email: string; password: string }>({
+    const signupForm = useForm<{ email: string; password: string; confirmPassword: string }>({
         resolver: zodResolver(signupSchema),
         defaultValues: {
-            firstName: "",
-            lastName: "",
             email: "",
             password: "",
+            confirmPassword: "",
         },
     });
 
@@ -55,13 +62,14 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             password: "",
         },
     });
+    const loginEmail = loginForm.watch("email");
 
     // Track page view on mount
     useEffect(() => {
         authEvents.pageView(isLogin ? 'login' : 'signup');
     }, [isLogin]);
 
-    const onSubmit = async (data: { firstName?: string; lastName?: string; email: string; password: string }) => {
+    const onSubmit = async (data: { email: string; password: string }) => {
         setIsLoading(true);
         try {
             if (isLogin) {
@@ -91,10 +99,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${session.access_token}`,
                     },
-                    body: JSON.stringify({
-                        firstName: data.firstName || "",
-                        lastName: data.lastName || "",
-                    }),
+                    body: JSON.stringify({}),
                 });
 
                 if (!response.ok) {
@@ -118,10 +123,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                     email: data.email,
                     password: data.password,
                     options: {
-                        data: {
-                            first_name: data.firstName,
-                            last_name: data.lastName,
-                        },
+                        data: {},
                         emailRedirectTo: window.location.origin, // Optional: for email confirmation
                     },
                 });
@@ -149,10 +151,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${authData.session.access_token}`,
                     },
-                    body: JSON.stringify({
-                        firstName: data.firstName,
-                        lastName: data.lastName,
-                    }),
+                    body: JSON.stringify({}),
                 });
 
                 if (!response.ok) {
@@ -183,6 +182,44 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             });
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handlePasswordReset = async () => {
+        const email = loginForm.getValues("email");
+
+        if (!email) {
+            toast({
+                title: "Email required",
+                description: "Please enter your email before requesting a reset link.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setIsResettingPassword(true);
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: `${window.location.origin}/auth`,
+            });
+
+            if (error) {
+                throw new Error(error.message);
+            }
+
+            toast({
+                title: "Reset email sent",
+                description: "Check your inbox for a link to reset your password.",
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "Failed to send reset email";
+            toast({
+                title: "Error",
+                description: errorMessage,
+                variant: "destructive",
+            });
+        } finally {
+            setIsResettingPassword(false);
         }
     };
 
@@ -241,19 +278,37 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                                     <Label htmlFor="password" className="text-white/90">
                                         Password
                                     </Label>
-                                    <Input
-                                        id="password"
-                                        type="password"
-                                        placeholder="••••••••"
-                                        className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                                        data-testid="input-password"
-                                        {...loginForm.register("password")}
-                                    />
+                                    <div className="relative">
+                                        <Input
+                                            id="password"
+                                            type={showLoginPassword ? "text" : "password"}
+                                            placeholder="••••••••"
+                                            className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 pr-10"
+                                            data-testid="input-password"
+                                            {...loginForm.register("password")}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="absolute inset-y-0 right-2 flex items-center text-white/60 hover:text-white transition-colors"
+                                            onClick={() => setShowLoginPassword((prev) => !prev)}
+                                            aria-label={showLoginPassword ? "Hide password" : "Show password"}
+                                        >
+                                            {showLoginPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                        </button>
+                                    </div>
                                     {loginForm.formState.errors.password && (
                                         <p className="text-sm text-destructive">
                                             {loginForm.formState.errors.password.message}
                                         </p>
                                     )}
+                                    <button
+                                        type="button"
+                                        onClick={handlePasswordReset}
+                                        className="text-sm text-primary hover:text-primary/80 transition-colors disabled:text-white/30"
+                                        disabled={!loginEmail || isResettingPassword}
+                                    >
+                                        {isResettingPassword ? "Sending reset email..." : "Forgot password?"}
+                                    </button>
                                 </div>
 
                                 <Button
@@ -274,45 +329,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                             </form>
                         ) : (
                             <form onSubmit={signupForm.handleSubmit((data) => onSubmit(data))} className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="firstName" className="text-white/90">
-                                            First Name
-                                        </Label>
-                                        <Input
-                                            id="firstName"
-                                            type="text"
-                                            placeholder="John"
-                                            className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                                            data-testid="input-firstName"
-                                            {...signupForm.register("firstName")}
-                                        />
-                                        {signupForm.formState.errors.firstName && (
-                                            <p className="text-sm text-destructive">
-                                                {signupForm.formState.errors.firstName.message}
-                                            </p>
-                                        )}
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="lastName" className="text-white/90">
-                                            Last Name
-                                        </Label>
-                                        <Input
-                                            id="lastName"
-                                            type="text"
-                                            placeholder="Doe"
-                                            className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                                            data-testid="input-lastName"
-                                            {...signupForm.register("lastName")}
-                                        />
-                                        {signupForm.formState.errors.lastName && (
-                                            <p className="text-sm text-destructive">
-                                                {signupForm.formState.errors.lastName.message}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
 
                                 <div className="space-y-2">
                                     <Label htmlFor="email" className="text-white/90">
@@ -337,17 +353,56 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                                     <Label htmlFor="password" className="text-white/90">
                                         Password
                                     </Label>
-                                    <Input
-                                        id="password"
-                                        type="password"
-                                        placeholder="••••••••"
-                                        className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                                        data-testid="input-password"
-                                        {...signupForm.register("password")}
-                                    />
+                                    <div className="relative">
+                                        <Input
+                                            id="password"
+                                            type={showSignupPassword ? "text" : "password"}
+                                            placeholder="••••••••"
+                                            className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 pr-10"
+                                            data-testid="input-password"
+                                            {...signupForm.register("password")}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="absolute inset-y-0 right-2 flex items-center text-white/60 hover:text-white transition-colors"
+                                            onClick={() => setShowSignupPassword((prev) => !prev)}
+                                            aria-label={showSignupPassword ? "Hide password" : "Show password"}
+                                        >
+                                            {showSignupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                        </button>
+                                    </div>
                                     {signupForm.formState.errors.password && (
                                         <p className="text-sm text-destructive">
                                             {signupForm.formState.errors.password.message}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="confirmPassword" className="text-white/90">
+                                        Confirm password
+                                    </Label>
+                                    <div className="relative">
+                                        <Input
+                                            id="confirmPassword"
+                                            type={showSignupConfirmPassword ? "text" : "password"}
+                                            placeholder="••••••••"
+                                            className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-primary focus:ring-2 focus:ring-primary/20 pr-10"
+                                            data-testid="input-confirm-password"
+                                            {...signupForm.register("confirmPassword")}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="absolute inset-y-0 right-2 flex items-center text-white/60 hover:text-white transition-colors"
+                                            onClick={() => setShowSignupConfirmPassword((prev) => !prev)}
+                                            aria-label={showSignupConfirmPassword ? "Hide password" : "Show password"}
+                                        >
+                                            {showSignupConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                        </button>
+                                    </div>
+                                    {signupForm.formState.errors.confirmPassword && (
+                                        <p className="text-sm text-destructive">
+                                            {signupForm.formState.errors.confirmPassword.message}
                                         </p>
                                     )}
                                 </div>
