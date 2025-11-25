@@ -22,6 +22,11 @@ createRoot(document.getElementById("root")!).render(
         surveys: true,
         // Load surveys on initialization
         loaded: (posthog) => {
+          // Expose PostHog on window for GTM integration
+          if (typeof window !== 'undefined') {
+            (window as any).posthog = posthog;
+          }
+          
           if (import.meta.env.MODE !== 'development') {
             // Load surveys when PostHog is ready
             posthog.onSurveysLoaded(() => {
