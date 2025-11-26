@@ -13,6 +13,7 @@
  * - companyCount (for industries)
  * - medianBatch (for industries)
  * - keywordCount (for companies)
+ * - description/url/batch (needed for UI rendering)
  */
 
 import fs from 'fs';
@@ -32,6 +33,9 @@ interface MinimalAggregatedMetrics {
 interface MinimalCompanyResult {
     keywordCount: number;
     aggregatedMetrics: MinimalAggregatedMetrics;
+    description?: string;
+    url?: string;
+    batch?: string;
 }
 
 interface MinimalIndustryResult {
@@ -85,6 +89,9 @@ async function createMinimalVersion() {
             minimalData.companies[companyKey] = {
                 keywordCount: company.keywordCount,
                 aggregatedMetrics: createMinimalMetrics(company.aggregatedMetrics),
+                description: company.description,
+                url: company.url,
+                batch: company.batch,
             };
         }
         console.log(`✓ Processed ${Object.keys(minimalData.companies).length} companies`);
