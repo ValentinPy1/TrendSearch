@@ -132,6 +132,9 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                     throw new Error(authError.message);
                 }
 
+                // Track signup attempt regardless of immediate session creation
+                authEvents.signup(data.email);
+
                 // Handle email confirmation requirement
                 if (!authData.session) {
                     // Email confirmation is required
@@ -161,9 +164,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
                 const result = await response.json();
                 onAuthSuccess(result.user);
-
-                // Track successful signup
-                authEvents.signup(data.email);
 
                 toast({
                     title: "Account created!",
