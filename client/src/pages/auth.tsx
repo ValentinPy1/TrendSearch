@@ -124,7 +124,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                     password: data.password,
                     options: {
                         data: {},
-                        emailRedirectTo: window.location.origin, // Optional: for email confirmation
+                        emailRedirectTo: window.location.origin,
                     },
                 });
 
@@ -132,43 +132,79 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                     throw new Error(authError.message);
                 }
 
-                // Track signup attempt regardless of immediate session creation
+                // Track signup attempt
                 authEvents.signup(data.email);
 
-                // Handle email confirmation requirement
-                if (!authData.session) {
-                    // Email confirmation is required
-                    toast({
-                        title: "Check your email!",
-                        description: "Please check your email to confirm your account before signing in.",
+                // If session is available immediately (email verification disabled), proceed with login
+                if (authData.session) {
+                    // Session exists - create user profile
+                    const response = await fetch("/api/auth/create-profile", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${authData.session.access_token}`,
+                        },
+                        body: JSON.stringify({}),
                     });
-                    // Switch to login mode so user can login after confirming
-                    setIsLogin(true);
-                    return;
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.message || "Failed to create profile");
+                    }
+
+                    const result = await response.json();
+                    onAuthSuccess(result.user);
+
+                    toast({
+                        title: "Account created!",
+                        description: "Welcome! You're all set to start discovering opportunities.",
+                    });
+                } else {
+                    // If no session, try to sign in automatically (works if email verification is disabled)
+                    // This handles the case where signup succeeded but session wasn't created immediately
+                    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+                        email: data.email,
+                        password: data.password,
+                    });
+
+                    if (signInError) {
+                        // If sign in fails, email verification might be required
+                        // But we'll proceed anyway to reduce friction
+                        throw new Error("Account created but unable to sign in automatically. Please try signing in manually.");
+                    }
+
+                    if (!signInData.session) {
+                        throw new Error("Account created but no session available. Please try signing in manually.");
+                    }
+
+                    // Get session and create profile
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) {
+                        throw new Error("No session found");
+                    }
+
+                    const response = await fetch("/api/auth/create-profile", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${session.access_token}`,
+                        },
+                        body: JSON.stringify({}),
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.message || "Failed to create profile");
+                    }
+
+                    const result = await response.json();
+                    onAuthSuccess(result.user);
+
+                    toast({
+                        title: "Account created!",
+                        description: "Welcome! You're all set to start discovering opportunities.",
+                    });
                 }
-
-                // Session exists - create user profile
-                const response = await fetch("/api/auth/create-profile", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${authData.session.access_token}`,
-                    },
-                    body: JSON.stringify({}),
-                });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.message || "Failed to create profile");
-                }
-
-                const result = await response.json();
-                onAuthSuccess(result.user);
-
-                toast({
-                    title: "Account created!",
-                    description: "Your account has been created successfully.",
-                });
             }
         } catch (error) {
             // Track auth error
