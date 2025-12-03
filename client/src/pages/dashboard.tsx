@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { LogOut, Loader2, HelpCircle, Sparkles, Coins, MessageSquare } from "lucide-react";
 import type { IdeaWithReport } from "@shared/schema";
-import logoImage from "@assets/image_1761146000585.png";
+import logoImage from "@assets/screenshot-dashboard.png";
 import { KeywordFilter } from "@/components/keyword-filters";
 import { usePaymentStatus } from "@/hooks/use-payment-status";
 import { PaywallModal } from "@/components/paywall-modal";

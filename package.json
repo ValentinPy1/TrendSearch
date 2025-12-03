@@ -1,8 +1,28 @@
 {
-  "name": "rest-express",
+  "name": "trendsearch",
   "version": "1.0.0",
   "type": "module",
+  "description": "AI-powered platform to validate startup ideas using real keyword data and market insights",
+  "keywords": [
+    "startup",
+    "validation",
+    "market-research",
+    "microsaas",
+    "ai",
+    "keyword-analysis",
+    "trend-analysis",
+    "entrepreneurship",
+    "business-ideas",
+    "market-validation"
+  ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ValentinPy1/TrendSearch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ValentinPy1/TrendSearch/issues"
+  },
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=9.0.0"
@@ -10,16 +30,16 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist && npm run copy-data-files",
-    "copy-data-files": "node scripts/copy-data-files.js",
+    "copy-data-files": "node scripts/deployment/copy-data-files.js",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "audit:metrics": "npx clinic doctor -- node --import tsx scripts/audit-compute-metrics.ts",
-    "audit:metrics:bubbleprof": "npx clinic bubbleprof -- node --import tsx scripts/audit-compute-metrics.ts",
-    "audit:metrics:flame": "npx clinic flame -- node --import tsx scripts/audit-compute-metrics.ts",
-    "list:projects": "tsx scripts/list-projects.ts",
-    "upload:railway": "tsx scripts/upload-to-railway.ts",
-    "create:minimal-sectors": "tsx scripts/create-minimal-sectors-metrics.ts"
+    "audit:metrics": "npx clinic doctor -- node --import tsx scripts/utils/audit-compute-metrics.ts",
+    "audit:metrics:bubbleprof": "npx clinic bubbleprof -- node --import tsx scripts/utils/audit-compute-metrics.ts",
+    "audit:metrics:flame": "npx clinic flame -- node --import tsx scripts/utils/audit-compute-metrics.ts",
+    "list:projects": "tsx scripts/utils/list-projects.ts",
+    "upload:railway": "tsx scripts/deployment/upload-to-railway.ts",
+    "create:minimal-sectors": "tsx scripts/metrics/create-minimal-sectors-metrics.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

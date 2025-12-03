@@ -23,7 +23,7 @@ import {
     ArrowDown
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import logoImage from "@assets/image_1761146000585.png";
+import logoImage from "@assets/screenshot-dashboard.png";
 import type { Keyword } from "@shared/schema";
 import { landingPageEvents } from "@/lib/gtm";
 
