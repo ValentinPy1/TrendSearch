@@ -26,13 +26,14 @@ TrendSearch is a platform designed to help entrepreneurs validate startup ideas.
 *Explore YC startups by sectors with aggregated metrics*
 
 ![Trend Analysis](docs/images/screenshot-2.png)
-*Interactive 4-year search volume history charts*
+*AI-powered idea generation and competitor analysis*
 
 ![Keywords Table](docs/images/screenshot-3.png)
 *Detailed keyword metrics with opportunity scores*
 
 ![Custom Search Projects](docs/images/screenshot-4.png)
-*AI-powered idea generation and competitor analysis*
+*Interactive 4-year search volume history charts*
+
 
 **🌐 [View Live Demo](https://trends.pioneerslab.ai/)**
 
