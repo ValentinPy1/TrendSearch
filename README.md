@@ -7,6 +7,8 @@
 [![React](https://img.shields.io/badge/React-18.3-blue.svg)](https://react.dev/)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
 
+**🌐 [Live Demo](https://trends.pioneerslab.ai/)**
+
 TrendSearch is a platform designed to help entrepreneurs validate startup ideas. It leverages AI-powered generation for microSaaS ideas, provides market research insights using real keyword data, and offers interactive trend visualization to identify high-potential startup opportunities.
 
 ## ✨ Features
@@ -20,17 +22,12 @@ TrendSearch is a platform designed to help entrepreneurs validate startup ideas.
 
 ## 🖼️ Screenshots
 
-![Dashboard](docs/images/screenshot-dashboard.png)
-*Main dashboard with idea generator and metrics*
+Visit [https://trends.pioneerslab.ai/](https://trends.pioneerslab.ai/) to see the live application with:
 
-![Idea Generator](docs/images/screenshot-idea-generator.png)
-*AI-powered idea generation interface*
-
-![Trend Analysis](docs/images/screenshot-trends.png)
-*Interactive trend visualization*
-
-![Keywords Table](docs/images/screenshot-keywords.png)
-*Detailed keyword metrics and analysis*
+- **Sector Browser** - Explore YC startups by sectors with aggregated metrics
+- **Trend Analysis** - Interactive 4-year search volume history charts
+- **Keywords Table** - Detailed keyword metrics with opportunity scores
+- **Custom Search Projects** - AI-powered idea generation and competitor analysis
 
 ## 🚀 Quick Start
 
